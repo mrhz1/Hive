@@ -1,0 +1,39 @@
+import { cva } from "class-variance-authority";
+
+export const inputVariants = cva(
+  `
+    w-full px-4 py-2.5 rounded-lg border
+    transition-all outline-hidden
+    focus:ring-4 text-sm font-medium font-sans
+    disabled:opacity-50
+  `,
+  {
+    variants: {
+      state: {
+        default: `
+          bg-[rgb(var(--input-bg))]
+          border-[rgb(var(--border))]
+          text-[rgb(var(--input-text))]
+          placeholder:text-[rgb(var(--input-placeholder))]
+
+          focus:border-[rgb(var(--input-ring))]
+          focus:ring-[rgb(var(--input-ring))/0.15]
+        `,
+
+        error: `
+          bg-[rgb(var(--input-bg))]
+          border-[rgb(var(--danger))]
+          text-[rgb(var(--input-text))]
+          placeholder:text-[rgb(var(--danger))/0.6]
+
+          focus:border-[rgb(var(--danger))]
+          focus:ring-[rgb(var(--danger))/0.15]
+        `,
+      },
+    },
+
+    defaultVariants: {
+      state: "default",
+    },
+  },
+);

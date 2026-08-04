@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Overrides the apache/hive:4.0.0 image's default hive-site.xml (mounted
+  via HIVE_CUSTOM_CONF_DIR). Without this, hive.server2.authentication
+  defaults to NONE, which HiveServer2 still negotiates over SASL PLAIN,
+  incompatible with impyla's auth_mechanism="NOSASL" (raw, non-SASL
+  socket), and the client sees an immediate "TSocket read 0 bytes".
+  Setting NOSASL here makes the server accept the same auth_mechanism
+  used in .env.local (HIVE_AUTH=NOSASL), matching Cloudera AI's GSSAPI
+  mode conceptually: unauthenticated locally, Kerberos in production.
+-->
+<configuration>
+    <property>
+        <name>hive.server2.authentication</name>
+        <value>NOSASL</value>
+    </property>
+    <!--
+      Required for transactional ORC (DELETE/UPDATE): without these the
+      image's default txn manager rejects DELETE/UPDATE with
+      SemanticException [Error 10294], even on managed ORC tables.
+    -->
+    <property>
+        <name>hive.support.concurrency</name>
+        <value>true</value>
+    </property>
+    <property>
+        <name>hive.txn.manager</name>
+        <value>org.apache.hadoop.hive.ql.lockmgr.DbTxnManager</value>
+    </property>
+    <property>
+        <name>hive.compactor.initiator.on</name>
+        <value>true</value>
+    </property>
+    <!--
+      Below: the apache/hive:4.0.0 image's own default hive-site.xml
+      properties, preserved here because HIVE_CUSTOM_CONF_DIR symlinks by
+      filename and fully replaces (not merges) the original conf/hive-site.xml.
+      Dropping these caused OpenSession to reset the connection.
+    -->
+    <property>
+        <name>hive.server2.enable.doAs</name>
+        <value>false</value>
+    </property>
+    <property>
+        <name>hive.tez.exec.inplace.progress</name>
+        <value>false</value>
+    </property>
+    <property>
+        <name>hive.exec.scratchdir</name>
+        <value>/opt/hive/scratch_dir</value>
+    </property>
+    <property>
+        <name>hive.user.install.directory</name>
+        <value>/opt/hive/install_dir</value>
+    </property>
+    <property>
+        <name>tez.runtime.optimize.local.fetch</name>
+        <value>true</value>
+    </property>
+    <property>
+        <name>hive.exec.submit.local.task.via.child</name>
+        <value>false</value>
+    </property>
+    <property>
+        <name>mapreduce.framework.name</name>
+        <value>local</value>
+    </property>
+    <property>
+        <name>tez.local.mode</name>
+        <value>true</value>
+    </property>
+    <property>
+        <name>hive.execution.engine</name>
+        <value>tez</value>
+    </property>
+    <property>
+        <name>hive.metastore.warehouse.dir</name>
+        <value>/opt/hive/data/warehouse</value>
+    </property>
+    <property>
+        <name>metastore.metastore.event.db.notification.api.auth</name>
+        <value>false</value>
+    </property>
+</configuration>

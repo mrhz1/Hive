@@ -1,0 +1,39 @@
+# Local Hive dev environment matching Cloudera AI dialect (HiveServer2 + ORC).
+#
+# Requirements: Docker needs ~4GB RAM available to this container. First
+# startup takes 1-2 minutes while the embedded Derby metastore initializes
+# inside the container -- HiveServer2 will refuse connections on port 10000
+# until that finishes, so the healthcheck (and scripts/check_hive.py) will
+# fail/retry during that window. That is expected, not a bug.
+services:
+  hiveserver2:
+    image: apache/hive:4.0.0
+    container_name: hive-local
+    # Come back automatically if the container dies (it has been OOM-killed
+    # mid-query before, exit 137), so the API does not sit there unable to
+    # reach Hive until someone notices.
+    restart: unless-stopped
+    # HiveServer2 writes a pid file and refuses to start if it still exists
+    # ("HiveServer2 running as process N. Stop it first."), which is exactly
+    # what happens after an unclean stop -- the file survives but the process
+    # does not. Clearing it first makes restarts reliable instead of wedging
+    # the container in a crash loop.
+    entrypoint: ["sh", "-c", "rm -f /opt/hive/conf/hiveserver2.pid; exec /entrypoint.sh"]
+    environment:
+      SERVICE_NAME: hiveserver2
+      HIVE_CUSTOM_CONF_DIR: /hive_custom_conf
+    ports:
+      - "10000:10000"  # HiveServer2 Thrift (impyla connects here)
+      - "10002:10002"  # HiveServer2 web UI
+    volumes:
+      - hive-warehouse:/opt/hive/data/warehouse
+      - ./conf:/hive_custom_conf
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/10000'"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 120s
+
+volumes:
+  hive-warehouse:

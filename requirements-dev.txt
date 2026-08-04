@@ -1,0 +1,24 @@
+# Pinned for Python 3.10 -- impyla's thrift-sasl/sasl chain is fragile on
+# newer Pythons (3.12+/3.14 fail to build the `sasl`/`pure-sasl` C extension
+# and impyla's transport negotiation breaks). Use the 3.10.20 pyenv
+# interpreter for this venv: `~/.pyenv/versions/3.10.20/bin/python3 -m venv .venv`
+#
+# impyla/thrift 0.24.0 specifically: on impyla 0.20.0 (which hard-pins
+# thrift==0.16.0) the thrift C accelerator `fastbinary` raises
+#   SystemError: PY_SSIZE_T_CLEAN macro must be defined for '#' formats
+# when decoding a FetchResults response, so any query returning more than
+# a handful of rows 500s. Reproduced on thrift 0.16.0 AND 0.21.0; fixed on
+# 0.24.0. Do not downgrade impyla below 0.24.0 without re-testing a
+# multi-row fetch (scripts/check_hive.py alone will NOT catch it -- SHOW
+# DATABASES is small enough to pass either way).
+impyla==0.24.0
+thrift==0.24.0
+thrift-sasl==0.4.3
+fastapi==0.111.0
+# Required by FastAPI to parse multipart/form-data (customer file uploads).
+python-multipart==0.0.32
+uvicorn==0.30.1
+structlog==24.4.0
+pytest==8.2.2
+httpx==0.27.0
+python-dotenv==1.0.1

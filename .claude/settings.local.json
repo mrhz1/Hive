@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(pyenv versions *)",
+      "Bash(docker.exe --version)",
+      "Bash(docker.exe ps *)",
+      "Bash(echo \"EXIT:$?\")"
+    ]
+  }
+}

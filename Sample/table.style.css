@@ -1,0 +1,39 @@
+import { cva } from "class-variance-authority";
+
+export const tableVariants = cva("w-full text-sm text-left border-collapse");
+
+export const rowVariants = cva("border-b border-[rgb(var(--border))] transition-colors", {
+  variants: {
+    isHoverable: {
+      true: "hover:bg-[rgb(var(--background-secondary))] group/row",
+      false: "",
+    },
+  },
+  defaultVariants: {
+    isHoverable: true,
+  },
+});
+export const cellVariants = cva("px-6 py-4 align-middle", {
+  variants: {
+    isHeader: {
+      true: `
+        bg-[rgb(var(--background-secondary))]
+        font-semibold
+        text-[rgb(var(--foreground))]
+        uppercase tracking-wider text-xs
+        `,
+      false: `
+        text-[rgb(var(--foreground))]
+        font-medium
+        `,
+    },
+    isNumeric: {
+      true: "text-right tabular-nums",
+      false: "text-left",
+    },
+  },
+  defaultVariants: {
+    isHeader: false,
+    isNumeric: false,
+  },
+});

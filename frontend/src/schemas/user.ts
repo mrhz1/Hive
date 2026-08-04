@@ -1,0 +1,57 @@
+import { z } from 'zod'
+import { idSchema, permissionSchema, timestampSchema } from './common'
+
+/** Mirrors app/schemas.py::User (the read model, role fields joined in). */
+export const userSchema = z.object({
+  id: idSchema,
+  username: z.string(),
+  email: z.string(),
+  first_name: z.string(),
+  last_name: z.string(),
+  status: z.string(),
+  is_active: z.boolean(),
+  role_id: z.string().nullable().optional(),
+  created_at: timestampSchema,
+  role_name: z.string().nullable().optional(),
+  permissions: z.array(permissionSchema).default([]),
+})
+
+export type User = z.infer<typeof userSchema>
+
+export const userListSchema = z.array(userSchema)
+
+/**
+ * Form schema shared by create and update -- one form component serves
+ * both routes, so it validates one shape.
+ *
+ * `role_id` is required: every user must have a role, so the empty string
+ * a native <select> starts on is rejected like any other missing field.
+ * The API itself still accepts a null role (older records may have one),
+ * but this dashboard will not create or leave one that way.
+ */
+export const userFormSchema = z.object({
+  username: z
+    .string()
+    .min(1, 'Username is required')
+    .max(64, 'Username must be 64 characters or fewer')
+    .regex(/^[a-zA-Z0-9._-]+$/, 'Only letters, numbers, dot, underscore and hyphen'),
+  email: z.string().min(1, 'Email is required').email('Enter a valid email address'),
+  first_name: z.string().min(1, 'First name is required').max(64, 'Too long'),
+  last_name: z.string().min(1, 'Last name is required').max(64, 'Too long'),
+  status: z.string().min(1, 'Status is required'),
+  is_active: z.boolean(),
+  role_id: z.string().min(1, 'Role is required'),
+})
+
+export type UserFormValues = z.infer<typeof userFormSchema>
+
+/** Self-service profile edit -- mirrors app/schemas.py::ProfileUpdate. */
+export const profileFormSchema = userFormSchema.pick({
+  first_name: true,
+  last_name: true,
+  email: true,
+})
+
+export type ProfileFormValues = z.infer<typeof profileFormSchema>
+
+export const USER_STATUSES = ['active', 'inactive', 'suspended'] as const
