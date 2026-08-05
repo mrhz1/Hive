@@ -31,7 +31,7 @@ function EditUser() {
 
 export const Route = createFileRoute('/users/$userId/edit')({
   component: () => (
-    <RequirePermission permission="users:update">
+    <RequirePermission permission="user:update">
       <EditUser />
     </RequirePermission>
   ),

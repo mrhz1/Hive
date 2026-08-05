@@ -11,6 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as ApplicationsIndexRouteImport } from './routes/applications/index'
+import { Route as ApplicationsApplicationIdRouteImport } from './routes/applications/$applicationId'
+import { Route as ApplicationsNewRouteImport } from './routes/applications/new'
 import { Route as LogsIndexRouteImport } from './routes/logs/index'
 import { Route as LogsLogIdRouteImport } from './routes/logs/$logId'
 import { Route as PatientsIndexRouteImport } from './routes/patients/index'
@@ -32,6 +35,22 @@ const IndexRoute = IndexRouteImport.update({
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApplicationsIndexRoute = ApplicationsIndexRouteImport.update({
+  id: '/applications/',
+  path: '/applications/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApplicationsApplicationIdRoute =
+  ApplicationsApplicationIdRouteImport.update({
+    id: '/applications/$applicationId',
+    path: '/applications/$applicationId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApplicationsNewRoute = ApplicationsNewRouteImport.update({
+  id: '/applications/new',
+  path: '/applications/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LogsIndexRoute = LogsIndexRouteImport.update({
@@ -98,10 +117,13 @@ const UsersUserIdEditRoute = UsersUserIdEditRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
+  '/applications/$applicationId': typeof ApplicationsApplicationIdRoute
+  '/applications/new': typeof ApplicationsNewRoute
   '/logs/$logId': typeof LogsLogIdRoute
   '/patients/new': typeof PatientsNewRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
+  '/applications/': typeof ApplicationsIndexRoute
   '/logs/': typeof LogsIndexRoute
   '/patients/': typeof PatientsIndexRoute
   '/roles/': typeof RolesIndexRoute
@@ -114,10 +136,13 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
+  '/applications/$applicationId': typeof ApplicationsApplicationIdRoute
+  '/applications/new': typeof ApplicationsNewRoute
   '/logs/$logId': typeof LogsLogIdRoute
   '/patients/new': typeof PatientsNewRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
+  '/applications': typeof ApplicationsIndexRoute
   '/logs': typeof LogsIndexRoute
   '/patients': typeof PatientsIndexRoute
   '/roles': typeof RolesIndexRoute
@@ -131,10 +156,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
+  '/applications/$applicationId': typeof ApplicationsApplicationIdRoute
+  '/applications/new': typeof ApplicationsNewRoute
   '/logs/$logId': typeof LogsLogIdRoute
   '/patients/new': typeof PatientsNewRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
+  '/applications/': typeof ApplicationsIndexRoute
   '/logs/': typeof LogsIndexRoute
   '/patients/': typeof PatientsIndexRoute
   '/roles/': typeof RolesIndexRoute
@@ -149,10 +177,13 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/profile'
+    | '/applications/$applicationId'
+    | '/applications/new'
     | '/logs/$logId'
     | '/patients/new'
     | '/roles/new'
     | '/users/new'
+    | '/applications/'
     | '/logs/'
     | '/patients/'
     | '/roles/'
@@ -165,10 +196,13 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/profile'
+    | '/applications/$applicationId'
+    | '/applications/new'
     | '/logs/$logId'
     | '/patients/new'
     | '/roles/new'
     | '/users/new'
+    | '/applications'
     | '/logs'
     | '/patients'
     | '/roles'
@@ -181,10 +215,13 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/profile'
+    | '/applications/$applicationId'
+    | '/applications/new'
     | '/logs/$logId'
     | '/patients/new'
     | '/roles/new'
     | '/users/new'
+    | '/applications/'
     | '/logs/'
     | '/patients/'
     | '/roles/'
@@ -198,10 +235,13 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProfileRoute: typeof ProfileRoute
+  ApplicationsApplicationIdRoute: typeof ApplicationsApplicationIdRoute
+  ApplicationsNewRoute: typeof ApplicationsNewRoute
   LogsLogIdRoute: typeof LogsLogIdRoute
   PatientsNewRoute: typeof PatientsNewRoute
   RolesNewRoute: typeof RolesNewRoute
   UsersNewRoute: typeof UsersNewRoute
+  ApplicationsIndexRoute: typeof ApplicationsIndexRoute
   LogsIndexRoute: typeof LogsIndexRoute
   PatientsIndexRoute: typeof PatientsIndexRoute
   RolesIndexRoute: typeof RolesIndexRoute
@@ -226,6 +266,27 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/applications/': {
+      id: '/applications/'
+      path: '/applications'
+      fullPath: '/applications/'
+      preLoaderRoute: typeof ApplicationsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/applications/$applicationId': {
+      id: '/applications/$applicationId'
+      path: '/applications/$applicationId'
+      fullPath: '/applications/$applicationId'
+      preLoaderRoute: typeof ApplicationsApplicationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/applications/new': {
+      id: '/applications/new'
+      path: '/applications/new'
+      fullPath: '/applications/new'
+      preLoaderRoute: typeof ApplicationsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/logs/': {
@@ -318,10 +379,13 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProfileRoute: ProfileRoute,
+  ApplicationsApplicationIdRoute: ApplicationsApplicationIdRoute,
+  ApplicationsNewRoute: ApplicationsNewRoute,
   LogsLogIdRoute: LogsLogIdRoute,
   PatientsNewRoute: PatientsNewRoute,
   RolesNewRoute: RolesNewRoute,
   UsersNewRoute: UsersNewRoute,
+  ApplicationsIndexRoute: ApplicationsIndexRoute,
   LogsIndexRoute: LogsIndexRoute,
   PatientsIndexRoute: PatientsIndexRoute,
   RolesIndexRoute: RolesIndexRoute,

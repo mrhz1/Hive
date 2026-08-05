@@ -21,7 +21,7 @@ router = APIRouter(prefix="/logs", tags=["audit-log"])
 def create_audit_log(
     payload: AuditLogCreate,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("logs:create")),
+    _actor: User = Depends(require_permission("log:create")),
 ):
     return crud.create_audit_log(cursor, payload)
 
@@ -32,7 +32,7 @@ def list_audit_logs(
     entity_id: Optional[str] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("logs:read")),
+    _actor: User = Depends(require_permission("log:view")),
 ):
     return crud.list_audit_logs(
         cursor, entity_type=entity_type, entity_id=entity_id, limit=limit
@@ -43,6 +43,6 @@ def list_audit_logs(
 def get_audit_log(
     audit_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("logs:read")),
+    _actor: User = Depends(require_permission("log:view")),
 ):
     return crud.get_audit_log(cursor, audit_id)

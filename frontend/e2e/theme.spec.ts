@@ -7,22 +7,26 @@ import { expect, test, type Page } from '@playwright/test'
  */
 
 const ALL_PERMISSIONS = [
-  'users:read',
-  'users:create',
-  'users:update',
-  'users:delete',
-  'patients:read',
-  'patients:create',
-  'patients:update',
-  'patients:delete',
-  'roles:read',
-  'roles:create',
-  'roles:update',
-  'roles:delete',
-  'logs:read',
-  'logs:create',
-  'logs:update',
-  'logs:delete',
+  'user:view',
+  'user:create',
+  'user:update',
+  'user:delete',
+  'patient:view',
+  'patient:create',
+  'patient:update',
+  'patient:delete',
+  'role:view',
+  'role:create',
+  'role:update',
+  'role:delete',
+  'log:view',
+  'log:create',
+  'log:update',
+  'log:delete',
+  'application:view',
+  'application:create',
+  'application:update',
+  'application:delete',
 ]
 
 const ADMIN = {
@@ -52,7 +56,7 @@ const USERS = [
     role_id: 'role-viewer',
     created_at: '2026-07-02T12:00:00',
     role_name: 'viewer',
-    permissions: ['users:read'],
+    permissions: ['user:view'],
   })),
 ]
 
@@ -89,8 +93,8 @@ const PATIENTS = Array.from({ length: 5 }, (_, i) => ({
   dt_reg: '2026-07-03',
   dt_b: `19${60 + i}-01-02`,
   dt_d: null,
-  original_file_path: null,
-  deidentified_file_path: null,
+  original_file_path: `/data/patient-${i + 1}`,
+  de_identified_file_path: null,
   status: i % 3 === 0 ? 'discharged' : 'active',
   is_active: true,
   created_at: '2026-07-03T12:00:00',
@@ -101,7 +105,7 @@ const ROLES = [
   {
     id: 'role-viewer',
     name: 'viewer',
-    permissions: ['users:read', 'patients:read', 'roles:read', 'logs:read'],
+    permissions: ['user:view', 'patient:view', 'role:view', 'log:view'],
   },
 ]
 
@@ -113,6 +117,21 @@ const LOGS = Array.from({ length: 4 }, (_, i) => ({
   old_values: i % 3 === 0 ? null : { status: 'active' },
   new_values: i % 3 === 2 ? null : { status: 'suspended' },
   created_at: '2026-08-01T10:00:00',
+}))
+
+const APPLICATIONS = Array.from({ length: 3 }, (_, i) => ({
+  id: `application-${i}`,
+  patient_id: `patient-${i}`,
+  submitted_by_id: i === 0 ? null : 'admin-id',
+  reviewed_by_id: i === 2 ? 'admin-id' : null,
+  status: (['draft', 'submitted', 'approved'] as const)[i],
+  description: i === 2 ? 'Looks good' : null,
+  created_by_id: 'admin-id',
+  updated_by_id: 'admin-id',
+  submitted_at: i === 0 ? null : '2026-08-02T09:00:00',
+  created_at: '2026-08-01T09:00:00',
+  updated_at: '2026-08-02T09:00:00',
+  reviewed_at: i === 2 ? '2026-08-03T09:00:00' : null,
 }))
 
 const API = 'http://localhost:8100'
@@ -131,6 +150,9 @@ async function mockApi(page: Page) {
   await page.route(`${API}/patients*`, (route) => route.fulfill(json(PATIENTS)))
   await page.route(`${API}/roles*`, (route) => route.fulfill(json(ROLES)))
   await page.route(`${API}/logs*`, (route) => route.fulfill(json(LOGS)))
+  await page.route(`${API}/applications*`, (route) =>
+    route.fulfill(json(APPLICATIONS))
+  )
 }
 
 async function setTheme(page: Page, theme: 'light' | 'dark') {
@@ -144,6 +166,7 @@ const PAGES = [
   { path: '/users', name: 'users' },
   { path: '/users/new', name: 'user-form' },
   { path: '/patients', name: 'patients' },
+  { path: '/applications', name: 'applications' },
   { path: '/roles', name: 'roles' },
   { path: '/roles/new', name: 'role-form' },
   { path: '/logs', name: 'logs' },

@@ -19,11 +19,11 @@ const ADMIN = {
   created_at: '2026-07-01T12:00:00',
   role_name: 'admin',
   permissions: [
-    'users:read',
-    'users:create',
-    'users:update',
-    'users:delete',
-    'roles:read',
+    'user:view',
+    'user:create',
+    'user:update',
+    'user:delete',
+    'role:view',
   ],
 }
 
@@ -56,7 +56,7 @@ async function mockApi(page: Page, options: { refetchDelayMs?: number } = {}) {
   await page.route(`${API}/me*`, (route) => route.fulfill(json(ADMIN)))
   await page.route(`${API}/roles*`, (route) =>
     route.fulfill(
-      json([{ id: 'role-viewer', name: 'viewer', permissions: ['users:read'] }])
+      json([{ id: 'role-viewer', name: 'viewer', permissions: ['user:view'] }])
     )
   )
 
@@ -145,8 +145,8 @@ test.describe('column sorting', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify([
-          { id: 'r1', name: 'ten', permissions: Array(10).fill('users:read') },
-          { id: 'r2', name: 'two', permissions: ['users:read', 'roles:read'] },
+          { id: 'r1', name: 'ten', permissions: Array(10).fill('user:view') },
+          { id: 'r2', name: 'two', permissions: ['user:view', 'role:view'] },
           { id: 'r3', name: 'none', permissions: [] },
         ]),
       })

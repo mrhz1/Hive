@@ -2,7 +2,7 @@
 
 Access is gated on the patients permissions rather than a new model:
 these files belong to a patient, so anyone who may read a patient may
-read their documents, and uploading/removing is a patients:update.
+read their documents, and uploading/removing is a patient:update.
 That keeps existing roles working unchanged.
 """
 import uuid
@@ -11,13 +11,14 @@ from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse
 
+from app.audit import record_audit
 from app.crud import patient_files as crud
 from app.crud import patients as patients_crud
 from app.db import get_cursor
 from app.deid import run_deidentification
 from app.errors import ValidationError
 from app.logging_setup import get_logger
-from app.schemas import PatientFile, PatientFileUpdate, User
+from app.schemas import PatientFile, PatientFileReview, PatientFileUpdate, User
 from app.security import require_permission
 from app.storage import (
     delete_file as remove_from_disk,
@@ -41,7 +42,7 @@ MAX_FILE_BYTES = 50 * 1024 * 1024
 def list_patient_files(
     patient_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patients:read")),
+    _actor: User = Depends(require_permission("patient:view")),
 ):
     # 404 on an unknown patient rather than an empty list, so a wrong id
     # is distinguishable from a patient with no documents.
@@ -57,7 +58,7 @@ async def upload_patient_files(
     files: List[UploadFile] = File(...),
     description: Optional[str] = Form(default=None),
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patients:update")),
+    _actor: User = Depends(require_permission("patient:update")),
 ):
     """Accepts many files at once -- the client sends a whole folder.
 
@@ -117,7 +118,7 @@ async def upload_patient_files(
 def get_patient_file(
     file_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patients:read")),
+    _actor: User = Depends(require_permission("patient:view")),
 ):
     return crud.get_file_or_404(cursor, file_id)
 
@@ -127,7 +128,7 @@ def download_patient_file(
     file_id: str,
     deidentified: bool = False,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patients:read")),
+    _actor: User = Depends(require_permission("patient:view")),
 ):
     """Serves the bytes.
 
@@ -138,10 +139,10 @@ def download_patient_file(
     record = crud.get_file_or_404(cursor, file_id)
 
     if deidentified:
-        if not record.deidentified_file_path:
+        if not record.de_identified_file_path:
             raise ValidationError("This file has not been de-identified yet")
-        path = resolve_stored_path(record.deidentified_file_path)
-        filename = record.deidentified_file_name or record.sanitized_file_name
+        path = resolve_stored_path(record.de_identified_file_path)
+        filename = record.de_identified_file_name or record.sanitized_file_name
     else:
         path = resolve_stored_path(record.file_path)
         filename = record.sanitized_file_name
@@ -163,7 +164,7 @@ def deidentify_patient_file(
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patients:update")),
+    _actor: User = Depends(require_permission("patient:update")),
 ):
     """Queues OCR + PII redaction for one file.
 
@@ -200,12 +201,42 @@ def deidentify_patient_file(
     return updated
 
 
+@router.post("/files/{file_id}/review", response_model=PatientFile)
+def review_patient_file(
+    file_id: str,
+    payload: PatientFileReview,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("application:update")),
+):
+    """Approve or reject one document.
+
+    Gated on application:update rather than patient:update -- reviewing a
+    submission is the application reviewer's job, which is not the same
+    grant as being allowed to edit patient records.
+    """
+    before = crud.get_file_or_404(cursor, file_id)
+    reviewed = crud.review_file(cursor, file_id, payload, reviewer_id=actor.id)
+
+    background.add_task(
+        record_audit,
+        action="UPDATE",
+        entity_type="patient_file",
+        entity_id=file_id,
+        old_values=before.model_dump(mode="json"),
+        new_values=reviewed.model_dump(mode="json"),
+        request_id=request.headers.get("X-Request-ID"),
+    )
+    return reviewed
+
+
 @router.put("/files/{file_id}", response_model=PatientFile)
 def update_patient_file(
     file_id: str,
     payload: PatientFileUpdate,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patients:update")),
+    _actor: User = Depends(require_permission("patient:update")),
 ):
     return crud.update_file(cursor, file_id, payload)
 
@@ -214,11 +245,11 @@ def update_patient_file(
 def delete_patient_file(
     file_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patients:update")),
+    _actor: User = Depends(require_permission("patient:update")),
 ):
     record = crud.delete_file(cursor, file_id)
     # Row first, bytes after: an orphaned file on disk is harmless, a row
     # pointing at nothing is not.
     remove_from_disk(record.file_path)
-    if record.deidentified_file_path:
-        remove_from_disk(record.deidentified_file_path)
+    if record.de_identified_file_path:
+        remove_from_disk(record.de_identified_file_path)

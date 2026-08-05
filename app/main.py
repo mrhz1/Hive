@@ -8,7 +8,15 @@ from fastapi.responses import JSONResponse
 from app.errors import AppError, app_error_handler, unhandled_error_handler
 from app.logging_setup import configure_logging, get_logger
 from app.middleware import RequestContextMiddleware
-from app.routers import audit_log, me, patient_files, patients, roles, users
+from app.routers import (
+    audit_log,
+    me,
+    patient_applications,
+    patient_files,
+    patients,
+    roles,
+    users,
+)
 
 configure_logging()
 log = get_logger(__name__)
@@ -85,6 +93,7 @@ app.include_router(me.router)
 app.include_router(users.router)
 app.include_router(patients.router)
 app.include_router(patient_files.router)
+app.include_router(patient_applications.router)
 app.include_router(roles.router)
 app.include_router(audit_log.router)
 

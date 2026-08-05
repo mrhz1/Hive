@@ -16,7 +16,7 @@ function NewRole() {
 
 export const Route = createFileRoute('/roles/new')({
   component: () => (
-    <RequirePermission permission="roles:create">
+    <RequirePermission permission="role:create">
       <NewRole />
     </RequirePermission>
   ),

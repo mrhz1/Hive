@@ -26,7 +26,7 @@ def _validate_permissions(permissions: List[str]) -> None:
 def create_role(
     payload: RoleCreate,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("roles:create")),
+    _actor: User = Depends(require_permission("role:create")),
 ):
     _validate_permissions(payload.permissions)
     return crud.create_role(cursor, payload)
@@ -35,7 +35,7 @@ def create_role(
 @router.get("", response_model=List[Role])
 def list_roles(
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("roles:read")),
+    _actor: User = Depends(require_permission("role:view")),
 ):
     return crud.list_roles(cursor)
 
@@ -44,7 +44,7 @@ def list_roles(
 def get_role(
     role_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("roles:read")),
+    _actor: User = Depends(require_permission("role:view")),
 ):
     role = crud.get_role(cursor, role_id)
     if role is None:
@@ -57,7 +57,7 @@ def update_role(
     role_id: str,
     payload: RoleUpdate,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("roles:update")),
+    _actor: User = Depends(require_permission("role:update")),
 ):
     if payload.permissions is not None:
         _validate_permissions(payload.permissions)
@@ -68,6 +68,6 @@ def update_role(
 def delete_role(
     role_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("roles:delete")),
+    _actor: User = Depends(require_permission("role:delete")),
 ):
     crud.delete_role(cursor, role_id)

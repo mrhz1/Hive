@@ -49,10 +49,10 @@ function Dashboard() {
   // Each list is fetched only if the user may read it -- firing a request
   // that is guaranteed to 403 would be noise in the logs and a wasted
   // Hive query.
-  const users = userHooks.useList({ enabled: can('users:read') })
-  const patients = patientHooks.useList({ enabled: can('patients:read') })
-  const roles = roleHooks.useList({ enabled: can('roles:read') })
-  const logs = useAuditLogs({ limit: 5 }, can('logs:read'))
+  const users = userHooks.useList({ enabled: can('user:view') })
+  const patients = patientHooks.useList({ enabled: can('patient:view') })
+  const roles = roleHooks.useList({ enabled: can('role:view') })
+  const logs = useAuditLogs({ limit: 5 }, can('log:view'))
 
   const cards: Array<{
     label: string
@@ -66,7 +66,7 @@ function Dashboard() {
       label: 'Users',
       icon: Users,
       to: '/users',
-      permission: 'users:read',
+      permission: 'user:view',
       count: users.data?.length,
       isLoading: users.isLoading,
     },
@@ -74,7 +74,7 @@ function Dashboard() {
       label: 'Patients',
       icon: UsersRound,
       to: '/patients',
-      permission: 'patients:read',
+      permission: 'patient:view',
       count: patients.data?.length,
       isLoading: patients.isLoading,
     },
@@ -82,7 +82,7 @@ function Dashboard() {
       label: 'Roles',
       icon: Shield,
       to: '/roles',
-      permission: 'roles:read',
+      permission: 'role:view',
       count: roles.data?.length,
       isLoading: roles.isLoading,
     },
@@ -138,7 +138,7 @@ function Dashboard() {
           )}
         </Card>
 
-        {can('logs:read') ? (
+        {can('log:view') ? (
           <Card className="p-5">
             <div className="flex items-center justify-between">
               <h2 className="text-[11px] font-bold tracking-widest text-[rgb(var(--foreground-muted))] uppercase">

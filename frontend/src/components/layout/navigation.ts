@@ -1,5 +1,6 @@
 import {
   ClipboardList,
+  FileStack,
   LayoutDashboard,
   Shield,
   UserCircle,
@@ -24,14 +25,20 @@ export type NavItem = {
  */
 export const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', to: '/', icon: LayoutDashboard },
-  { label: 'Users', to: '/users', icon: Users, permission: 'users:read' },
+  { label: 'Users', to: '/users', icon: Users, permission: 'user:view' },
   {
     label: 'Patients',
     to: '/patients',
     icon: UsersRound,
-    permission: 'patients:read',
+    permission: 'patient:view',
   },
-  { label: 'Roles', to: '/roles', icon: Shield, permission: 'roles:read' },
-  { label: 'Audit log', to: '/logs', icon: ClipboardList, permission: 'logs:read' },
+  {
+    label: 'Applications',
+    to: '/applications',
+    icon: FileStack,
+    permission: 'application:view',
+  },
+  { label: 'Roles', to: '/roles', icon: Shield, permission: 'role:view' },
+  { label: 'Audit log', to: '/logs', icon: ClipboardList, permission: 'log:view' },
   { label: 'Profile', to: '/profile', icon: UserCircle },
 ]

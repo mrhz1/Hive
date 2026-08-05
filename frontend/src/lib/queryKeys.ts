@@ -33,6 +33,15 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.logs.all, 'detail', id] as const,
   },
 
+  applications: {
+    all: ['applications'] as const,
+    // The list is filterable by patient, so the filter is part of the key
+    // -- an unfiltered list and one patient's list are different queries.
+    list: (patientId?: string) =>
+      [...queryKeys.applications.all, 'list', patientId ?? null] as const,
+    detail: (id: string) => [...queryKeys.applications.all, 'detail', id] as const,
+  },
+
   patientFiles: {
     all: ['patient-files'] as const,
     // Scoped by patient: uploading for one patient must not invalidate

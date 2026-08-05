@@ -62,7 +62,7 @@ export const patientSchema = z.object({
   // source documents recorded on the patient itself, alongside the
   // per-document rows in `patient_files`
   original_file_path: text,
-  deidentified_file_path: text,
+  de_identified_file_path: text,
 
   // lifecycle
   status: z.string(),
@@ -152,7 +152,7 @@ const patientFormFields = z.object({
     .string()
     .min(1, 'Original file path is required')
     .max(512, 'Too long'),
-  deidentified_file_path: optionalText(512),
+  de_identified_file_path: optionalText(512),
 
   // lifecycle
   status: z.string().min(1, 'Status is required'),
@@ -222,7 +222,7 @@ export const EMPTY_PATIENT_FORM: PatientFormValues = {
   dt_b: '',
   dt_d: '',
   original_file_path: '',
-  deidentified_file_path: '',
+  de_identified_file_path: '',
   status: 'active',
   is_active: true,
 }

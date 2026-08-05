@@ -3,6 +3,7 @@ from typing import List
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
 from app.audit import record_audit
+from app.crud import patient_applications as applications_crud
 from app.crud import patient_files as files_crud
 from app.crud import patients as crud
 from app.storage import delete_file as remove_from_disk
@@ -23,7 +24,7 @@ def create_patient(
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patients:create")),
+    _actor: User = Depends(require_permission("patient:create")),
 ):
     patient = crud.create_patient(cursor, payload)
     background.add_task(
@@ -41,7 +42,7 @@ def create_patient(
 @router.get("", response_model=List[Patient])
 def list_patients(
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patients:read")),
+    _actor: User = Depends(require_permission("patient:view")),
 ):
     return crud.list_patients(cursor)
 
@@ -50,7 +51,7 @@ def list_patients(
 def get_patient(
     patient_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patients:read")),
+    _actor: User = Depends(require_permission("patient:view")),
 ):
     return crud.get_patient_or_404(cursor, patient_id)
 
@@ -62,7 +63,7 @@ def update_patient(
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patients:update")),
+    _actor: User = Depends(require_permission("patient:update")),
 ):
     before = crud.get_patient_or_404(cursor, patient_id)
     after = crud.update_patient(cursor, patient_id, payload)
@@ -84,18 +85,20 @@ def delete_patient(
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patients:delete")),
+    _actor: User = Depends(require_permission("patient:delete")),
 ):
-    # Remove the patient's documents first, so deleting a patient never
-    # leaves rows pointing at a patient that no longer exists.
+    # Remove the patient's documents and applications first, so deleting a
+    # patient never leaves rows pointing at a patient that no longer
+    # exists -- Hive enforces no foreign keys, so nothing else would.
     orphaned = files_crud.delete_files_for_patient(cursor, patient_id)
+    applications_crud.delete_applications_for_patient(cursor, patient_id)
 
     deleted = crud.delete_patient(cursor, patient_id)
 
     for record in orphaned:
         remove_from_disk(record.file_path)
-        if record.deidentified_file_path:
-            remove_from_disk(record.deidentified_file_path)
+        if record.de_identified_file_path:
+            remove_from_disk(record.de_identified_file_path)
 
     background.add_task(
         record_audit,

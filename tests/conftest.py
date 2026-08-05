@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 from app.crud import patients as patients_crud
 from app.db import get_cursor
 from app.main import app
+from app.security import PERMISSION_ACTIONS, PERMISSION_MODELS
 
 # --------------------------------------------------------------- fixtures
 
@@ -31,12 +32,14 @@ ADMIN_ID = "user-admin"
 VIEWER_ID = "user-viewer"
 NOBODY_ID = "user-nobody"
 
+# Derived from the app rather than restated, so adding a model or an
+# action cannot leave the fixtures granting a set the API does not know.
 ALL_PERMISSIONS = [
     f"{model}:{action}"
-    for model in ("users", "patients", "roles", "logs")
-    for action in ("read", "create", "update", "delete")
+    for model in PERMISSION_MODELS
+    for action in PERMISSION_ACTIONS
 ]
-READONLY_PERMISSIONS = [f"{m}:read" for m in ("users", "patients", "roles", "logs")]
+READONLY_PERMISSIONS = [f"{m}:view" for m in PERMISSION_MODELS]
 
 
 def _seed():
@@ -54,6 +57,7 @@ def _seed():
         ],
         "patients": [],
         "patient_files": [],
+        "patient_applications": [],
         "audit_log": [],
     }
 

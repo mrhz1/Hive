@@ -101,7 +101,7 @@ function UsersList() {
 
   // Without this the table would render an empty "Actions" column for a
   // read-only user, since every button inside it is permission-gated.
-  const canModify = can('users:update') || can('users:delete')
+  const canModify = can('user:update') || can('user:delete')
 
   return (
     <div className="space-y-6">
@@ -109,7 +109,7 @@ function UsersList() {
         title="User Management"
         description="Review and manage dashboard users."
         actions={
-          <Can permission="users:create">
+          <Can permission="user:create">
             <Button onClick={() => void navigate({ to: '/users/new' })}>Add User</Button>
           </Can>
         }
@@ -138,7 +138,7 @@ function UsersList() {
           canModify
             ? (user) => (
                 <>
-                  <Can permission="users:update">
+                  <Can permission="user:update">
                     <Button
                       size="sm"
                       aria-label={`Edit ${user.username}`}
@@ -152,7 +152,7 @@ function UsersList() {
                       Edit
                     </Button>
                   </Can>
-                  <Can permission="users:delete">
+                  <Can permission="user:delete">
                     <Button
                       size="sm"
                       variant="danger"
@@ -186,7 +186,7 @@ function UsersList() {
 
 export const Route = createFileRoute('/users/')({
   component: () => (
-    <RequirePermission permission="users:read">
+    <RequirePermission permission="user:view">
       <UsersList />
     </RequirePermission>
   ),

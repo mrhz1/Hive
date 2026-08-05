@@ -147,9 +147,9 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
             file_id,
             deid_status="done",
             # The redacted copy is what no longer carries identifiers.
-            is_identified=False,
-            deidentified_file_name=produced.name,
-            deidentified_file_path=str(produced),
+            is_deidentified=True,
+            de_identified_file_name=produced.name,
+            de_identified_file_path=str(produced),
         )
         log.info("deid_succeeded", file_id=file_id, output=str(produced))
 

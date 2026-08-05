@@ -24,7 +24,7 @@ npm install
 npm run dev                            # http://localhost:5173
 ```
 
-`make init` prints an **admin** id (all 16 permissions) and a **viewer**
+`make init` prints an **admin** id (all 20 permissions) and a **viewer**
 id (read-only). Put one in `VITE_DEV_USER_ID` as the starting identity.
 
 ### Switching user to test RBAC
@@ -97,7 +97,7 @@ Two endpoints were added to the API for this dashboard:
 - `GET /me` — current user with `role_name` and `permissions` joined in.
   No permission required, or the shell could not boot.
 - `PUT /me` — self-service profile edit. Deliberately **not** gated on
-  `users:update` (editing your own name should not require the right to
+  `user:update` (editing your own name should not require the right to
   edit everyone), so it accepts only `first_name`/`last_name`/`email` —
   never `role_id`, `status` or `is_active`. Otherwise it would be a
   privilege-escalation path.
@@ -175,18 +175,18 @@ a confusing error; it is not the security boundary.
 
 ## Verification status
 
-`npm run typecheck`, `npm run lint`, `npm run test` (15 tests) and
+`npm run typecheck`, `npm run lint`, `npm run test` (21 tests) and
 `npm run build` all pass.
 
 Verified against a live API (Hive in Docker + FastAPI), rendered in
 headless Chrome:
 
 - dashboard loads real counts (20 users / 10 patients / 2 roles) and all
-  16 permissions for the admin role
+  20 permissions for the admin role
 - users table renders all rows with `role_name` inlined from the join
 - switching `VITE_DEV_USER_ID` to the viewer id removes the "New user"
   button, the per-row edit/delete buttons and the whole Actions column
-- `/users/new` as viewer renders the 403 page naming `users:create`
+- `/users/new` as viewer renders the 403 page naming `user:create`
 - an unknown path renders the 404 page
 - profile page shows the account panel with the viewer's four grants
 - audit log lists a background-written CREATE entry, and its detail page

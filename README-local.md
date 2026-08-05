@@ -44,23 +44,41 @@ Interactive docs at `http://localhost:8100/docs` once `make run` is up.
 | `roles` | `id`, `name`, `permissions ARRAY<STRING>` |
 | `users` | `role_id` FK to roles; reads join in `role_name` + `permissions` |
 | `patients` | `fstname`/`lstname` + provider (`p*`) and patient (`pt*`) contact blocks, `dt_reg`/`dt_b`/`dt_d` DATEs; no role |
-| `patient_files` | one row per uploaded document; bytes live under `FILE_STORAGE_DIR` |
+| `patient_files` | one row per uploaded document; bytes live under `FILE_STORAGE_DIR`; carries both the de-identification state and the reviewer's approve/reject decision |
+| `patient_applications` | one submission of a patient + their documents for review; holds who did what and when |
 | `audit_log` | append-only; `old_values`/`new_values` are JSON-in-STRING |
 
 ### Endpoints
 
-`/users`, `/patients`, `/roles` each expose POST / GET (list) / GET
-`{id}` / PUT `{id}` / DELETE `{id}`. `/logs` exposes POST / GET (list,
-filterable by `entity_type`, `entity_id`, `limit`) / GET `{id}` -- no
-update or delete, because an audit trail you can rewrite is not an audit
-trail.
+`/users`, `/patients`, `/roles`, `/applications` each expose POST / GET
+(list) / GET `{id}` / PUT `{id}` / DELETE `{id}`. `/logs` exposes POST /
+GET (list, filterable by `entity_type`, `entity_id`, `limit`) / GET
+`{id}` -- no update or delete, because an audit trail you can rewrite is
+not an audit trail.
+
+`/applications` accepts a `patient_id` query parameter to scope the list
+to one patient.
+
+Documents hang off a patient: `/patients/{id}/files` (POST multipart /
+GET), and per file `/files/{id}` (GET / PUT / DELETE),
+`/files/{id}/content` (GET, `?deidentified=true` for the redacted copy),
+`/files/{id}/deidentify` (POST) and `/files/{id}/review` (POST -- the
+reviewer's approve/reject, which requires `application:update` rather
+than `patient:update`, because reviewing a submission is not the same
+job as editing a clinical record).
 
 ### Auth and permissions
 
 Every endpoint except `/health` requires an `X-User-Id` header naming an
-active user, and the permission `<model>:<action>` (e.g. `users:read`,
-`patients:delete`) on that user's role. Missing/unknown user -> 401;
+active user, and the permission `<model>:<action>` (e.g. `user:view`,
+`patient:delete`) on that user's role. Missing/unknown user -> 401;
 missing grant -> 403.
+
+The 20 grants are the product of five models -- `user`, `patient`,
+`role`, `log`, `application` -- and four actions: `view`, `create`,
+`update`, `delete`. Both tuples live in `app/security.py`, and
+`scripts/init_db.py`, the test fixtures and the frontend's
+`schemas/common.ts` all derive from them rather than restating the list.
 
 **`X-User-Id` is a deliberate local stand-in.** No auth scheme was
 specified, and on Cloudera AI the authenticated principal arrives from the
@@ -68,7 +86,7 @@ platform (Kerberos/Knox). Swapping it means changing only
 `_current_user_id` in `app/security.py` -- routes and permission strings
 are unchanged, so nothing branches on environment.
 
-`make init` seeds two roles and prints their user ids: **admin** (all 16
+`make init` seeds two roles and prints their user ids: **admin** (all 20
 permissions) and **viewer** (read-only). Use those as `X-User-Id`:
 
 ```bash

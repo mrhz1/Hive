@@ -24,15 +24,7 @@ import {
 import { ApiError } from '@/lib/api/client'
 import { patientFilesApi } from '@/lib/api/resources'
 import { patientName } from '@/schemas/patient'
-import { formatFileSize, type PatientFile } from '@/schemas/patientFile'
-
-/** Colour the de-identification state so progress is scannable. */
-function deidTone(status: string): 'success' | 'warning' | 'danger' | 'neutral' {
-  if (status === 'done') return 'success'
-  if (status === 'processing') return 'warning'
-  if (status === 'failed') return 'danger'
-  return 'neutral'
-}
+import { deidTone, formatFileSize, type PatientFile } from '@/schemas/patientFile'
 
 function PatientFilesPage() {
   const { patientId } = Route.useParams()
@@ -131,10 +123,10 @@ function PatientFilesPage() {
       cell: (file) => (
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge tone={deidTone(file.deid_status)}>{file.deid_status}</Badge>
-          {file.is_identified ? (
-            <Badge tone="warning">contains PII</Badge>
-          ) : (
+          {file.is_deidentified ? (
             <Badge tone="success">redacted</Badge>
+          ) : (
+            <Badge tone="warning">contains PII</Badge>
           )}
         </div>
       ),
@@ -152,7 +144,7 @@ function PatientFilesPage() {
     },
   ]
 
-  const canModify = can('patients:update')
+  const canModify = can('patient:update')
   const canDelete = canModify
 
   return (
@@ -167,7 +159,7 @@ function PatientFilesPage() {
         }
       />
 
-      <Can permission="patients:update">
+      <Can permission="patient:update">
         <FolderUpload
           isUploading={upload.isPending}
           onUpload={(files, description) =>
@@ -196,7 +188,7 @@ function PatientFilesPage() {
             >
               Show
             </Button>
-            {file.deidentified_file_path ? (
+            {file.de_identified_file_path ? (
               <Button
                 size="sm"
                 variant="secondary"
@@ -261,7 +253,7 @@ function PatientFilesPage() {
 
 export const Route = createFileRoute('/patients/$patientId/files')({
   component: () => (
-    <RequirePermission permission="patients:read">
+    <RequirePermission permission="patient:view">
       <PatientFilesPage />
     </RequirePermission>
   ),

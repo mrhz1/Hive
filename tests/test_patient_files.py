@@ -1,10 +1,10 @@
 """Patient document endpoints.
 
 These are gated on the patients permissions rather than a model of their
-own: the files belong to a patient, so reading them is patients:read and
-uploading/removing is patients:update.
+own: the files belong to a patient, so reading them is patient:view and
+uploading/removing is patient:update.
 """
-from conftest import VIEWER_ID, minimal_patient
+from conftest import ADMIN_ID, VIEWER_ID, minimal_patient
 
 
 def _patient(client):
@@ -33,8 +33,11 @@ def test_upload_lands_under_the_patient(as_admin, storage_root):
 
     # Fresh uploads are not de-identified, and must not claim to be.
     assert record["deid_status"] == "pending"
-    assert record["is_identified"] is True
-    assert record["deidentified_file_path"] is None
+    assert record["is_deidentified"] is False
+    # Nor reviewed -- nobody has looked at it yet.
+    assert record["review_status"] == "pending"
+    assert record["reviewed_by_id"] is None
+    assert record["de_identified_file_path"] is None
 
     stored = storage_root / patient_id
     assert [p.name for p in stored.iterdir()] == [f"{record['id']}_scan.pdf"]
@@ -48,9 +51,10 @@ def test_the_file_row_keeps_its_original_columns(as_admin, storage_root):
 
     assert set(record) == {
         "id", "patient_id", "original_file_name", "sanitized_file_name",
-        "deidentified_file_name", "file_extension", "mime_type", "file_size",
-        "deid_status", "is_identified", "created_at", "description",
-        "file_path", "deidentified_file_path",
+        "de_identified_file_name", "file_extension", "mime_type", "file_size",
+        "deid_status", "is_deidentified", "created_at", "description",
+        "file_path", "de_identified_file_path",
+        "review_status", "review_description", "reviewed_by_id", "reviewed_at",
     }
 
 
@@ -154,6 +158,90 @@ def test_deidentify_marks_the_row_processing(as_admin, storage_root, monkeypatch
     assert response.json()["deid_status"] == "processing"
 
 
+# ---------------------------------------------------------------- review
+
+def test_approving_a_file_stamps_the_reviewer(as_admin, storage_root):
+    patient_id = _patient(as_admin)
+    record = _upload(as_admin, patient_id).json()[0]
+
+    response = as_admin.post(
+        f"/files/{record['id']}/review", json={"review_status": "approved"}
+    )
+    assert response.status_code == 200, response.text
+
+    reviewed = response.json()
+    assert reviewed["review_status"] == "approved"
+    # Attribution comes from the caller's identity, never the request body.
+    assert reviewed["reviewed_by_id"] == ADMIN_ID
+    assert reviewed["reviewed_at"] is not None
+
+
+def test_rejecting_a_file_records_the_reason(as_admin, storage_root):
+    patient_id = _patient(as_admin)
+    record = _upload(as_admin, patient_id).json()[0]
+
+    response = as_admin.post(
+        f"/files/{record['id']}/review",
+        json={"review_status": "rejected", "review_description": "Page 2 is unreadable"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["review_description"] == "Page 2 is unreadable"
+
+
+def test_a_rejection_without_a_reason_is_refused(as_admin, storage_root):
+    """An approval speaks for itself; a rejection that says nothing leaves
+    the uploader with no idea what to fix."""
+    patient_id = _patient(as_admin)
+    record = _upload(as_admin, patient_id).json()[0]
+
+    for payload in (
+        {"review_status": "rejected"},
+        {"review_status": "rejected", "review_description": "   "},
+    ):
+        assert (
+            as_admin.post(f"/files/{record['id']}/review", json=payload).status_code
+            == 422
+        ), payload
+
+
+def test_review_cannot_be_attributed_by_the_caller(as_admin, storage_root):
+    """reviewed_by_id in the body is ignored -- it is not an input."""
+    patient_id = _patient(as_admin)
+    record = _upload(as_admin, patient_id).json()[0]
+
+    reviewed = as_admin.post(
+        f"/files/{record['id']}/review",
+        json={"review_status": "approved", "reviewed_by_id": "somebody-else"},
+    ).json()
+
+    assert reviewed["reviewed_by_id"] == ADMIN_ID
+
+
+def test_an_unknown_review_status_is_rejected(as_admin, storage_root):
+    patient_id = _patient(as_admin)
+    record = _upload(as_admin, patient_id).json()[0]
+
+    response = as_admin.post(
+        f"/files/{record['id']}/review", json={"review_status": "maybe"}
+    )
+    assert response.status_code == 422
+
+
+def test_reviewing_needs_the_application_permission(client, storage_root):
+    """Reviewing a submission is the reviewer's job, not the same grant as
+    being allowed to edit patient records."""
+    admin = {"X-User-Id": ADMIN_ID}
+    patient_id = client.post("/patients", json=minimal_patient(), headers=admin).json()["id"]
+    record = _upload(client, patient_id, headers=admin).json()[0]
+
+    client.headers.update({"X-User-Id": VIEWER_ID})
+    response = client.post(
+        f"/files/{record['id']}/review", json={"review_status": "approved"}
+    )
+    assert response.status_code == 403
+    assert "application:update" in response.json()["error"]["detail"]
+
+
 def test_empty_uploads_are_skipped_not_fatal(as_admin, storage_root):
     """Picking a folder can yield directory entries and hidden files."""
     patient_id = _patient(as_admin)
@@ -175,10 +263,10 @@ def test_file_access_uses_the_patients_permissions(client, storage_root):
     record = _upload(client, patient_id, headers=admin).json()[0]
 
     client.headers.update({"X-User-Id": VIEWER_ID})
-    # patients:read covers reading documents...
+    # patient:view covers reading documents...
     assert client.get(f"/patients/{patient_id}/files").status_code == 200
     assert client.get(f"/files/{record['id']}").status_code == 200
-    # ...but changing them needs patients:update.
+    # ...but changing them needs patient:update.
     assert _upload(client, patient_id).status_code == 403
     assert client.delete(f"/files/{record['id']}").status_code == 403
     assert client.post(f"/files/{record['id']}/deidentify").status_code == 403

@@ -6,10 +6,10 @@ import { EMPTY_PATIENT_FORM, patientFormSchema } from '@/schemas/patient'
 import { roleFormSchema } from '@/schemas/role'
 
 describe('permissions', () => {
-  it('enumerates exactly the 16 grants the API recognises', () => {
-    expect(ALL_PERMISSIONS).toHaveLength(16)
-    expect(ALL_PERMISSIONS).toContain('users:read')
-    expect(ALL_PERMISSIONS).toContain('logs:delete')
+  it('enumerates exactly the 20 grants the API recognises', () => {
+    expect(ALL_PERMISSIONS).toHaveLength(20)
+    expect(ALL_PERMISSIONS).toContain('user:view')
+    expect(ALL_PERMISSIONS).toContain('log:delete')
   })
 })
 
@@ -138,7 +138,7 @@ describe('roleFormSchema', () => {
   it('accepts known permissions', () => {
     const result = roleFormSchema.safeParse({
       name: 'support',
-      permissions: ['users:read', 'patients:update'],
+      permissions: ['user:view', 'patient:update'],
     })
     expect(result.success).toBe(true)
   })
@@ -214,7 +214,7 @@ describe('toApiError', () => {
         data: {
           error: {
             code: 'permission_denied',
-            detail: "Permission 'users:create' is required",
+            detail: "Permission 'user:create' is required",
           },
         },
       },

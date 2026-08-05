@@ -26,7 +26,7 @@ export function UserSwitcher() {
   const [open, setOpen] = useState(false)
   const activeId = getActiveUserId()
 
-  // Only fetched once opened -- a user without users:read gets a 403,
+  // Only fetched once opened -- a user without user:view gets a 403,
   // which is why the manual id field below is always available.
   const { data: users, error } = useQuery({
     queryKey: ['dev-user-switcher'],

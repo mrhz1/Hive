@@ -32,7 +32,7 @@ function EditPatient() {
 
 export const Route = createFileRoute('/patients/$patientId/edit')({
   component: () => (
-    <RequirePermission permission="patients:update">
+    <RequirePermission permission="patient:update">
       <EditPatient />
     </RequirePermission>
   ),

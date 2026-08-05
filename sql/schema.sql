@@ -17,9 +17,9 @@
 DROP TABLE IF EXISTS `roles`;
 
 -- permissions is ARRAY<STRING> of "<model>:<action>" grants, e.g.
--- 'users:read'. Verified working on ORC ACID: INSERT via array(%s, ...),
+-- 'user:view'. Verified working on ORC ACID: INSERT via array(%s, ...),
 -- UPDATE via SET col = array(...). Reads come back from impyla as BYTES
--- holding a JSON array (b'["users:read"]'), not a Python list -- see
+-- holding a JSON array (b'["user:view"]'), not a Python list -- see
 -- app/crud/roles.py::_parse_permissions.
 CREATE TABLE `roles` (
   `id` STRING,
@@ -55,7 +55,7 @@ DROP TABLE IF EXISTS `patients`;
 --   fstname / lstname              -- the patient's name
 --   dt_reg / dt_b / dt_d           -- registration, birth, death
 --
--- original_file_path / deidentified_file_path point at the patient's
+-- original_file_path / de_identified_file_path point at the patient's
 -- source document; per-document rows live in `patient_files`.
 --
 -- Every column is nullable here, because these records are ingested
@@ -97,7 +97,7 @@ CREATE TABLE `patients` (
   `dt_b` DATE,
   `dt_d` DATE,
   `original_file_path` STRING,
-  `deidentified_file_path` STRING,
+  `de_identified_file_path` STRING,
   `status` STRING,
   `is_active` BOOLEAN,
   `created_at` TIMESTAMP
@@ -115,23 +115,69 @@ DROP TABLE IF EXISTS `patient_files`;
 --
 -- The de-identification columns are the hand-off to the OCR job:
 --   deid_status  'pending' -> 'processing' -> 'done' | 'failed'
---   is_identified TRUE while the file still contains identifiers
---   deidentified_file_name / _path are NULL until a redacted copy exists
+--   is_deidentified FALSE on upload, TRUE once a redacted copy exists
+--   de_identified_file_name / _path are NULL until a redacted copy exists
+--
+-- The review columns are the human decision on top of that machine work:
+-- a reviewer approves or rejects each document in the application wizard,
+-- and a rejection carries the reason in review_description. Separate from
+-- deid_status on purpose -- "the OCR job finished" and "a person accepted
+-- the result" are different facts, and a file can be de-identified and
+-- still rejected.
+--   review_status 'pending' -> 'approved' | 'rejected'
 CREATE TABLE `patient_files` (
   `id` STRING,
   `patient_id` STRING,
   `original_file_name` STRING,
   `sanitized_file_name` STRING,
-  `deidentified_file_name` STRING,
+  `de_identified_file_name` STRING,
   `file_extension` STRING,
   `mime_type` STRING,
   `file_size` BIGINT,
   `deid_status` STRING,
-  `is_identified` BOOLEAN,
+  `is_deidentified` BOOLEAN,
   `created_at` TIMESTAMP,
   `description` STRING,
   `file_path` STRING,
-  `deidentified_file_path` STRING
+  `de_identified_file_path` STRING,
+  `review_status` STRING,
+  `review_description` STRING,
+  `reviewed_by_id` STRING,
+  `reviewed_at` TIMESTAMP
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
+DROP TABLE IF EXISTS `patient_applications`;
+
+-- One submission of a patient and their documents for review.
+--
+-- The application is the workflow wrapper around a patient record: the
+-- wizard creates a patient in step 1 and an application row alongside it,
+-- then step 2 attaches documents and step 3 summarises the result. The
+-- patient holds the clinical facts; this holds who did what, and when.
+--
+--   status  'draft' -> 'submitted' -> 'approved' | 'rejected'
+--
+-- The *_by_id columns are user ids. They are STRINGs rather than a
+-- foreign key because Hive does not enforce referential integrity --
+-- the application layer sets them from the authenticated caller.
+--
+-- submitted_at / reviewed_at stay NULL until those transitions happen,
+-- so "never submitted" is distinguishable from "submitted at some
+-- unknown time".
+CREATE TABLE `patient_applications` (
+  `id` STRING,
+  `patient_id` STRING,
+  `submitted_by_id` STRING,
+  `reviewed_by_id` STRING,
+  `status` STRING,
+  `description` STRING,
+  `created_by_id` STRING,
+  `updated_by_id` STRING,
+  `submitted_at` TIMESTAMP,
+  `created_at` TIMESTAMP,
+  `updated_at` TIMESTAMP,
+  `reviewed_at` TIMESTAMP
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 

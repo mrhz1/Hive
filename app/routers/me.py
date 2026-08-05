@@ -32,12 +32,12 @@ def update_me(
 ):
     """Self-service profile update.
 
-    Deliberately NOT gated on 'users:update': a user editing their own
+    Deliberately NOT gated on 'user:update': a user editing their own
     name should not need permission to edit everyone. The trade-off is
     that this becomes a privilege-escalation path if it accepts every
     field, so ProfileUpdate exposes only first_name/last_name/email --
     never role_id, status or is_active. Changing those still requires
-    'users:update' via PUT /users/{id}.
+    'user:update' via PUT /users/{id}.
     """
     fields = payload.model_dump(exclude_unset=True)
     if not fields:

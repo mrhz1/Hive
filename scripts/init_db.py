@@ -16,14 +16,20 @@ from impala.dbapi import connect
 
 load_dotenv(".env.local")
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from app.security import PERMISSION_ACTIONS, PERMISSION_MODELS  # noqa: E402
+
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "sql" / "schema.sql"
 
+# Derived from app.security so the seeded grants cannot drift from the
+# set the API actually enforces.
 ALL_PERMISSIONS = [
     f"{model}:{action}"
-    for model in ("users", "patients", "roles", "logs")
-    for action in ("read", "create", "update", "delete")
+    for model in PERMISSION_MODELS
+    for action in PERMISSION_ACTIONS
 ]
-READONLY_PERMISSIONS = [f"{model}:read" for model in ("users", "patients", "roles", "logs")]
+READONLY_PERMISSIONS = [f"{model}:view" for model in PERMISSION_MODELS]
 
 ADMIN_ROLE_ID = str(uuid.uuid4())
 VIEWER_ROLE_ID = str(uuid.uuid4())

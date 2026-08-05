@@ -14,7 +14,7 @@ import {
   type Patient,
   type PatientFormValues,
 } from '@/schemas/patient'
-import { FilePicker } from './FilePicker'
+import { FolderPathField } from './FolderPathField'
 
 /**
  * A labelled band across the two-column form grid.
@@ -38,8 +38,25 @@ function Section({ title, hint }: { title: string; hint?: ReactNode }) {
   )
 }
 
-/** Same component for create and edit -- see UserForm for the rationale. */
-export function PatientForm({ patient }: { patient?: Patient }) {
+/**
+ * Same component for create and edit -- see UserForm for the rationale.
+ *
+ * Also serves as step 1 of the application wizard, which needs the saved
+ * record rather than a redirect: passing `onSaved` replaces the navigate
+ * to /patients, so the wizard can carry the patient into step 2. The
+ * fields, validation and upload behaviour are identical either way.
+ */
+export function PatientForm({
+  patient,
+  onSaved,
+  cancelTo = '/patients',
+  submitLabel,
+}: {
+  patient?: Patient
+  onSaved?: (patient: Patient) => void | Promise<void>
+  cancelTo?: string
+  submitLabel?: string
+}) {
   const mode = patient ? 'edit' : 'create'
   const navigate = useNavigate()
 
@@ -48,7 +65,8 @@ export function PatientForm({ patient }: { patient?: Patient }) {
   const uploadFiles = useUploadFilesForPatient()
 
   // Staged rather than uploaded on pick: on create there is no patient
-  // id to attach them to until the record has been saved.
+  // id to attach them to until the record has been saved. The folder
+  // chosen for original_file_path is the same folder that gets uploaded.
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
 
   const form = useApiForm(
@@ -59,26 +77,26 @@ export function PatientForm({ patient }: { patient?: Patient }) {
     register,
     handleSubmit,
     setError,
+    setValue,
+    watch,
     formState: { errors },
   } = form
 
   const isSubmitting = create.isPending || update.isPending || uploadFiles.isPending
 
   const onSubmit = handleSubmit(async (values) => {
-    let patientId: string
+    let saved: Patient
 
     try {
-      if (patient) {
-        await update.mutateAsync({ id: patient.id, values })
-        patientId = patient.id
-      } else {
-        const created = await create.mutateAsync(values)
-        patientId = created.id
-      }
+      saved = patient
+        ? await update.mutateAsync({ id: patient.id, values })
+        : await create.mutateAsync(values)
     } catch (error) {
       applyServerErrors<PatientFormValues>(error, setError, PATIENT_FIELD_NAMES)
       return
     }
+
+    const patientId = saved.id
 
     // Uploaded after the record is saved, and deliberately outside the
     // try above: the patient already exists at this point, so a failed
@@ -93,6 +111,10 @@ export function PatientForm({ patient }: { patient?: Patient }) {
       }
     }
 
+    if (onSaved) {
+      await onSaved(saved)
+      return
+    }
     await navigate({ to: '/patients' })
   })
 
@@ -100,7 +122,8 @@ export function PatientForm({ patient }: { patient?: Patient }) {
     <FormLayout
       mode={mode}
       entityLabel="patient"
-      cancelTo="/patients"
+      cancelTo={cancelTo}
+      submitLabel={submitLabel}
       isSubmitting={isSubmitting}
       onSubmit={onSubmit}
       footerNote={
@@ -271,21 +294,44 @@ export function PatientForm({ patient }: { patient?: Patient }) {
 
       <Section
         title="Source documents"
-        hint="Paths to this patient's source document. Individual uploads are listed on the Files page."
+        hint="Choose the folder holding this patient's documents. Its path is recorded on the record and the files themselves are uploaded once the patient is saved."
       />
       <FullWidth>
-        <TextField
+        <FolderPathField
           label="Original file path"
           required
+          value={watch('original_file_path')}
+          files={pendingFiles}
+          disabled={isSubmitting}
           error={errors.original_file_path?.message}
-          {...register('original_file_path')}
+          hint="Choose a folder to include everything inside it."
+          onSelect={(path, files) => {
+            // A multi-file pick yields no derivable folder, so an empty
+            // path leaves a previously chosen one alone rather than
+            // clearing a valid value. Clear does send '' with no files.
+            if (path || files.length === 0) {
+              setValue('original_file_path', path, { shouldValidate: true })
+            }
+            setPendingFiles(files)
+          }}
         />
       </FullWidth>
       <FullWidth>
-        <TextField
+        <FolderPathField
           label="De-identified file path"
-          error={errors.deidentified_file_path?.message}
-          {...register('deidentified_file_path')}
+          value={watch('de_identified_file_path')}
+          // Path only: the redacted copies are produced by the OCR job,
+          // so pointing at them must not also re-upload them as new
+          // patient documents.
+          files={[]}
+          disabled={isSubmitting}
+          error={errors.de_identified_file_path?.message}
+          hint="Where the redacted copies live. Usually filled in by the de-identification job."
+          onSelect={(path, files) => {
+            if (path || files.length === 0) {
+              setValue('de_identified_file_path', path, { shouldValidate: true })
+            }
+          }}
         />
       </FullWidth>
 
@@ -309,21 +355,6 @@ export function PatientForm({ patient }: { patient?: Patient }) {
           error={errors.is_active?.message}
           {...register('is_active')}
         />
-      </FullWidth>
-
-      <FullWidth>
-        <div className="border-t border-[rgb(var(--border))] pt-6">
-          <FilePicker
-            files={pendingFiles}
-            onFilesChange={setPendingFiles}
-            disabled={isSubmitting}
-            hint={
-              mode === 'create'
-                ? 'Uploaded once the patient is created. Choose a folder to include everything inside it.'
-                : 'Added to this patient on save. Existing documents are managed on the Files page.'
-            }
-          />
-        </div>
       </FullWidth>
     </FormLayout>
   )

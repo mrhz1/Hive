@@ -17,7 +17,7 @@ _COLS = "`id`, `name`, `permissions`"
 
 def _parse_permissions(raw) -> List[str]:
     """impyla returns ARRAY<STRING> as bytes holding a JSON array, e.g.
-    b'["users:read","users:create"]' -- not a Python list. Decode it."""
+    b'["user:view","user:create"]' -- not a Python list. Decode it."""
     if raw is None:
         return []
     if isinstance(raw, (bytes, bytearray)):

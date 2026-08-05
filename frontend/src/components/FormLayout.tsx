@@ -18,6 +18,7 @@ export function FormLayout({
   onSubmit,
   children,
   footerNote,
+  submitLabel: submitLabelOverride,
 }: {
   mode: 'create' | 'edit'
   entityLabel: string
@@ -26,8 +27,13 @@ export function FormLayout({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   children: ReactNode
   footerNote?: ReactNode
+  /** For hosts where "Create patient" is not what the button does --
+      the application wizard's step 1 saves and moves on. */
+  submitLabel?: string
 }) {
-  const submitLabel = mode === 'create' ? `Create ${entityLabel}` : 'Save changes'
+  const submitLabel =
+    submitLabelOverride ??
+    (mode === 'create' ? `Create ${entityLabel}` : 'Save changes')
 
   return (
     <form

@@ -16,6 +16,10 @@ import {
   type PatientFormValues,
 } from '@/schemas/patient'
 import {
+  patientApplicationListSchema,
+  patientApplicationSchema,
+} from '@/schemas/patientApplication'
+import {
   patientFileListSchema,
   patientFileSchema,
   type PatientFile,
@@ -110,6 +114,37 @@ export const patientsApi = {
   },
 }
 
+/**
+ * The API stamps every actor column itself from the authenticated
+ * caller, so the only things a client may send are the patient it is
+ * for, where it is in the workflow, and the reviewer's note.
+ */
+export type ApplicationPayload = {
+  patient_id?: string
+  status?: string
+  description?: string | null
+}
+
+export const applicationsApi = {
+  list: (patientId?: string) =>
+    request(patientApplicationListSchema, () =>
+      api.get('/applications', { params: patientId ? { patient_id: patientId } : undefined })
+    ),
+  get: (id: string) =>
+    request(patientApplicationSchema, () => api.get(`/applications/${id}`)),
+  create: (values: ApplicationPayload) =>
+    request(patientApplicationSchema, () => api.post('/applications', values)),
+  update: (id: string, values: ApplicationPayload) =>
+    request(patientApplicationSchema, () => api.put(`/applications/${id}`, values)),
+  remove: async (id: string) => {
+    try {
+      await api.delete(`/applications/${id}`)
+    } catch (error) {
+      throw toApiError(error)
+    }
+  },
+}
+
 export const rolesApi = {
   list: () => request(roleListSchema, () => api.get('/roles')),
   get: (id: string) => request(roleSchema, () => api.get(`/roles/${id}`)),
@@ -170,6 +205,19 @@ export const patientFilesApi = {
    */
   deidentify: (fileId: string) =>
     request(patientFileSchema, () => api.post(`/files/${fileId}/deidentify`)),
+
+  /**
+   * The reviewer's approve/reject decision. `reviewed_by_id` is not sent
+   * -- the API stamps it from the caller, so a decision cannot be
+   * attributed to someone who did not make it.
+   */
+  review: (fileId: string, reviewStatus: 'approved' | 'rejected', description?: string) =>
+    request(patientFileSchema, () =>
+      api.post(`/files/${fileId}/review`, {
+        review_status: reviewStatus,
+        review_description: description ?? null,
+      })
+    ),
 
   /**
    * Fetches the bytes as a Blob.

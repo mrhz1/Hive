@@ -31,7 +31,7 @@ function EditRole() {
 
 export const Route = createFileRoute('/roles/$roleId/edit')({
   component: () => (
-    <RequirePermission permission="roles:update">
+    <RequirePermission permission="role:update">
       <EditRole />
     </RequirePermission>
   ),

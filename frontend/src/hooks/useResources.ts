@@ -2,14 +2,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { createCrudHooks, errorMessage } from './createCrudHooks'
 import {
+  applicationsApi,
   patientFilesApi,
   patientsApi,
   logsApi,
   rolesApi,
   usersApi,
+  type ApplicationPayload,
 } from '@/lib/api/resources'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AuditLogFilters } from '@/schemas/log'
+import type { PatientFile } from '@/schemas/patientFile'
 import type { PatientFormValues } from '@/schemas/patient'
 import type { RoleFormValues } from '@/schemas/role'
 import type { UserFormValues } from '@/schemas/user'
@@ -46,6 +49,71 @@ export const roleHooks = createCrudHooks<Role, RoleFormValues>({
   label: 'Role',
   alsoInvalidate: [queryKeys.users.all, queryKeys.me],
 })
+
+/**
+ * Applications. Not built on createCrudHooks: the list is filterable by
+ * patient and the wizard needs the created record back to carry into the
+ * next step, neither of which fits that helper's single-list shape.
+ */
+export function useApplications(patientId?: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.applications.list(patientId),
+    queryFn: () => applicationsApi.list(patientId),
+    enabled,
+  })
+}
+
+export function useApplication(id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.applications.detail(id ?? ''),
+    queryFn: () => applicationsApi.get(id as string),
+    enabled: Boolean(id) && enabled,
+  })
+}
+
+export function useCreateApplication() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (values: ApplicationPayload) => applicationsApi.create(values),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.applications.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not create the application'))
+    },
+  })
+}
+
+export function useUpdateApplication() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, values }: { id: string; values: ApplicationPayload }) =>
+      applicationsApi.update(id, values),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.applications.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not update the application'))
+    },
+  })
+}
+
+export function useDeleteApplication() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => applicationsApi.remove(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.applications.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success('Application deleted')
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not delete the application'))
+    },
+  })
+}
 
 /**
  * Patient documents. Not built on createCrudHooks: uploads are
@@ -121,7 +189,13 @@ export function useDeidentifyFile(patientId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (fileId: string) => patientFilesApi.deidentify(fileId),
-    onSuccess: () => {
+    onSuccess: (file) => {
+      // Same reason as the review mutation: show 'processing' at once
+      // rather than after a Hive round trip.
+      queryClient.setQueryData<PatientFile[]>(
+        queryKeys.patientFiles.list(patientId),
+        (current) => current?.map((f) => (f.id === file.id ? file : f))
+      )
       void queryClient.invalidateQueries({
         queryKey: queryKeys.patientFiles.list(patientId),
       })
@@ -131,6 +205,46 @@ export function useDeidentifyFile(patientId: string) {
     },
     onError: (error) => {
       toast.error(errorMessage(error, 'Could not start de-identification'))
+    },
+  })
+}
+
+/**
+ * Approve or reject one document. Also invalidates the logs cache: a
+ * review writes an audit row, same as any other change.
+ */
+export function useReviewPatientFile(patientId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      fileId,
+      reviewStatus,
+      description,
+    }: {
+      fileId: string
+      reviewStatus: 'approved' | 'rejected'
+      description?: string
+    }) => patientFilesApi.review(fileId, reviewStatus, description),
+    onSuccess: (file) => {
+      // Written straight into the cache rather than only invalidated: a
+      // Hive refetch takes hundreds of milliseconds, and until it lands
+      // anything else reading this list -- the wizard's summary step, one
+      // click away -- would render the pre-review state. The API already
+      // returned the updated row, so there is nothing to wait for.
+      queryClient.setQueryData<PatientFile[]>(
+        queryKeys.patientFiles.list(patientId),
+        (current) => current?.map((f) => (f.id === file.id ? file : f))
+      )
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.patientFiles.list(patientId),
+      })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success(
+        file.review_status === 'approved' ? 'File approved' : 'File rejected'
+      )
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not record the review'))
     },
   })
 }

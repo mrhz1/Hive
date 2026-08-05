@@ -6,8 +6,8 @@ import { z } from 'zod'
  * literals rather than `string` -- a typo in a permission check then
  * fails at compile time instead of silently never matching.
  */
-export const MODELS = ['users', 'patients', 'roles', 'logs'] as const
-export const ACTIONS = ['read', 'create', 'update', 'delete'] as const
+export const MODELS = ['user', 'patient', 'role', 'log', 'application'] as const
+export const ACTIONS = ['view', 'create', 'update', 'delete'] as const
 
 export type Model = (typeof MODELS)[number]
 export type Action = (typeof ACTIONS)[number]

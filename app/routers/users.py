@@ -23,7 +23,7 @@ def create_user(
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("users:create")),
+    _actor: User = Depends(require_permission("user:create")),
 ):
     user = crud.create_user(cursor, payload)
     background.add_task(
@@ -41,7 +41,7 @@ def create_user(
 @router.get("", response_model=List[User])
 def list_users(
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("users:read")),
+    _actor: User = Depends(require_permission("user:view")),
 ):
     return crud.list_users(cursor)
 
@@ -50,7 +50,7 @@ def list_users(
 def get_user(
     user_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("users:read")),
+    _actor: User = Depends(require_permission("user:view")),
 ):
     return crud.get_user_or_404(cursor, user_id)
 
@@ -62,7 +62,7 @@ def update_user(
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("users:update")),
+    _actor: User = Depends(require_permission("user:update")),
 ):
     before = crud.get_user_or_404(cursor, user_id)
     after = crud.update_user(cursor, user_id, payload)
@@ -84,7 +84,7 @@ def delete_user(
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("users:delete")),
+    _actor: User = Depends(require_permission("user:delete")),
 ):
     deleted = crud.delete_user(cursor, user_id)
     background.add_task(

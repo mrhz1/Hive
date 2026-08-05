@@ -49,7 +49,7 @@ class ProfileUpdate(BaseModel):
     """Self-service profile edit (PUT /me).
 
     Intentionally a subset of UserUpdate: no role_id, status or is_active,
-    because this endpoint is not gated on 'users:update' and must not let
+    because this endpoint is not gated on 'user:update' and must not let
     a caller grant themselves a role or reactivate themselves.
     """
 
@@ -115,7 +115,7 @@ _PATIENT_OPTIONAL_FIELDS = (
     "dt_reg",
     "dt_b",
     "dt_d",
-    "deidentified_file_path",
+    "de_identified_file_path",
 )
 
 # Almost every column may be unknown -- these records are ingested from
@@ -194,7 +194,7 @@ class _PatientFields(BaseModel):
     # per-document rows in `patient_files`. Optional here so a partial
     # update need not resend it; PatientCreate makes it required.
     original_file_path: Optional[str] = Field(default=None, min_length=1)
-    deidentified_file_path: Optional[str] = None
+    de_identified_file_path: Optional[str] = None
 
     @field_validator(*_PATIENT_OPTIONAL_FIELDS, mode="before")
     @classmethod
@@ -257,6 +257,11 @@ class Patient(_PatientFields):
 
 DEID_STATUSES = ("pending", "processing", "done", "failed")
 
+# The reviewer's decision on a document, tracked separately from
+# deid_status: "the OCR job finished" and "a person accepted the result"
+# are different facts, and a file can be de-identified and still rejected.
+REVIEW_STATUSES = ("pending", "approved", "rejected")
+
 
 class PatientFile(BaseModel):
     """Metadata for one stored document. The bytes live on disk under
@@ -266,16 +271,42 @@ class PatientFile(BaseModel):
     patient_id: str
     original_file_name: str
     sanitized_file_name: str
-    deidentified_file_name: Optional[str] = None
+    de_identified_file_name: Optional[str] = None
     file_extension: str
     mime_type: str
     file_size: int
     deid_status: str
-    is_identified: bool
+    is_deidentified: bool
     created_at: datetime
     description: Optional[str] = None
     file_path: str
-    deidentified_file_path: Optional[str] = None
+    de_identified_file_path: Optional[str] = None
+
+    # --- reviewer decision
+    review_status: str = "pending"
+    review_description: Optional[str] = None
+    reviewed_by_id: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+
+
+class PatientFileReview(BaseModel):
+    """A reviewer approving or rejecting one document.
+
+    `reviewed_by_id` and `reviewed_at` are not accepted from the caller --
+    the router stamps them from the authenticated actor and the clock, so
+    a review cannot be attributed to someone else.
+    """
+
+    review_status: str = Field(pattern="^(approved|rejected)$")
+    review_description: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _rejection_needs_a_reason(self) -> "PatientFileReview":
+        # An approval speaks for itself; a rejection that says nothing
+        # leaves the uploader with no idea what to fix.
+        if self.review_status == "rejected" and not (self.review_description or "").strip():
+            raise ValueError("A rejection requires a description")
+        return self
 
 
 class PatientFileUpdate(BaseModel):
@@ -287,9 +318,52 @@ class PatientFileUpdate(BaseModel):
 
     description: Optional[str] = None
     deid_status: Optional[str] = Field(default=None, pattern="^(pending|processing|done|failed)$")
-    is_identified: Optional[bool] = None
-    deidentified_file_name: Optional[str] = None
-    deidentified_file_path: Optional[str] = None
+    is_deidentified: Optional[bool] = None
+    de_identified_file_name: Optional[str] = None
+    de_identified_file_path: Optional[str] = None
+
+
+# ------------------------------------------------- patient applications
+
+# 'draft' while the wizard is being filled in, 'submitted' once the user
+# hands it over, then a reviewer's verdict.
+APPLICATION_STATUSES = ("draft", "submitted", "approved", "rejected")
+
+
+class PatientApplicationCreate(BaseModel):
+    """A new submission for a patient.
+
+    The actor columns (created_by_id / updated_by_id / submitted_by_id /
+    reviewed_by_id) and their timestamps are not accepted from the caller
+    -- the router stamps them from the authenticated user, so an
+    application cannot be attributed to someone who did not act.
+    """
+
+    patient_id: str = Field(min_length=1)
+    status: str = Field(default="draft", pattern="^(draft|submitted|approved|rejected)$")
+    description: Optional[str] = None
+
+
+class PatientApplicationUpdate(BaseModel):
+    status: Optional[str] = Field(
+        default=None, pattern="^(draft|submitted|approved|rejected)$"
+    )
+    description: Optional[str] = None
+
+
+class PatientApplication(BaseModel):
+    id: str
+    patient_id: str
+    submitted_by_id: Optional[str] = None
+    reviewed_by_id: Optional[str] = None
+    status: str
+    description: Optional[str] = None
+    created_by_id: Optional[str] = None
+    updated_by_id: Optional[str] = None
+    submitted_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    reviewed_at: Optional[datetime] = None
 
 
 class AuditLogCreate(BaseModel):

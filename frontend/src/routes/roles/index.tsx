@@ -54,7 +54,7 @@ function RolesList() {
 
   const deleteDialog = useDeleteDialog<Role>((role) => remove.mutateAsync(role.id))
 
-  const canModify = can('roles:update') || can('roles:delete')
+  const canModify = can('role:update') || can('role:delete')
 
   return (
     <div className="space-y-6">
@@ -62,7 +62,7 @@ function RolesList() {
         title="Role Management"
         description="Permission sets assigned to users."
         actions={
-          <Can permission="roles:create">
+          <Can permission="role:create">
             <Button onClick={() => void navigate({ to: '/roles/new' })}>Add Role</Button>
           </Can>
         }
@@ -81,7 +81,7 @@ function RolesList() {
           canModify
             ? (role) => (
                 <>
-                  <Can permission="roles:update">
+                  <Can permission="role:update">
                     <Button
                       size="sm"
                       aria-label={`Edit ${role.name}`}
@@ -95,7 +95,7 @@ function RolesList() {
                       Edit
                     </Button>
                   </Can>
-                  <Can permission="roles:delete">
+                  <Can permission="role:delete">
                     <Button
                       size="sm"
                       variant="danger"
@@ -125,7 +125,7 @@ function RolesList() {
 
 export const Route = createFileRoute('/roles/')({
   component: () => (
-    <RequirePermission permission="roles:read">
+    <RequirePermission permission="role:view">
       <RolesList />
     </RequirePermission>
   ),

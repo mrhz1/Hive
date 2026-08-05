@@ -16,7 +16,7 @@ function NewPatient() {
 
 export const Route = createFileRoute('/patients/new')({
   component: () => (
-    <RequirePermission permission="patients:create">
+    <RequirePermission permission="patient:create">
       <NewPatient />
     </RequirePermission>
   ),

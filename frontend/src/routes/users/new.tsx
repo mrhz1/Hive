@@ -19,7 +19,7 @@ function NewUser() {
 
 export const Route = createFileRoute('/users/new')({
   component: () => (
-    <RequirePermission permission="users:create">
+    <RequirePermission permission="user:create">
       <NewUser />
     </RequirePermission>
   ),

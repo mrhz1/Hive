@@ -100,7 +100,7 @@ function LogDetail() {
 
 export const Route = createFileRoute('/logs/$logId')({
   component: () => (
-    <RequirePermission permission="logs:read">
+    <RequirePermission permission="log:view">
       <LogDetail />
     </RequirePermission>
   ),

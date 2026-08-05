@@ -95,7 +95,7 @@ function PatientsList() {
     )
   }, [data, search])
 
-  const canModify = can('patients:update') || can('patients:delete')
+  const canModify = can('patient:update') || can('patient:delete')
 
   return (
     <div className="space-y-6">
@@ -103,7 +103,7 @@ function PatientsList() {
         title="Patient Management"
         description="Patient records held in Hive."
         actions={
-          <Can permission="patients:create">
+          <Can permission="patient:create">
             <Button onClick={() => void navigate({ to: '/patients/new' })}>
               Add Patient
             </Button>
@@ -150,7 +150,7 @@ function PatientsList() {
             </Button>
             {canModify ? (
               <>
-                <Can permission="patients:update">
+                <Can permission="patient:update">
                   <Button
                     size="sm"
                     aria-label={`Edit ${patientName(patient)}`}
@@ -164,7 +164,7 @@ function PatientsList() {
                     Edit
                   </Button>
                 </Can>
-                <Can permission="patients:delete">
+                <Can permission="patient:delete">
                   <Button
                     size="sm"
                     variant="danger"
@@ -194,7 +194,7 @@ function PatientsList() {
 
 export const Route = createFileRoute('/patients/')({
   component: () => (
-    <RequirePermission permission="patients:read">
+    <RequirePermission permission="patient:view">
       <PatientsList />
     </RequirePermission>
   ),

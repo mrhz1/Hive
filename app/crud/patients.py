@@ -63,7 +63,7 @@ COLUMNS = (
     "dt_d",
     # source documents
     "original_file_path",
-    "deidentified_file_path",
+    "de_identified_file_path",
     # lifecycle
     "status",
     "is_active",

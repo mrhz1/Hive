@@ -19,7 +19,7 @@ def test_model_exposes_every_requested_field(as_admin):
         # dates
         "dt_reg", "dt_b", "dt_d",
         # source documents
-        "original_file_path", "deidentified_file_path",
+        "original_file_path", "de_identified_file_path",
         # lifecycle
         "id", "status", "is_active", "created_at",
     }
@@ -46,7 +46,7 @@ def test_round_trips_every_field(as_admin):
         ptstate="IL", ptzip="62702", ptcountry="US",
         dt_reg="2026-07-01", dt_b="1990-01-02", dt_d="2026-08-01",
         original_file_path="/data/in.pdf",
-        deidentified_file_path="/data/in_deid.pdf",
+        de_identified_file_path="/data/in_deid.pdf",
         status="active", is_active=True,
     )
     created = as_admin.post("/patients", json=payload)
@@ -304,7 +304,7 @@ def test_list_and_delete(as_admin):
 
 def test_permissions_are_named_patients(as_admin):
     granted = as_admin.get("/me/permissions").json()
-    assert "patients:read" in granted
+    assert "patient:view" in granted
     assert not any(p.startswith("customers:") for p in granted)
 
 
@@ -320,7 +320,7 @@ def test_a_role_with_no_grants_is_locked_out(client):
     client.headers.update({"X-User-Id": NOBODY_ID})
     response = client.get("/patients")
     assert response.status_code == 403
-    assert "patients:read" in response.json()["error"]["detail"]
+    assert "patient:view" in response.json()["error"]["detail"]
 
 
 def test_identity_is_required(client):

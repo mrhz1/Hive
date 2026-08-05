@@ -33,7 +33,7 @@ export function FileViewerModal({
   }, [onClose])
 
   const displayName = isDeidentified
-    ? (file.deidentified_file_name ?? file.sanitized_file_name)
+    ? (file.de_identified_file_name ?? file.sanitized_file_name)
     : file.original_file_name
 
   return (

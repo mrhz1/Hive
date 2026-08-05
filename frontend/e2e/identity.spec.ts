@@ -20,11 +20,11 @@ const ADMIN = {
   created_at: '2026-07-01T12:00:00',
   role_name: 'admin',
   permissions: [
-    'users:read',
-    'users:create',
-    'users:update',
-    'users:delete',
-    'roles:read',
+    'user:view',
+    'user:create',
+    'user:update',
+    'user:delete',
+    'role:view',
   ],
 }
 
@@ -37,7 +37,7 @@ const VIEWER = {
   email: 'viewer@example.com',
   role_id: 'role-viewer',
   role_name: 'viewer',
-  permissions: ['users:read'],
+  permissions: ['user:view'],
 }
 
 const BY_ID: Record<string, typeof ADMIN> = {
@@ -100,7 +100,7 @@ test.describe('user switcher', () => {
     await page.getByRole('button', { name: /^viewer/ }).click()
     await expect(page.getByRole('banner').getByText('Vic Viewer')).toBeVisible()
 
-    // viewer holds only users:read.
+    // viewer holds only user:view.
     await expect(page.getByRole('button', { name: 'Add User' })).toBeHidden()
     await expect(page.getByRole('button', { name: /^Edit / })).toHaveCount(0)
     await expect(page.getByRole('button', { name: /^Delete / })).toHaveCount(0)

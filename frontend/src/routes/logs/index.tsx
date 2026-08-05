@@ -130,7 +130,7 @@ function LogsList() {
 
 export const Route = createFileRoute('/logs/')({
   component: () => (
-    <RequirePermission permission="logs:read">
+    <RequirePermission permission="log:view">
       <LogsList />
     </RequirePermission>
   ),

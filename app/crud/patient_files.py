@@ -8,15 +8,16 @@ from typing import List, Optional
 from app.db import execute
 from app.errors import NotFoundError
 from app.logging_setup import get_logger
-from app.schemas import PatientFile, PatientFileUpdate
+from app.schemas import PatientFile, PatientFileReview, PatientFileUpdate
 
 log = get_logger(__name__)
 
 _COLS = (
     "`id`, `patient_id`, `original_file_name`, `sanitized_file_name`, "
-    "`deidentified_file_name`, `file_extension`, `mime_type`, `file_size`, "
-    "`deid_status`, `is_identified`, `created_at`, `description`, "
-    "`file_path`, `deidentified_file_path`"
+    "`de_identified_file_name`, `file_extension`, `mime_type`, `file_size`, "
+    "`deid_status`, `is_deidentified`, `created_at`, `description`, "
+    "`file_path`, `de_identified_file_path`, "
+    "`review_status`, `review_description`, `reviewed_by_id`, `reviewed_at`"
 )
 
 
@@ -26,16 +27,22 @@ def _row_to_file(row) -> PatientFile:
         patient_id=row[1],
         original_file_name=row[2],
         sanitized_file_name=row[3],
-        deidentified_file_name=row[4],
+        de_identified_file_name=row[4],
         file_extension=row[5],
         mime_type=row[6],
         file_size=int(row[7]) if row[7] is not None else 0,
         deid_status=row[8],
-        is_identified=bool(row[9]),
+        is_deidentified=bool(row[9]),
         created_at=row[10],
         description=row[11],
         file_path=row[12],
-        deidentified_file_path=row[13],
+        de_identified_file_path=row[13],
+        # Rows written before the review columns existed read back NULL,
+        # which is not a review state the UI knows -- treat it as pending.
+        review_status=row[14] or "pending",
+        review_description=row[15],
+        reviewed_by_id=row[16],
+        reviewed_at=row[17],
     )
 
 
@@ -54,8 +61,9 @@ def create_file(
 ) -> PatientFile:
     """Records an uploaded document.
 
-    Freshly uploaded files are 'pending' and still identified: nothing has
-    been de-identified yet, and claiming otherwise would be a privacy lie.
+    Freshly uploaded files are 'pending' and not yet de-identified:
+    nothing has been redacted, and claiming otherwise would be a privacy
+    lie. They are also unreviewed -- no one has approved them yet.
     """
     new_id = file_id or str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -63,22 +71,29 @@ def create_file(
     execute(
         cursor,
         f"INSERT INTO `patient_files` ({_COLS}) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+        "%s, %s, %s, %s)",
         (
             new_id,
             patient_id,
             original_file_name,
             sanitized_file_name,
-            None,  # deidentified_file_name
+            None,  # de_identified_file_name
             file_extension,
             mime_type,
             file_size,
             "pending",
-            True,  # is_identified
+            # A freshly uploaded file has not been through the OCR job,
+            # so it is not de-identified until that job says otherwise.
+            False,  # is_deidentified
             created_at.strftime("%Y-%m-%d %H:%M:%S"),
             description,
             file_path,
-            None,  # deidentified_file_path
+            None,  # de_identified_file_path
+            "pending",  # review_status -- nobody has looked at it yet
+            None,  # review_description
+            None,  # reviewed_by_id
+            None,  # reviewed_at
         ),
     )
     log.info(
@@ -127,6 +142,40 @@ def update_file(cursor, file_id: str, payload: PatientFileUpdate) -> PatientFile
     params = tuple(fields.values()) + (file_id,)
     execute(cursor, f"UPDATE `patient_files` SET {set_clause} WHERE `id` = %s", params)
     log.info("patient_file_updated", file_id=file_id, fields=sorted(fields))
+    return get_file_or_404(cursor, file_id)
+
+
+def review_file(
+    cursor, file_id: str, payload: PatientFileReview, reviewer_id: str
+) -> PatientFile:
+    """Records a reviewer's approve/reject decision on one document.
+
+    The reviewer and the timestamp come from the caller's identity and the
+    clock rather than the request body, so a decision cannot be attributed
+    to someone who did not make it.
+    """
+    get_file_or_404(cursor, file_id)
+    reviewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    execute(
+        cursor,
+        "UPDATE `patient_files` SET `review_status` = %s, "
+        "`review_description` = %s, `reviewed_by_id` = %s, "
+        "`reviewed_at` = CAST(%s AS TIMESTAMP) WHERE `id` = %s",
+        (
+            payload.review_status,
+            payload.review_description,
+            reviewer_id,
+            reviewed_at.strftime("%Y-%m-%d %H:%M:%S"),
+            file_id,
+        ),
+    )
+    log.info(
+        "patient_file_reviewed",
+        file_id=file_id,
+        review_status=payload.review_status,
+        reviewer_id=reviewer_id,
+    )
     return get_file_or_404(cursor, file_id)
 
 

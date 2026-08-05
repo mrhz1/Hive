@@ -7,7 +7,7 @@ instead. Swapping the source means changing only `_current_user_id` --
 route code and permission strings stay identical, so nothing branches on
 environment.
 
-Permission strings are "<model>:<action>", e.g. 'users:read'.
+Permission strings are "<model>:<action>", e.g. 'user:view'.
 """
 from typing import Optional
 
@@ -23,12 +23,15 @@ from app.schemas import User
 log = get_logger(__name__)
 
 # Every grant the API recognises. Roles are validated against this so a
-# typo'd permission ('user:read') fails loudly at role-write time instead
+# typo'd permission ('user:red') fails loudly at role-write time instead
 # of silently never matching at request time.
+PERMISSION_MODELS = ("user", "patient", "role", "log", "application")
+PERMISSION_ACTIONS = ("view", "create", "update", "delete")
+
 KNOWN_PERMISSIONS = frozenset(
     f"{model}:{action}"
-    for model in ("users", "patients", "roles", "logs")
-    for action in ("read", "create", "update", "delete")
+    for model in PERMISSION_MODELS
+    for action in PERMISSION_ACTIONS
 )
 
 
@@ -56,7 +59,7 @@ def get_current_user(
 
 
 def require_permission(permission: str):
-    """Dependency factory: require_permission('users:read').
+    """Dependency factory: require_permission('user:view').
 
     Returns the acting user so handlers that need the caller can take it
     straight from this dependency.
