@@ -127,7 +127,7 @@ milliseconds; reads are served from cache across navigation rather than
 refetched on every mount. `refetchOnWindowFocus` is off for the same
 reason. Freshness comes from explicit invalidation, not short TTLs:
 
-- user/customer writes → invalidate that resource **and** `logs` (writes
+- user/patient writes → invalidate that resource **and** `logs` (writes
   produce audit rows in the background)
 - role writes → invalidate `roles`, `users` and `me`, because a role
   change alters what users may do and user reads embed role data
@@ -181,7 +181,7 @@ a confusing error; it is not the security boundary.
 Verified against a live API (Hive in Docker + FastAPI), rendered in
 headless Chrome:
 
-- dashboard loads real counts (20 users / 10 customers / 2 roles) and all
+- dashboard loads real counts (20 users / 10 patients / 2 roles) and all
   16 permissions for the admin role
 - users table renders all rows with `role_name` inlined from the join
 - switching `VITE_DEV_USER_ID` to the viewer id removes the "New user"
@@ -213,7 +213,7 @@ which drive a real browser against the live API — all passing:
 - the theme toggle flips `dark` on `<html>` and survives a reload
 
 The tests create their own records and were cleaned up afterwards; the
-seed data is back to 20 users / 10 customers / 2 roles.
+seed data is back to 20 users / 10 patients / 2 roles.
 
 ## Deviation from "latest versions"
 

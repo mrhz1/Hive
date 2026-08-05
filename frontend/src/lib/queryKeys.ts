@@ -14,10 +14,10 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.users.all, 'detail', id] as const,
   },
 
-  customers: {
-    all: ['customers'] as const,
-    list: () => [...queryKeys.customers.all, 'list'] as const,
-    detail: (id: string) => [...queryKeys.customers.all, 'detail', id] as const,
+  patients: {
+    all: ['patients'] as const,
+    list: () => [...queryKeys.patients.all, 'list'] as const,
+    detail: (id: string) => [...queryKeys.patients.all, 'detail', id] as const,
   },
 
   roles: {
@@ -33,11 +33,11 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.logs.all, 'detail', id] as const,
   },
 
-  customerFiles: {
-    all: ['customer-files'] as const,
-    // Scoped by customer: uploading for one customer must not invalidate
+  patientFiles: {
+    all: ['patient-files'] as const,
+    // Scoped by patient: uploading for one patient must not invalidate
     // another's list.
-    list: (customerId: string) =>
-      [...queryKeys.customerFiles.all, 'list', customerId] as const,
+    list: (patientId: string) =>
+      [...queryKeys.patientFiles.all, 'list', patientId] as const,
   },
 } as const

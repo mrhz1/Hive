@@ -9,21 +9,22 @@ import { Can, RequirePermission } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
 import { Badge, PageHeader } from '@/components/ui/Misc'
 import { LoadingBlock } from '@/components/ui/Spinner'
-import { FileViewerModal } from '@/features/customers/FileViewerModal'
-import { FolderUpload } from '@/features/customers/FolderUpload'
+import { FileViewerModal } from '@/features/patients/FileViewerModal'
+import { FolderUpload } from '@/features/patients/FolderUpload'
 import { usePermissions } from '@/hooks/useCurrentUser'
 import { useDeleteDialog } from '@/hooks/useDeleteDialog'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
-  customerHooks,
-  useCustomerFiles,
+  patientHooks,
+  usePatientFiles,
   useDeidentifyFile,
-  useDeleteCustomerFile,
-  useUploadCustomerFiles,
+  useDeletePatientFile,
+  useUploadPatientFiles,
 } from '@/hooks/useResources'
 import { ApiError } from '@/lib/api/client'
-import { customerFilesApi } from '@/lib/api/resources'
-import { formatFileSize, type CustomerFile } from '@/schemas/customerFile'
+import { patientFilesApi } from '@/lib/api/resources'
+import { patientName } from '@/schemas/patient'
+import { formatFileSize, type PatientFile } from '@/schemas/patientFile'
 
 /** Colour the de-identification state so progress is scannable. */
 function deidTone(status: string): 'success' | 'warning' | 'danger' | 'neutral' {
@@ -33,28 +34,28 @@ function deidTone(status: string): 'success' | 'warning' | 'danger' | 'neutral' 
   return 'neutral'
 }
 
-function CustomerFilesPage() {
-  const { customerId } = Route.useParams()
+function PatientFilesPage() {
+  const { patientId } = Route.useParams()
   const { can } = usePermissions()
 
-  const customerQuery = customerHooks.useDetail(customerId)
-  const filesQuery = useCustomerFiles(customerId)
-  const upload = useUploadCustomerFiles(customerId)
-  const remove = useDeleteCustomerFile(customerId)
-  const deidentify = useDeidentifyFile(customerId)
+  const patientQuery = patientHooks.useDetail(patientId)
+  const filesQuery = usePatientFiles(patientId)
+  const upload = useUploadPatientFiles(patientId)
+  const remove = useDeletePatientFile(patientId)
+  const deidentify = useDeidentifyFile(patientId)
 
-  const customer = customerQuery.data
+  const patient = patientQuery.data
   useDocumentTitle(
-    customer ? `Files · ${customer.first_name} ${customer.last_name}` : 'Customer files'
+    patient ? `Files · ${patientName(patient)}` : 'Patient files'
   )
 
-  const deleteDialog = useDeleteDialog<CustomerFile>((file) =>
+  const deleteDialog = useDeleteDialog<PatientFile>((file) =>
     remove.mutateAsync(file.id)
   )
 
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [viewing, setViewing] = useState<{
-    file: CustomerFile
+    file: PatientFile
     url: string
     isDeidentified: boolean
   } | null>(null)
@@ -64,10 +65,10 @@ function CustomerFilesPage() {
    * navigate to it -- the bytes have to come through the API client and
    * are then shown from a blob URL.
    */
-  async function showFile(file: CustomerFile, deidentified = false) {
+  async function showFile(file: PatientFile, deidentified = false) {
     setOpeningId(file.id)
     try {
-      const blob = await customerFilesApi.fetchContent(file.id, deidentified)
+      const blob = await patientFilesApi.fetchContent(file.id, deidentified)
       setViewing({
         file,
         url: URL.createObjectURL(blob),
@@ -85,13 +86,13 @@ function CustomerFilesPage() {
     setViewing(null)
   }
 
-  if (customerQuery.isLoading) return <LoadingBlock label="Loading customer" />
-  if (customerQuery.error instanceof ApiError && customerQuery.error.isNotFound) {
+  if (patientQuery.isLoading) return <LoadingBlock label="Loading patient" />
+  if (patientQuery.error instanceof ApiError && patientQuery.error.isNotFound) {
     return <NotFoundPage />
   }
-  if (!customer) return <NotFoundPage />
+  if (!patient) return <NotFoundPage />
 
-  const columns: Array<Column<CustomerFile>> = [
+  const columns: Array<Column<PatientFile>> = [
     {
       id: 'name',
       header: 'File',
@@ -151,22 +152,22 @@ function CustomerFilesPage() {
     },
   ]
 
-  const canModify = can('customers:update')
+  const canModify = can('patients:update')
   const canDelete = canModify
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Files · ${customer.first_name} ${customer.last_name}`}
-        description={customer.email}
+        title={`Files · ${patientName(patient)}`}
+        description={patient.ptemail ?? undefined}
         actions={
-          <Link to="/customers">
-            <Button variant="outline">Back to customers</Button>
+          <Link to="/patients">
+            <Button variant="outline">Back to patients</Button>
           </Link>
         }
       />
 
-      <Can permission="customers:update">
+      <Can permission="patients:update">
         <FolderUpload
           isUploading={upload.isPending}
           onUpload={(files, description) =>
@@ -183,7 +184,7 @@ function CustomerFilesPage() {
         isFetching={filesQuery.isFetching}
         error={filesQuery.error}
         loadingLabel="Loading files"
-        emptyMessage="No files uploaded for this customer yet."
+        emptyMessage="No files uploaded for this patient yet."
         rowActions={(file) => (
           <>
             <Button
@@ -258,10 +259,10 @@ function CustomerFilesPage() {
   )
 }
 
-export const Route = createFileRoute('/customers/$customerId/files')({
+export const Route = createFileRoute('/patients/$patientId/files')({
   component: () => (
-    <RequirePermission permission="customers:read">
-      <CustomerFilesPage />
+    <RequirePermission permission="patients:read">
+      <PatientFilesPage />
     </RequirePermission>
   ),
 })

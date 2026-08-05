@@ -5,7 +5,7 @@ import { Badge, Card, PageHeader } from '@/components/ui/Misc'
 import { Spinner } from '@/components/ui/Spinner'
 import { useCurrentUser, usePermissions } from '@/hooks/useCurrentUser'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
-import { customerHooks, roleHooks, userHooks, useAuditLogs } from '@/hooks/useResources'
+import { patientHooks, roleHooks, userHooks, useAuditLogs } from '@/hooks/useResources'
 import type { Permission } from '@/schemas/common'
 
 function StatCard({
@@ -50,7 +50,7 @@ function Dashboard() {
   // that is guaranteed to 403 would be noise in the logs and a wasted
   // Hive query.
   const users = userHooks.useList({ enabled: can('users:read') })
-  const customers = customerHooks.useList({ enabled: can('customers:read') })
+  const patients = patientHooks.useList({ enabled: can('patients:read') })
   const roles = roleHooks.useList({ enabled: can('roles:read') })
   const logs = useAuditLogs({ limit: 5 }, can('logs:read'))
 
@@ -71,12 +71,12 @@ function Dashboard() {
       isLoading: users.isLoading,
     },
     {
-      label: 'Customers',
+      label: 'Patients',
       icon: UsersRound,
-      to: '/customers',
-      permission: 'customers:read',
-      count: customers.data?.length,
-      isLoading: customers.isLoading,
+      to: '/patients',
+      permission: 'patients:read',
+      count: patients.data?.length,
+      isLoading: patients.isLoading,
     },
     {
       label: 'Roles',

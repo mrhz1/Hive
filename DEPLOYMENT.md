@@ -15,7 +15,7 @@ model load), so it does not fit a synchronous Model endpoint. It could be
 an always-on Application, but that means owning the queue and concurrency
 yourself for no benefit at low volume.
 
-A Job fits because `customer_files` already describes an async workflow:
+A Job fits because `patient_files` already describes an async workflow:
 
 ```
 pending -> processing -> done | failed
@@ -47,7 +47,7 @@ Job uses. Only `DEID_PYTHON` differs.
 |---|---|---|
 | `HIVE_HOST` / `HIVE_PORT` / `HIVE_DB` / `HIVE_AUTH` / `HIVE_USER` | — | `HIVE_AUTH=GSSAPI` in production |
 | `CORS_ORIGINS` | localhost dev ports | Set to the deployed dashboard origin |
-| `FILE_STORAGE_DIR` | `storage/customer_files` | Must be visible to **both** the API and the job |
+| `FILE_STORAGE_DIR` | `storage/patient_files` | Must be visible to **both** the API and the job |
 | `DEID_PYTHON` | `OCR/.venv/bin/python` | Interpreter with the OCR stack |
 | `DEID_SCRIPT` | `OCR/scripts/run_deid.py` | |
 | `DEID_TIMEOUT_SECONDS` | `1800` | Per file |

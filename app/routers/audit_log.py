@@ -2,7 +2,7 @@
 
 No update/delete routes: an audit trail that can be rewritten is not an
 audit trail. The POST exists so other services can push entries; entries
-for user/customer changes are written automatically in the background by
+for user/patient changes are written automatically in the background by
 app.audit.record_audit.
 """
 from typing import List, Optional

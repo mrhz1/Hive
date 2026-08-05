@@ -1,23 +1,23 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { RequirePermission } from '@/components/PermissionGate'
 import { PageHeader } from '@/components/ui/Misc'
-import { CustomerForm } from '@/features/customers/CustomerForm'
+import { PatientForm } from '@/features/patients/PatientForm'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
-function NewCustomer() {
-  useDocumentTitle('New customer')
+function NewPatient() {
+  useDocumentTitle('New patient')
   return (
     <div className="space-y-6">
-      <PageHeader title="New customer" description="Add a customer record." />
-      <CustomerForm />
+      <PageHeader title="New patient" description="Add a patient record." />
+      <PatientForm />
     </div>
   )
 }
 
-export const Route = createFileRoute('/customers/new')({
+export const Route = createFileRoute('/patients/new')({
   component: () => (
-    <RequirePermission permission="customers:create">
-      <NewCustomer />
+    <RequirePermission permission="patients:create">
+      <NewPatient />
     </RequirePermission>
   ),
 })

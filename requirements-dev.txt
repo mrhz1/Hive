@@ -15,7 +15,7 @@ impyla==0.24.0
 thrift==0.24.0
 thrift-sasl==0.4.3
 fastapi==0.111.0
-# Required by FastAPI to parse multipart/form-data (customer file uploads).
+# Required by FastAPI to parse multipart/form-data (patient file uploads).
 python-multipart==0.0.32
 uvicorn==0.30.1
 structlog==24.4.0

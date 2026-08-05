@@ -6,7 +6,8 @@
       "Bash(pyenv versions *)",
       "Bash(docker.exe --version)",
       "Bash(docker.exe ps *)",
-      "Bash(echo \"EXIT:$?\")"
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(.venv/bin/python --version)"
     ]
   }
 }

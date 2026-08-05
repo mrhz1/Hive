@@ -9,16 +9,17 @@ import {
   type AuditLogFilters,
 } from '@/schemas/log'
 import {
-  customerListSchema,
-  customerSchema,
-  type Customer,
-  type CustomerFormValues,
-} from '@/schemas/customer'
+  PATIENT_FIELD_NAMES,
+  patientListSchema,
+  patientSchema,
+  type Patient,
+  type PatientFormValues,
+} from '@/schemas/patient'
 import {
-  customerFileListSchema,
-  customerFileSchema,
-  type CustomerFile,
-} from '@/schemas/customerFile'
+  patientFileListSchema,
+  patientFileSchema,
+  type PatientFile,
+} from '@/schemas/patientFile'
 import {
   roleListSchema,
   roleSchema,
@@ -79,16 +80,30 @@ export const usersApi = {
   },
 }
 
-export const customersApi = {
-  list: () => request(customerListSchema, () => api.get('/customers')),
-  get: (id: string) => request(customerSchema, () => api.get(`/customers/${id}`)),
-  create: (values: CustomerFormValues) =>
-    request(customerSchema, () => api.post('/customers', values)),
-  update: (id: string, values: CustomerFormValues) =>
-    request(customerSchema, () => api.put(`/customers/${id}`, values)),
+/**
+ * A cleared input submits '', but the column means "unknown" -- so the
+ * empty strings become nulls here rather than being stored as empty
+ * values the API would then have to distinguish from a real one.
+ */
+function toPatientPayload(values: PatientFormValues) {
+  const payload: Record<string, unknown> = {}
+  for (const name of PATIENT_FIELD_NAMES) {
+    const value = values[name]
+    payload[name] = typeof value === 'string' && value.trim() === '' ? null : value
+  }
+  return payload
+}
+
+export const patientsApi = {
+  list: () => request(patientListSchema, () => api.get('/patients')),
+  get: (id: string) => request(patientSchema, () => api.get(`/patients/${id}`)),
+  create: (values: PatientFormValues) =>
+    request(patientSchema, () => api.post('/patients', toPatientPayload(values))),
+  update: (id: string, values: PatientFormValues) =>
+    request(patientSchema, () => api.put(`/patients/${id}`, toPatientPayload(values))),
   remove: async (id: string) => {
     try {
-      await api.delete(`/customers/${id}`)
+      await api.delete(`/patients/${id}`)
     } catch (error) {
       throw toApiError(error)
     }
@@ -117,12 +132,12 @@ export const logsApi = {
   get: (id: string) => request(auditLogSchema, () => api.get(`/logs/${id}`)),
 }
 
-export const customerFilesApi = {
-  list: (customerId: string) =>
-    request(customerFileListSchema, () => api.get(`/customers/${customerId}/files`)),
+export const patientFilesApi = {
+  list: (patientId: string) =>
+    request(patientFileListSchema, () => api.get(`/patients/${patientId}/files`)),
 
   /** Uploads a whole folder's worth of files in one multipart request. */
-  upload: (customerId: string, files: File[], description?: string) => {
+  upload: (patientId: string, files: File[], description?: string) => {
     const form = new FormData()
     for (const file of files) {
       // webkitRelativePath preserves the folder structure in the name so
@@ -132,10 +147,10 @@ export const customerFilesApi = {
     }
     if (description) form.append('description', description)
 
-    return request(customerFileListSchema, () =>
+    return request(patientFileListSchema, () =>
       // Let the browser set the multipart boundary; a manual
       // Content-Type would omit it and the server could not parse it.
-      api.post(`/customers/${customerId}/files`, form, {
+      api.post(`/patients/${patientId}/files`, form, {
         headers: { 'Content-Type': undefined },
       })
     )
@@ -154,7 +169,7 @@ export const customerFilesApi = {
    * 'processing'; the result appears on a later read, not over a socket.
    */
   deidentify: (fileId: string) =>
-    request(customerFileSchema, () => api.post(`/files/${fileId}/deidentify`)),
+    request(patientFileSchema, () => api.post(`/files/${fileId}/deidentify`)),
 
   /**
    * Fetches the bytes as a Blob.
@@ -201,4 +216,4 @@ export const meApi = {
     request(userSchema, () => api.put('/me', values)),
 }
 
-export type { AuditLog, Customer, CustomerFile, Role, User }
+export type { AuditLog, Patient, PatientFile, Role, User }

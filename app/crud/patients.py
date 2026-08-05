@@ -1,127 +1,217 @@
-"""Customer CRUD. Same shape as users minus username, plus
-phone_number/address. Customers carry no role: roles govern API callers.
+"""Patient CRUD. Patients carry no role: roles govern API callers.
+
+HiveQL only: %s paramstyle, backtick identifiers, no
+RETURNING/ON CONFLICT/sequences.
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import List, Optional
 
 from app.db import execute
-from app.errors import ConflictError, NotFoundError
+from app.errors import ConflictError, NotFoundError, ValidationError
 from app.logging_setup import get_logger
-from app.schemas import Customer, CustomerCreate, CustomerUpdate
+from app.schemas import (
+    PATIENT_FILE_REQUIRED,
+    PATIENT_IDENTIFIERS,
+    PATIENT_IDENTITY_REQUIRED,
+    Patient,
+    PatientCreate,
+    PatientUpdate,
+    patient_has_identity,
+)
 
 log = get_logger(__name__)
 
-_COLS = (
-    "`id`, `email`, `first_name`, `last_name`, `phone_number`, "
-    "`address`, `status`, `is_active`, `created_at`"
+# Column order is the single source of truth for SELECT/INSERT and for
+# mapping a row back onto the model -- adding a column means adding it
+# here (and to sql/schema.sql) and nowhere else.
+COLUMNS = (
+    "id",
+    # provider / institution
+    "instcode",
+    "pname",
+    "pemail",
+    "phone1",
+    "phone2",
+    "wphone1",
+    "wphone2",
+    "street",
+    "street2",
+    "street3",
+    "city",
+    "state",
+    "zip",
+    "country",
+    # patient
+    "fstname",
+    "lstname",
+    "ptemail",
+    "ptphone",
+    "ptphone2",
+    "ptwphone",
+    "ptwphone2",
+    "ptstreet",
+    "ptstreet2",
+    "ptstreet3",
+    "ptcity",
+    "ptstate",
+    "ptzip",
+    "ptcountry",
+    # dates
+    "dt_reg",
+    "dt_b",
+    "dt_d",
+    # source documents
+    "original_file_path",
+    "deidentified_file_path",
+    # lifecycle
+    "status",
+    "is_active",
+    "created_at",
 )
 
+# Hive will not implicitly cast a bound STRING parameter into a DATE
+# column, so these get an explicit CAST in INSERT/UPDATE. CAST(NULL AS
+# DATE) is valid, so a nullable value needs no special case.
+DATE_COLUMNS = frozenset({"dt_reg", "dt_b", "dt_d"})
 
-def _row_to_customer(row) -> Customer:
-    return Customer(
-        id=row[0],
-        email=row[1],
-        first_name=row[2],
-        last_name=row[3],
-        phone_number=row[4],
-        address=row[5],
-        status=row[6],
-        is_active=bool(row[7]),
-        created_at=row[8],
-    )
+_COLS = ", ".join(f"`{c}`" for c in COLUMNS)
 
 
-def get_customer(cursor, customer_id: str) -> Optional[Customer]:
-    execute(cursor, f"SELECT {_COLS} FROM `customers` WHERE `id` = %s", (customer_id,))
+def _placeholder(column: str) -> str:
+    return "CAST(%s AS DATE)" if column in DATE_COLUMNS else "%s"
+
+
+def _to_date(value) -> Optional[date]:
+    """Hive drivers hand DATE back as either a date or an ISO string
+    depending on the transport, so both are accepted."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    return date.fromisoformat(text[:10])
+
+
+def _row_to_patient(row) -> Patient:
+    values = dict(zip(COLUMNS, row))
+    for column in DATE_COLUMNS:
+        values[column] = _to_date(values[column])
+    values["is_active"] = bool(values["is_active"])
+    return Patient(**values)
+
+
+def get_patient(cursor, patient_id: str) -> Optional[Patient]:
+    execute(cursor, f"SELECT {_COLS} FROM `patients` WHERE `id` = %s", (patient_id,))
     row = cursor.fetchone()
-    return _row_to_customer(row) if row else None
+    return _row_to_patient(row) if row else None
 
 
-def get_customer_or_404(cursor, customer_id: str) -> Customer:
-    customer = get_customer(cursor, customer_id)
-    if customer is None:
-        raise NotFoundError(f"Customer '{customer_id}' not found")
-    return customer
+def get_patient_or_404(cursor, patient_id: str) -> Patient:
+    patient = get_patient(cursor, patient_id)
+    if patient is None:
+        raise NotFoundError(f"Patient '{patient_id}' not found")
+    return patient
 
 
-def list_customers(cursor) -> List[Customer]:
-    execute(cursor, f"SELECT {_COLS} FROM `customers`")
-    return [_row_to_customer(r) for r in cursor.fetchall()]
+def list_patients(cursor) -> List[Patient]:
+    execute(cursor, f"SELECT {_COLS} FROM `patients`")
+    return [_row_to_patient(r) for r in cursor.fetchall()]
 
 
-def _find_by_email(cursor, email: str) -> Optional[str]:
-    execute(cursor, "SELECT `id` FROM `customers` WHERE `email` = %s", (email,))
+def _find_by(cursor, column: str, value: str) -> Optional[str]:
+    execute(cursor, f"SELECT `id` FROM `patients` WHERE `{column}` = %s", (value,))
     row = cursor.fetchone()
     return row[0] if row else None
 
 
-def _find_by_phone(cursor, phone_number: str) -> Optional[str]:
-    execute(
-        cursor,
-        "SELECT `id` FROM `customers` WHERE `phone_number` = %s",
-        (phone_number,),
-    )
-    row = cursor.fetchone()
-    return row[0] if row else None
+# The patient's own email and phone identify them, so they stay unique --
+# but both are optional now, and "unset" is not a duplicate of "unset".
+_UNIQUE_COLUMNS = (("ptemail", "Email"), ("ptphone", "Phone number"))
 
 
-def create_customer(cursor, payload: CustomerCreate) -> Customer:
+def _assert_unique(cursor, values: dict, exclude_id: Optional[str] = None) -> None:
     # No UNIQUE constraints in Hive -- pre-check SELECTs, non-atomic.
-    if _find_by_email(cursor, payload.email):
-        raise ConflictError(f"Email '{payload.email}' already exists")
-    if _find_by_phone(cursor, payload.phone_number):
-        raise ConflictError(f"Phone number '{payload.phone_number}' already exists")
+    for column, label in _UNIQUE_COLUMNS:
+        value = values.get(column)
+        if not value:
+            continue
+        clash = _find_by(cursor, column, value)
+        if clash and clash != exclude_id:
+            raise ConflictError(f"{label} '{value}' already exists")
 
-    customer_id = str(uuid.uuid4())
+
+def create_patient(cursor, payload: PatientCreate) -> Patient:
+    fields = payload.model_dump()
+    _assert_unique(cursor, fields)
+
+    patient_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    fields["id"] = patient_id
+    fields["created_at"] = created_at.strftime("%Y-%m-%d %H:%M:%S")
+    for column in DATE_COLUMNS:
+        value = fields[column]
+        fields[column] = value.isoformat() if value else None
+
+    placeholders = ", ".join(_placeholder(c) for c in COLUMNS)
     execute(
         cursor,
-        f"INSERT INTO `customers` ({_COLS}) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-        (
-            customer_id,
-            payload.email,
-            payload.first_name,
-            payload.last_name,
-            payload.phone_number,
-            payload.address,
-            payload.status,
-            payload.is_active,
-            created_at.strftime("%Y-%m-%d %H:%M:%S"),
-        ),
+        f"INSERT INTO `patients` ({_COLS}) VALUES ({placeholders})",
+        tuple(fields[c] for c in COLUMNS),
     )
-    log.info("customer_created", customer_id=customer_id, email=payload.email)
-    return get_customer_or_404(cursor, customer_id)
+    # lstname is optional, so the log records which identifier the record
+    # actually arrived with rather than a field that may be absent.
+    log.info(
+        "patient_created",
+        patient_id=patient_id,
+        identified_by=[n for n in PATIENT_IDENTIFIERS if fields.get(n)],
+    )
+    return get_patient_or_404(cursor, patient_id)
 
 
-def update_customer(cursor, customer_id: str, payload: CustomerUpdate) -> Customer:
-    existing = get_customer_or_404(cursor, customer_id)
+def update_patient(cursor, patient_id: str, payload: PatientUpdate) -> Patient:
+    existing = get_patient_or_404(cursor, patient_id)
 
     fields = payload.model_dump(exclude_unset=True)
     if not fields:
         return existing
 
-    if "email" in fields and fields["email"] != existing.email:
-        clash = _find_by_email(cursor, fields["email"])
-        if clash and clash != customer_id:
-            raise ConflictError(f"Email '{fields['email']}' already exists")
-    if "phone_number" in fields and fields["phone_number"] != existing.phone_number:
-        clash = _find_by_phone(cursor, fields["phone_number"])
-        if clash and clash != customer_id:
-            raise ConflictError(
-                f"Phone number '{fields['phone_number']}' already exists"
-            )
+    # The two invariants hold over the row the update would leave behind,
+    # not over the patch: clearing the last identifier is only visible
+    # once the patch is merged onto what is already stored.
+    merged = {**existing.model_dump(), **fields}
+    if not patient_has_identity(merged):
+        raise ValidationError(PATIENT_IDENTITY_REQUIRED)
+    if not merged.get("original_file_path"):
+        raise ValidationError(PATIENT_FILE_REQUIRED)
 
-    set_clause = ", ".join(f"`{col}` = %s" for col in fields)
-    params = tuple(fields.values()) + (customer_id,)
-    execute(cursor, f"UPDATE `customers` SET {set_clause} WHERE `id` = %s", params)
-    log.info("customer_updated", customer_id=customer_id, fields=sorted(fields))
-    return get_customer_or_404(cursor, customer_id)
+    # Only re-check uniqueness for a value that actually changed, so
+    # saving a form unchanged can never 409 against the record itself.
+    changed = {
+        column: value
+        for column, value in fields.items()
+        if getattr(existing, column, None) != value
+    }
+    _assert_unique(cursor, changed, exclude_id=patient_id)
+
+    for column in DATE_COLUMNS & fields.keys():
+        value = fields[column]
+        fields[column] = value.isoformat() if value else None
+
+    set_clause = ", ".join(f"`{c}` = {_placeholder(c)}" for c in fields)
+    params = tuple(fields.values()) + (patient_id,)
+    execute(cursor, f"UPDATE `patients` SET {set_clause} WHERE `id` = %s", params)
+    log.info("patient_updated", patient_id=patient_id, fields=sorted(fields))
+    return get_patient_or_404(cursor, patient_id)
 
 
-def delete_customer(cursor, customer_id: str) -> Customer:
-    existing = get_customer_or_404(cursor, customer_id)
-    execute(cursor, "DELETE FROM `customers` WHERE `id` = %s", (customer_id,))
-    log.info("customer_deleted", customer_id=customer_id)
+def delete_patient(cursor, patient_id: str) -> Patient:
+    existing = get_patient_or_404(cursor, patient_id)
+    execute(cursor, "DELETE FROM `patients` WHERE `id` = %s", (patient_id,))
+    log.info("patient_deleted", patient_id=patient_id)
     return existing

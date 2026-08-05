@@ -8,7 +8,7 @@ copy this pattern into application code that writes real volumes of data
 import os
 import sys
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -20,10 +20,10 @@ SCHEMA_PATH = Path(__file__).resolve().parent.parent / "sql" / "schema.sql"
 
 ALL_PERMISSIONS = [
     f"{model}:{action}"
-    for model in ("users", "customers", "roles", "logs")
+    for model in ("users", "patients", "roles", "logs")
     for action in ("read", "create", "update", "delete")
 ]
-READONLY_PERMISSIONS = [f"{model}:read" for model in ("users", "customers", "roles", "logs")]
+READONLY_PERMISSIONS = [f"{model}:read" for model in ("users", "patients", "roles", "logs")]
 
 ADMIN_ROLE_ID = str(uuid.uuid4())
 VIEWER_ROLE_ID = str(uuid.uuid4())
@@ -100,30 +100,65 @@ def seed_users(cursor) -> None:
     print(f"seeded {len(rows)} rows into users")
 
 
-def seed_customers(cursor) -> None:
+def seed_patients(cursor) -> None:
+    """Seeds a subset of the patient columns.
+
+    Deliberately not every column: the point is a usable fixture set, and
+    the rest are nullable by design. The DATE columns need an explicit
+    CAST -- Hive will not coerce a bound STRING into a DATE.
+    """
     base = datetime(2026, 7, 1, 12, 0, 0)
+    columns = (
+        "id", "instcode", "pname", "pemail", "phone1", "wphone1",
+        "street", "city", "state", "zip", "country",
+        "fstname", "lstname", "ptemail", "ptphone", "ptwphone",
+        "ptstreet", "ptcity", "ptstate", "ptzip", "ptcountry",
+        "dt_reg", "dt_b", "status", "is_active", "created_at",
+    )
+    date_columns = {"dt_reg", "dt_b"}
+
     rows = [
         (
             str(uuid.uuid4()),
-            f"customer{i}@example.com",
-            f"Cust{i}",
+            f"INST{i:03d}",
+            f"Springfield Clinic {i}",
+            f"clinic{i}@example.com",
+            f"+1555100{i:04d}",
+            f"+1555200{i:04d}",
+            f"{i} Medical Plaza",
+            "Springfield",
+            "IL",
+            f"627{i:02d}",
+            "US",
+            f"Pat{i}",
             f"Last{i}",
-            f"+1555000{i:04d}",
-            f"{i} Main St",
+            f"patient{i}@example.com",
+            f"+1555300{i:04d}",
+            f"+1555400{i:04d}",
+            f"{i} Elm St",
+            "Springfield",
+            "IL",
+            f"627{i:02d}",
+            "US",
+            (base + timedelta(days=i)).date().isoformat(),
+            date(1960 + i, (i % 12) + 1, (i % 28) + 1).isoformat(),
             "active" if i % 4 != 0 else "inactive",
             i % 4 != 0,
             base + timedelta(days=i),
         )
         for i in range(1, 11)
     ]
+
+    column_list = ", ".join(f"`{c}`" for c in columns)
+    placeholders = ", ".join(
+        "CAST(%s AS DATE)" if c in date_columns else "%s" for c in columns
+    )
     for row in rows:
         cursor.execute(
-            "INSERT INTO `customers` (`id`, `email`, `first_name`, `last_name`, "
-            "`phone_number`, `address`, `status`, `is_active`, `created_at`) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            f"INSERT INTO `patients` ({column_list}) VALUES ({placeholders})",
             row,
         )
-    print(f"seeded {len(rows)} rows into customers")
+    print(f"seeded {len(rows)} rows into patients")
 
 
 def main() -> int:
@@ -138,7 +173,7 @@ def main() -> int:
         apply_schema(cursor)
         seed_roles(cursor)
         seed_users(cursor)
-        seed_customers(cursor)
+        seed_patients(cursor)
     except Exception as exc:
         print(f"FAILED during init -- {exc}", file=sys.stderr)
         return 1

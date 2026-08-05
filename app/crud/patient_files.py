@@ -1,4 +1,4 @@
-"""Customer file metadata CRUD. HiveQL only: %s paramstyle, backtick
+"""Patient file metadata CRUD. HiveQL only: %s paramstyle, backtick
 identifiers, STRING types, no RETURNING/ON CONFLICT/sequences.
 """
 import uuid
@@ -8,22 +8,22 @@ from typing import List, Optional
 from app.db import execute
 from app.errors import NotFoundError
 from app.logging_setup import get_logger
-from app.schemas import CustomerFile, CustomerFileUpdate
+from app.schemas import PatientFile, PatientFileUpdate
 
 log = get_logger(__name__)
 
 _COLS = (
-    "`id`, `customer_id`, `original_file_name`, `sanitized_file_name`, "
+    "`id`, `patient_id`, `original_file_name`, `sanitized_file_name`, "
     "`deidentified_file_name`, `file_extension`, `mime_type`, `file_size`, "
     "`deid_status`, `is_identified`, `created_at`, `description`, "
     "`file_path`, `deidentified_file_path`"
 )
 
 
-def _row_to_file(row) -> CustomerFile:
-    return CustomerFile(
+def _row_to_file(row) -> PatientFile:
+    return PatientFile(
         id=row[0],
-        customer_id=row[1],
+        patient_id=row[1],
         original_file_name=row[2],
         sanitized_file_name=row[3],
         deidentified_file_name=row[4],
@@ -42,7 +42,7 @@ def _row_to_file(row) -> CustomerFile:
 def create_file(
     cursor,
     *,
-    customer_id: str,
+    patient_id: str,
     original_file_name: str,
     sanitized_file_name: str,
     file_extension: str,
@@ -51,7 +51,7 @@ def create_file(
     file_path: str,
     description: Optional[str] = None,
     file_id: Optional[str] = None,
-) -> CustomerFile:
+) -> PatientFile:
     """Records an uploaded document.
 
     Freshly uploaded files are 'pending' and still identified: nothing has
@@ -62,11 +62,11 @@ def create_file(
 
     execute(
         cursor,
-        f"INSERT INTO `customer_files` ({_COLS}) "
+        f"INSERT INTO `patient_files` ({_COLS}) "
         "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
         (
             new_id,
-            customer_id,
+            patient_id,
             original_file_name,
             sanitized_file_name,
             None,  # deidentified_file_name
@@ -82,41 +82,41 @@ def create_file(
         ),
     )
     log.info(
-        "customer_file_created",
+        "patient_file_created",
         file_id=new_id,
-        customer_id=customer_id,
+        patient_id=patient_id,
         name=sanitized_file_name,
         bytes=file_size,
     )
     return get_file_or_404(cursor, new_id)
 
 
-def list_files(cursor, customer_id: Optional[str] = None) -> List[CustomerFile]:
-    sql = f"SELECT {_COLS} FROM `customer_files`"
+def list_files(cursor, patient_id: Optional[str] = None) -> List[PatientFile]:
+    sql = f"SELECT {_COLS} FROM `patient_files`"
     params: tuple = ()
-    if customer_id:
-        sql += " WHERE `customer_id` = %s"
-        params = (customer_id,)
+    if patient_id:
+        sql += " WHERE `patient_id` = %s"
+        params = (patient_id,)
     sql += " ORDER BY `created_at` DESC"
 
     execute(cursor, sql, params)
     return [_row_to_file(r) for r in cursor.fetchall()]
 
 
-def get_file(cursor, file_id: str) -> Optional[CustomerFile]:
-    execute(cursor, f"SELECT {_COLS} FROM `customer_files` WHERE `id` = %s", (file_id,))
+def get_file(cursor, file_id: str) -> Optional[PatientFile]:
+    execute(cursor, f"SELECT {_COLS} FROM `patient_files` WHERE `id` = %s", (file_id,))
     row = cursor.fetchone()
     return _row_to_file(row) if row else None
 
 
-def get_file_or_404(cursor, file_id: str) -> CustomerFile:
+def get_file_or_404(cursor, file_id: str) -> PatientFile:
     found = get_file(cursor, file_id)
     if found is None:
         raise NotFoundError(f"File '{file_id}' not found")
     return found
 
 
-def update_file(cursor, file_id: str, payload: CustomerFileUpdate) -> CustomerFile:
+def update_file(cursor, file_id: str, payload: PatientFileUpdate) -> PatientFile:
     get_file_or_404(cursor, file_id)
 
     fields = payload.model_dump(exclude_unset=True)
@@ -125,29 +125,29 @@ def update_file(cursor, file_id: str, payload: CustomerFileUpdate) -> CustomerFi
 
     set_clause = ", ".join(f"`{col}` = %s" for col in fields)
     params = tuple(fields.values()) + (file_id,)
-    execute(cursor, f"UPDATE `customer_files` SET {set_clause} WHERE `id` = %s", params)
-    log.info("customer_file_updated", file_id=file_id, fields=sorted(fields))
+    execute(cursor, f"UPDATE `patient_files` SET {set_clause} WHERE `id` = %s", params)
+    log.info("patient_file_updated", file_id=file_id, fields=sorted(fields))
     return get_file_or_404(cursor, file_id)
 
 
-def delete_file(cursor, file_id: str) -> CustomerFile:
+def delete_file(cursor, file_id: str) -> PatientFile:
     existing = get_file_or_404(cursor, file_id)
-    execute(cursor, "DELETE FROM `customer_files` WHERE `id` = %s", (file_id,))
-    log.info("customer_file_deleted", file_id=file_id)
+    execute(cursor, "DELETE FROM `patient_files` WHERE `id` = %s", (file_id,))
+    log.info("patient_file_deleted", file_id=file_id)
     return existing
 
 
-def delete_files_for_customer(cursor, customer_id: str) -> List[CustomerFile]:
-    """Used when a customer is removed, so their documents do not linger
+def delete_files_for_patient(cursor, patient_id: str) -> List[PatientFile]:
+    """Used when a patient is removed, so their documents do not linger
     as unreachable rows and orphaned bytes."""
-    existing = list_files(cursor, customer_id)
+    existing = list_files(cursor, patient_id)
     if existing:
         execute(
             cursor,
-            "DELETE FROM `customer_files` WHERE `customer_id` = %s",
-            (customer_id,),
+            "DELETE FROM `patient_files` WHERE `patient_id` = %s",
+            (patient_id,),
         )
         log.info(
-            "customer_files_deleted", customer_id=customer_id, count=len(existing)
+            "patient_files_deleted", patient_id=patient_id, count=len(existing)
         )
     return existing

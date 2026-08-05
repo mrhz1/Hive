@@ -27,7 +27,7 @@ log = get_logger(__name__)
 # of silently never matching at request time.
 KNOWN_PERMISSIONS = frozenset(
     f"{model}:{action}"
-    for model in ("users", "customers", "roles", "logs")
+    for model in ("users", "patients", "roles", "logs")
     for action in ("read", "create", "update", "delete")
 )
 

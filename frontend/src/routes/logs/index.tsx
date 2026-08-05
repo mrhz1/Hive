@@ -80,7 +80,7 @@ function LogsList() {
           onChange={(event) => setEntityType(event.target.value)}
           options={[
             { value: 'user', label: 'user' },
-            { value: 'customer', label: 'customer' },
+            { value: 'patient', label: 'patient' },
           ]}
         />
         <TextField

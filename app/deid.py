@@ -23,10 +23,10 @@ from typing import Optional
 
 import structlog
 
-from app.crud import customer_files as crud
+from app.crud import patient_files as crud
 from app.db import hive_cursor
 from app.logging_setup import get_logger
-from app.schemas import CustomerFileUpdate
+from app.schemas import PatientFileUpdate
 from app.storage import resolve_stored_path
 
 log = get_logger(__name__)
@@ -44,7 +44,7 @@ DEID_TIMEOUT_SECONDS = int(os.environ.get("DEID_TIMEOUT_SECONDS", "1800"))
 DEID_SUFFIX = os.environ.get("DEID_OUTPUT_SUFFIX", "_deid")
 
 # Redacted copies go in a subfolder of the original's directory, so a
-# customer's documents and their de-identified versions stay together.
+# patient's documents and their de-identified versions stay together.
 DEID_SUBFOLDER = "deidentified"
 
 
@@ -57,7 +57,7 @@ def _set_status(file_id: str, **fields) -> None:
     the main work has failed."""
     try:
         with hive_cursor() as cursor:
-            crud.update_file(cursor, file_id, CustomerFileUpdate(**fields))
+            crud.update_file(cursor, file_id, PatientFileUpdate(**fields))
     except Exception as exc:  # pragma: no cover - last-resort logging
         log.error("deid_status_write_failed", file_id=file_id, error=str(exc))
 

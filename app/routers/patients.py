@@ -3,74 +3,74 @@ from typing import List
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
 from app.audit import record_audit
-from app.crud import customer_files as files_crud
-from app.crud import customers as crud
+from app.crud import patient_files as files_crud
+from app.crud import patients as crud
 from app.storage import delete_file as remove_from_disk
 from app.db import get_cursor
-from app.schemas import Customer, CustomerCreate, CustomerUpdate, User
+from app.schemas import Patient, PatientCreate, PatientUpdate, User
 from app.security import require_permission
 
-router = APIRouter(prefix="/customers", tags=["customers"])
+router = APIRouter(prefix="/patients", tags=["patients"])
 
 
-def _snapshot(customer: Customer) -> dict:
-    return customer.model_dump(mode="json")
+def _snapshot(patient: Patient) -> dict:
+    return patient.model_dump(mode="json")
 
 
-@router.post("", response_model=Customer, status_code=201)
-def create_customer(
-    payload: CustomerCreate,
+@router.post("", response_model=Patient, status_code=201)
+def create_patient(
+    payload: PatientCreate,
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("customers:create")),
+    _actor: User = Depends(require_permission("patients:create")),
 ):
-    customer = crud.create_customer(cursor, payload)
+    patient = crud.create_patient(cursor, payload)
     background.add_task(
         record_audit,
         action="CREATE",
-        entity_type="customer",
-        entity_id=customer.id,
+        entity_type="patient",
+        entity_id=patient.id,
         old_values=None,
-        new_values=_snapshot(customer),
+        new_values=_snapshot(patient),
         request_id=request.headers.get("X-Request-ID"),
     )
-    return customer
+    return patient
 
 
-@router.get("", response_model=List[Customer])
-def list_customers(
+@router.get("", response_model=List[Patient])
+def list_patients(
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("customers:read")),
+    _actor: User = Depends(require_permission("patients:read")),
 ):
-    return crud.list_customers(cursor)
+    return crud.list_patients(cursor)
 
 
-@router.get("/{customer_id}", response_model=Customer)
-def get_customer(
-    customer_id: str,
+@router.get("/{patient_id}", response_model=Patient)
+def get_patient(
+    patient_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("customers:read")),
+    _actor: User = Depends(require_permission("patients:read")),
 ):
-    return crud.get_customer_or_404(cursor, customer_id)
+    return crud.get_patient_or_404(cursor, patient_id)
 
 
-@router.put("/{customer_id}", response_model=Customer)
-def update_customer(
-    customer_id: str,
-    payload: CustomerUpdate,
+@router.put("/{patient_id}", response_model=Patient)
+def update_patient(
+    patient_id: str,
+    payload: PatientUpdate,
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("customers:update")),
+    _actor: User = Depends(require_permission("patients:update")),
 ):
-    before = crud.get_customer_or_404(cursor, customer_id)
-    after = crud.update_customer(cursor, customer_id, payload)
+    before = crud.get_patient_or_404(cursor, patient_id)
+    after = crud.update_patient(cursor, patient_id, payload)
     background.add_task(
         record_audit,
         action="UPDATE",
-        entity_type="customer",
-        entity_id=customer_id,
+        entity_type="patient",
+        entity_id=patient_id,
         old_values=_snapshot(before),
         new_values=_snapshot(after),
         request_id=request.headers.get("X-Request-ID"),
@@ -78,19 +78,19 @@ def update_customer(
     return after
 
 
-@router.delete("/{customer_id}", status_code=204)
-def delete_customer(
-    customer_id: str,
+@router.delete("/{patient_id}", status_code=204)
+def delete_patient(
+    patient_id: str,
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("customers:delete")),
+    _actor: User = Depends(require_permission("patients:delete")),
 ):
-    # Remove the customer's documents first, so deleting a customer never
-    # leaves rows pointing at a customer that no longer exists.
-    orphaned = files_crud.delete_files_for_customer(cursor, customer_id)
+    # Remove the patient's documents first, so deleting a patient never
+    # leaves rows pointing at a patient that no longer exists.
+    orphaned = files_crud.delete_files_for_patient(cursor, patient_id)
 
-    deleted = crud.delete_customer(cursor, customer_id)
+    deleted = crud.delete_patient(cursor, patient_id)
 
     for record in orphaned:
         remove_from_disk(record.file_path)
@@ -100,8 +100,8 @@ def delete_customer(
     background.add_task(
         record_audit,
         action="DELETE",
-        entity_type="customer",
-        entity_id=customer_id,
+        entity_type="patient",
+        entity_id=patient_id,
         old_values=_snapshot(deleted),
         new_values=None,
         request_id=request.headers.get("X-Request-ID"),

@@ -11,10 +11,10 @@ const ALL_PERMISSIONS = [
   'users:create',
   'users:update',
   'users:delete',
-  'customers:read',
-  'customers:create',
-  'customers:update',
-  'customers:delete',
+  'patients:read',
+  'patients:create',
+  'patients:update',
+  'patients:delete',
   'roles:read',
   'roles:create',
   'roles:update',
@@ -56,14 +56,42 @@ const USERS = [
   })),
 ]
 
-const CUSTOMERS = Array.from({ length: 5 }, (_, i) => ({
-  id: `cust-${i}`,
-  email: `customer${i + 1}@example.com`,
-  first_name: `Cust${i + 1}`,
-  last_name: `Last${i + 1}`,
-  phone_number: `+1555000${String(i).padStart(4, '0')}`,
-  address: `${i + 1} Main St`,
-  status: i % 3 === 0 ? 'vip' : 'active',
+const PATIENTS = Array.from({ length: 5 }, (_, i) => ({
+  id: `pat-${i}`,
+  instcode: `INST${String(i + 1).padStart(3, '0')}`,
+  pname: `Springfield Clinic ${i + 1}`,
+  pemail: `clinic${i + 1}@example.com`,
+  phone1: `+1555100${String(i).padStart(4, '0')}`,
+  phone2: null,
+  wphone1: null,
+  wphone2: null,
+  street: `${i + 1} Medical Plaza`,
+  street2: null,
+  street3: null,
+  city: 'Springfield',
+  state: 'IL',
+  zip: `627${String(i).padStart(2, '0')}`,
+  country: 'US',
+  fstname: `Pat${i + 1}`,
+  lstname: `Last${i + 1}`,
+  ptemail: `patient${i + 1}@example.com`,
+  ptphone: `+1555300${String(i).padStart(4, '0')}`,
+  ptphone2: null,
+  ptwphone: null,
+  ptwphone2: null,
+  ptstreet: `${i + 1} Elm St`,
+  ptstreet2: null,
+  ptstreet3: null,
+  ptcity: 'Springfield',
+  ptstate: 'IL',
+  ptzip: `627${String(i).padStart(2, '0')}`,
+  ptcountry: 'US',
+  dt_reg: '2026-07-03',
+  dt_b: `19${60 + i}-01-02`,
+  dt_d: null,
+  original_file_path: null,
+  deidentified_file_path: null,
+  status: i % 3 === 0 ? 'discharged' : 'active',
   is_active: true,
   created_at: '2026-07-03T12:00:00',
 }))
@@ -73,14 +101,14 @@ const ROLES = [
   {
     id: 'role-viewer',
     name: 'viewer',
-    permissions: ['users:read', 'customers:read', 'roles:read', 'logs:read'],
+    permissions: ['users:read', 'patients:read', 'roles:read', 'logs:read'],
   },
 ]
 
 const LOGS = Array.from({ length: 4 }, (_, i) => ({
   id: `log-${i}`,
   action: (['CREATE', 'UPDATE', 'DELETE'] as const)[i % 3],
-  entity_type: i % 2 === 0 ? 'user' : 'customer',
+  entity_type: i % 2 === 0 ? 'user' : 'patient',
   entity_id: `entity-${i}`,
   old_values: i % 3 === 0 ? null : { status: 'active' },
   new_values: i % 3 === 2 ? null : { status: 'suspended' },
@@ -100,7 +128,7 @@ async function mockApi(page: Page) {
   // dev server's own navigation to /users and serve JSON as the document.
   await page.route(`${API}/me*`, (route) => route.fulfill(json(ADMIN)))
   await page.route(`${API}/users*`, (route) => route.fulfill(json(USERS)))
-  await page.route(`${API}/customers*`, (route) => route.fulfill(json(CUSTOMERS)))
+  await page.route(`${API}/patients*`, (route) => route.fulfill(json(PATIENTS)))
   await page.route(`${API}/roles*`, (route) => route.fulfill(json(ROLES)))
   await page.route(`${API}/logs*`, (route) => route.fulfill(json(LOGS)))
 }
@@ -115,7 +143,7 @@ const PAGES = [
   { path: '/', name: 'dashboard' },
   { path: '/users', name: 'users' },
   { path: '/users/new', name: 'user-form' },
-  { path: '/customers', name: 'customers' },
+  { path: '/patients', name: 'patients' },
   { path: '/roles', name: 'roles' },
   { path: '/roles/new', name: 'role-form' },
   { path: '/logs', name: 'logs' },

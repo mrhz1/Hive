@@ -3,38 +3,37 @@ import { NotFoundPage } from '@/components/ErrorPages'
 import { RequirePermission } from '@/components/PermissionGate'
 import { PageHeader } from '@/components/ui/Misc'
 import { LoadingBlock } from '@/components/ui/Spinner'
-import { CustomerForm } from '@/features/customers/CustomerForm'
+import { PatientForm } from '@/features/patients/PatientForm'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
-import { customerHooks } from '@/hooks/useResources'
+import { patientHooks } from '@/hooks/useResources'
 import { ApiError } from '@/lib/api/client'
+import { patientName } from '@/schemas/patient'
 
-function EditCustomer() {
-  const { customerId } = Route.useParams()
-  const { data: customer, isLoading, error } = customerHooks.useDetail(customerId)
+function EditPatient() {
+  const { patientId } = Route.useParams()
+  const { data: patient, isLoading, error } = patientHooks.useDetail(patientId)
 
-  useDocumentTitle(
-    customer ? `Edit ${customer.first_name} ${customer.last_name}` : 'Edit customer'
-  )
+  useDocumentTitle(patient ? `Edit ${patientName(patient)}` : 'Edit patient')
 
-  if (isLoading) return <LoadingBlock label="Loading customer" />
+  if (isLoading) return <LoadingBlock label="Loading patient" />
   if (error instanceof ApiError && error.isNotFound) return <NotFoundPage />
-  if (!customer) return <NotFoundPage />
+  if (!patient) return <NotFoundPage />
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Edit ${customer.first_name} ${customer.last_name}`}
-        description="Update this customer's details."
+        title={`Edit ${patientName(patient)}`}
+        description="Update this patient's details."
       />
-      <CustomerForm customer={customer} />
+      <PatientForm patient={patient} />
     </div>
   )
 }
 
-export const Route = createFileRoute('/customers/$customerId/edit')({
+export const Route = createFileRoute('/patients/$patientId/edit')({
   component: () => (
-    <RequirePermission permission="customers:update">
-      <EditCustomer />
+    <RequirePermission permission="patients:update">
+      <EditPatient />
     </RequirePermission>
   ),
 })

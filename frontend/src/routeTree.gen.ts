@@ -11,16 +11,16 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProfileRouteImport } from './routes/profile'
-import { Route as CustomersIndexRouteImport } from './routes/customers/index'
-import { Route as CustomersNewRouteImport } from './routes/customers/new'
 import { Route as LogsIndexRouteImport } from './routes/logs/index'
 import { Route as LogsLogIdRouteImport } from './routes/logs/$logId'
+import { Route as PatientsIndexRouteImport } from './routes/patients/index'
+import { Route as PatientsNewRouteImport } from './routes/patients/new'
 import { Route as RolesIndexRouteImport } from './routes/roles/index'
 import { Route as RolesNewRouteImport } from './routes/roles/new'
 import { Route as UsersIndexRouteImport } from './routes/users/index'
 import { Route as UsersNewRouteImport } from './routes/users/new'
-import { Route as CustomersCustomerIdEditRouteImport } from './routes/customers/$customerId.edit'
-import { Route as CustomersCustomerIdFilesRouteImport } from './routes/customers/$customerId.files'
+import { Route as PatientsPatientIdEditRouteImport } from './routes/patients/$patientId.edit'
+import { Route as PatientsPatientIdFilesRouteImport } from './routes/patients/$patientId.files'
 import { Route as RolesRoleIdEditRouteImport } from './routes/roles/$roleId.edit'
 import { Route as UsersUserIdEditRouteImport } from './routes/users/$userId.edit'
 
@@ -34,16 +34,6 @@ const ProfileRoute = ProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CustomersIndexRoute = CustomersIndexRouteImport.update({
-  id: '/customers/',
-  path: '/customers/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CustomersNewRoute = CustomersNewRouteImport.update({
-  id: '/customers/new',
-  path: '/customers/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const LogsIndexRoute = LogsIndexRouteImport.update({
   id: '/logs/',
   path: '/logs/',
@@ -52,6 +42,16 @@ const LogsIndexRoute = LogsIndexRouteImport.update({
 const LogsLogIdRoute = LogsLogIdRouteImport.update({
   id: '/logs/$logId',
   path: '/logs/$logId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PatientsIndexRoute = PatientsIndexRouteImport.update({
+  id: '/patients/',
+  path: '/patients/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PatientsNewRoute = PatientsNewRouteImport.update({
+  id: '/patients/new',
+  path: '/patients/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RolesIndexRoute = RolesIndexRouteImport.update({
@@ -74,17 +74,16 @@ const UsersNewRoute = UsersNewRouteImport.update({
   path: '/users/new',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CustomersCustomerIdEditRoute = CustomersCustomerIdEditRouteImport.update({
-  id: '/customers/$customerId/edit',
-  path: '/customers/$customerId/edit',
+const PatientsPatientIdEditRoute = PatientsPatientIdEditRouteImport.update({
+  id: '/patients/$patientId/edit',
+  path: '/patients/$patientId/edit',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CustomersCustomerIdFilesRoute =
-  CustomersCustomerIdFilesRouteImport.update({
-    id: '/customers/$customerId/files',
-    path: '/customers/$customerId/files',
-    getParentRoute: () => rootRouteImport,
-  } as any)
+const PatientsPatientIdFilesRoute = PatientsPatientIdFilesRouteImport.update({
+  id: '/patients/$patientId/files',
+  path: '/patients/$patientId/files',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RolesRoleIdEditRoute = RolesRoleIdEditRouteImport.update({
   id: '/roles/$roleId/edit',
   path: '/roles/$roleId/edit',
@@ -99,32 +98,32 @@ const UsersUserIdEditRoute = UsersUserIdEditRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
-  '/customers/new': typeof CustomersNewRoute
   '/logs/$logId': typeof LogsLogIdRoute
+  '/patients/new': typeof PatientsNewRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
-  '/customers/': typeof CustomersIndexRoute
   '/logs/': typeof LogsIndexRoute
+  '/patients/': typeof PatientsIndexRoute
   '/roles/': typeof RolesIndexRoute
   '/users/': typeof UsersIndexRoute
-  '/customers/$customerId/edit': typeof CustomersCustomerIdEditRoute
-  '/customers/$customerId/files': typeof CustomersCustomerIdFilesRoute
+  '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
+  '/patients/$patientId/files': typeof PatientsPatientIdFilesRoute
   '/roles/$roleId/edit': typeof RolesRoleIdEditRoute
   '/users/$userId/edit': typeof UsersUserIdEditRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
-  '/customers/new': typeof CustomersNewRoute
   '/logs/$logId': typeof LogsLogIdRoute
+  '/patients/new': typeof PatientsNewRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
-  '/customers': typeof CustomersIndexRoute
   '/logs': typeof LogsIndexRoute
+  '/patients': typeof PatientsIndexRoute
   '/roles': typeof RolesIndexRoute
   '/users': typeof UsersIndexRoute
-  '/customers/$customerId/edit': typeof CustomersCustomerIdEditRoute
-  '/customers/$customerId/files': typeof CustomersCustomerIdFilesRoute
+  '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
+  '/patients/$patientId/files': typeof PatientsPatientIdFilesRoute
   '/roles/$roleId/edit': typeof RolesRoleIdEditRoute
   '/users/$userId/edit': typeof UsersUserIdEditRoute
 }
@@ -132,16 +131,16 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
-  '/customers/new': typeof CustomersNewRoute
   '/logs/$logId': typeof LogsLogIdRoute
+  '/patients/new': typeof PatientsNewRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
-  '/customers/': typeof CustomersIndexRoute
   '/logs/': typeof LogsIndexRoute
+  '/patients/': typeof PatientsIndexRoute
   '/roles/': typeof RolesIndexRoute
   '/users/': typeof UsersIndexRoute
-  '/customers/$customerId/edit': typeof CustomersCustomerIdEditRoute
-  '/customers/$customerId/files': typeof CustomersCustomerIdFilesRoute
+  '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
+  '/patients/$patientId/files': typeof PatientsPatientIdFilesRoute
   '/roles/$roleId/edit': typeof RolesRoleIdEditRoute
   '/users/$userId/edit': typeof UsersUserIdEditRoute
 }
@@ -150,48 +149,48 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/profile'
-    | '/customers/new'
     | '/logs/$logId'
+    | '/patients/new'
     | '/roles/new'
     | '/users/new'
-    | '/customers/'
     | '/logs/'
+    | '/patients/'
     | '/roles/'
     | '/users/'
-    | '/customers/$customerId/edit'
-    | '/customers/$customerId/files'
+    | '/patients/$patientId/edit'
+    | '/patients/$patientId/files'
     | '/roles/$roleId/edit'
     | '/users/$userId/edit'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/profile'
-    | '/customers/new'
     | '/logs/$logId'
+    | '/patients/new'
     | '/roles/new'
     | '/users/new'
-    | '/customers'
     | '/logs'
+    | '/patients'
     | '/roles'
     | '/users'
-    | '/customers/$customerId/edit'
-    | '/customers/$customerId/files'
+    | '/patients/$patientId/edit'
+    | '/patients/$patientId/files'
     | '/roles/$roleId/edit'
     | '/users/$userId/edit'
   id:
     | '__root__'
     | '/'
     | '/profile'
-    | '/customers/new'
     | '/logs/$logId'
+    | '/patients/new'
     | '/roles/new'
     | '/users/new'
-    | '/customers/'
     | '/logs/'
+    | '/patients/'
     | '/roles/'
     | '/users/'
-    | '/customers/$customerId/edit'
-    | '/customers/$customerId/files'
+    | '/patients/$patientId/edit'
+    | '/patients/$patientId/files'
     | '/roles/$roleId/edit'
     | '/users/$userId/edit'
   fileRoutesById: FileRoutesById
@@ -199,16 +198,16 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProfileRoute: typeof ProfileRoute
-  CustomersNewRoute: typeof CustomersNewRoute
   LogsLogIdRoute: typeof LogsLogIdRoute
+  PatientsNewRoute: typeof PatientsNewRoute
   RolesNewRoute: typeof RolesNewRoute
   UsersNewRoute: typeof UsersNewRoute
-  CustomersIndexRoute: typeof CustomersIndexRoute
   LogsIndexRoute: typeof LogsIndexRoute
+  PatientsIndexRoute: typeof PatientsIndexRoute
   RolesIndexRoute: typeof RolesIndexRoute
   UsersIndexRoute: typeof UsersIndexRoute
-  CustomersCustomerIdEditRoute: typeof CustomersCustomerIdEditRoute
-  CustomersCustomerIdFilesRoute: typeof CustomersCustomerIdFilesRoute
+  PatientsPatientIdEditRoute: typeof PatientsPatientIdEditRoute
+  PatientsPatientIdFilesRoute: typeof PatientsPatientIdFilesRoute
   RolesRoleIdEditRoute: typeof RolesRoleIdEditRoute
   UsersUserIdEditRoute: typeof UsersUserIdEditRoute
 }
@@ -229,20 +228,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/customers/': {
-      id: '/customers/'
-      path: '/customers'
-      fullPath: '/customers/'
-      preLoaderRoute: typeof CustomersIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/customers/new': {
-      id: '/customers/new'
-      path: '/customers/new'
-      fullPath: '/customers/new'
-      preLoaderRoute: typeof CustomersNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/logs/': {
       id: '/logs/'
       path: '/logs'
@@ -255,6 +240,20 @@ declare module '@tanstack/react-router' {
       path: '/logs/$logId'
       fullPath: '/logs/$logId'
       preLoaderRoute: typeof LogsLogIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/patients/': {
+      id: '/patients/'
+      path: '/patients'
+      fullPath: '/patients/'
+      preLoaderRoute: typeof PatientsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/patients/new': {
+      id: '/patients/new'
+      path: '/patients/new'
+      fullPath: '/patients/new'
+      preLoaderRoute: typeof PatientsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/roles/': {
@@ -285,18 +284,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UsersNewRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/customers/$customerId/edit': {
-      id: '/customers/$customerId/edit'
-      path: '/customers/$customerId/edit'
-      fullPath: '/customers/$customerId/edit'
-      preLoaderRoute: typeof CustomersCustomerIdEditRouteImport
+    '/patients/$patientId/edit': {
+      id: '/patients/$patientId/edit'
+      path: '/patients/$patientId/edit'
+      fullPath: '/patients/$patientId/edit'
+      preLoaderRoute: typeof PatientsPatientIdEditRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/customers/$customerId/files': {
-      id: '/customers/$customerId/files'
-      path: '/customers/$customerId/files'
-      fullPath: '/customers/$customerId/files'
-      preLoaderRoute: typeof CustomersCustomerIdFilesRouteImport
+    '/patients/$patientId/files': {
+      id: '/patients/$patientId/files'
+      path: '/patients/$patientId/files'
+      fullPath: '/patients/$patientId/files'
+      preLoaderRoute: typeof PatientsPatientIdFilesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/roles/$roleId/edit': {
@@ -319,16 +318,16 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProfileRoute: ProfileRoute,
-  CustomersNewRoute: CustomersNewRoute,
   LogsLogIdRoute: LogsLogIdRoute,
+  PatientsNewRoute: PatientsNewRoute,
   RolesNewRoute: RolesNewRoute,
   UsersNewRoute: UsersNewRoute,
-  CustomersIndexRoute: CustomersIndexRoute,
   LogsIndexRoute: LogsIndexRoute,
+  PatientsIndexRoute: PatientsIndexRoute,
   RolesIndexRoute: RolesIndexRoute,
   UsersIndexRoute: UsersIndexRoute,
-  CustomersCustomerIdEditRoute: CustomersCustomerIdEditRoute,
-  CustomersCustomerIdFilesRoute: CustomersCustomerIdFilesRoute,
+  PatientsPatientIdEditRoute: PatientsPatientIdEditRoute,
+  PatientsPatientIdFilesRoute: PatientsPatientIdFilesRoute,
   RolesRoleIdEditRoute: RolesRoleIdEditRoute,
   UsersUserIdEditRoute: UsersUserIdEditRoute,
 }

@@ -26,10 +26,10 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', to: '/', icon: LayoutDashboard },
   { label: 'Users', to: '/users', icon: Users, permission: 'users:read' },
   {
-    label: 'Customers',
-    to: '/customers',
+    label: 'Patients',
+    to: '/patients',
     icon: UsersRound,
-    permission: 'customers:read',
+    permission: 'patients:read',
   },
   { label: 'Roles', to: '/roles', icon: Shield, permission: 'roles:read' },
   { label: 'Audit log', to: '/logs', icon: ClipboardList, permission: 'logs:read' },

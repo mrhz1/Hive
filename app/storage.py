@@ -1,9 +1,9 @@
-"""Filesystem storage for customer documents.
+"""Filesystem storage for patient documents.
 
 Hive holds the metadata; the bytes live here. The layout is
-    <FILE_STORAGE_DIR>/<customer_id>/<file_id>_<sanitized_name>
+    <FILE_STORAGE_DIR>/<patient_id>/<file_id>_<sanitized_name>
 so a file is locatable from its row, collisions are impossible (the id is
-unique), and one customer's documents can be removed as a unit.
+unique), and one patient's documents can be removed as a unit.
 """
 import mimetypes
 import os
@@ -18,7 +18,7 @@ log = get_logger(__name__)
 
 # Configuration, not an environment check: on Cloudera AI point this at a
 # project or mounted path.
-STORAGE_ROOT = Path(os.environ.get("FILE_STORAGE_DIR", "storage/customer_files"))
+STORAGE_ROOT = Path(os.environ.get("FILE_STORAGE_DIR", "storage/patient_files"))
 
 # Uploads arrive from a user-chosen folder, so names are arbitrary. Only
 # these characters survive sanitisation.
@@ -65,20 +65,20 @@ def guess_mime_type(name: str, provided: str | None) -> str:
     return guessed or "application/octet-stream"
 
 
-def customer_dir(customer_id: str) -> Path:
-    return STORAGE_ROOT / customer_id
+def patient_dir(patient_id: str) -> Path:
+    return STORAGE_ROOT / patient_id
 
 
-def write_file(customer_id: str, file_id: str, sanitized_name: str, data: bytes) -> Path:
+def write_file(patient_id: str, file_id: str, sanitized_name: str, data: bytes) -> Path:
     """Writes the bytes and returns the path recorded in Hive."""
-    directory = customer_dir(customer_id)
+    directory = patient_dir(patient_id)
     directory.mkdir(parents=True, exist_ok=True)
 
     target = directory / f"{file_id}_{sanitized_name}"
     target.write_bytes(data)
     log.info(
         "file_stored",
-        customer_id=customer_id,
+        patient_id=patient_id,
         file_id=file_id,
         path=str(target),
         bytes=len(data),

@@ -1,8 +1,8 @@
-"""Customer document endpoints.
+"""Patient document endpoints.
 
-Access is gated on the customers permissions rather than a new model:
-these files belong to a customer, so anyone who may read a customer may
-read their documents, and uploading/removing is a customers:update.
+Access is gated on the patients permissions rather than a new model:
+these files belong to a patient, so anyone who may read a patient may
+read their documents, and uploading/removing is a patients:update.
 That keeps existing roles working unchanged.
 """
 import uuid
@@ -11,13 +11,13 @@ from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse
 
-from app.crud import customer_files as crud
-from app.crud import customers as customers_crud
+from app.crud import patient_files as crud
+from app.crud import patients as patients_crud
 from app.db import get_cursor
 from app.deid import run_deidentification
 from app.errors import ValidationError
 from app.logging_setup import get_logger
-from app.schemas import CustomerFile, CustomerFileUpdate, User
+from app.schemas import PatientFile, PatientFileUpdate, User
 from app.security import require_permission
 from app.storage import (
     delete_file as remove_from_disk,
@@ -30,34 +30,34 @@ from app.storage import (
 
 log = get_logger(__name__)
 
-router = APIRouter(tags=["customer-files"])
+router = APIRouter(tags=["patient-files"])
 
 # A folder upload can contain anything; refuse implausible sizes rather
 # than reading them into memory.
 MAX_FILE_BYTES = 50 * 1024 * 1024
 
 
-@router.get("/customers/{customer_id}/files", response_model=List[CustomerFile])
-def list_customer_files(
-    customer_id: str,
+@router.get("/patients/{patient_id}/files", response_model=List[PatientFile])
+def list_patient_files(
+    patient_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("customers:read")),
+    _actor: User = Depends(require_permission("patients:read")),
 ):
-    # 404 on an unknown customer rather than an empty list, so a wrong id
-    # is distinguishable from a customer with no documents.
-    customers_crud.get_customer_or_404(cursor, customer_id)
-    return crud.list_files(cursor, customer_id)
+    # 404 on an unknown patient rather than an empty list, so a wrong id
+    # is distinguishable from a patient with no documents.
+    patients_crud.get_patient_or_404(cursor, patient_id)
+    return crud.list_files(cursor, patient_id)
 
 
 @router.post(
-    "/customers/{customer_id}/files", response_model=List[CustomerFile], status_code=201
+    "/patients/{patient_id}/files", response_model=List[PatientFile], status_code=201
 )
-async def upload_customer_files(
-    customer_id: str,
+async def upload_patient_files(
+    patient_id: str,
     files: List[UploadFile] = File(...),
     description: Optional[str] = Form(default=None),
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("customers:update")),
+    _actor: User = Depends(require_permission("patients:update")),
 ):
     """Accepts many files at once -- the client sends a whole folder.
 
@@ -65,12 +65,12 @@ async def upload_customer_files(
     failed write never leaves a row pointing at nothing. The reverse
     (orphaned bytes with no row) is recoverable; a dangling row is not.
     """
-    customers_crud.get_customer_or_404(cursor, customer_id)
+    patients_crud.get_patient_or_404(cursor, patient_id)
 
     if not files:
         raise ValidationError("No files were uploaded")
 
-    created: List[CustomerFile] = []
+    created: List[PatientFile] = []
 
     for upload in files:
         raw_name = upload.filename or "file"
@@ -89,12 +89,12 @@ async def upload_customer_files(
 
         sanitized = sanitize_filename(raw_name)
         record_id = str(uuid.uuid4())
-        stored_path = write_file(customer_id, record_id, sanitized, data)
+        stored_path = write_file(patient_id, record_id, sanitized, data)
 
         created.append(
             crud.create_file(
                 cursor,
-                customer_id=customer_id,
+                patient_id=patient_id,
                 original_file_name=raw_name,
                 sanitized_file_name=sanitized,
                 file_extension=file_extension(raw_name),
@@ -109,25 +109,25 @@ async def upload_customer_files(
     if not created:
         raise ValidationError("None of the selected files contained any data")
 
-    log.info("customer_files_uploaded", customer_id=customer_id, count=len(created))
+    log.info("patient_files_uploaded", patient_id=patient_id, count=len(created))
     return created
 
 
-@router.get("/files/{file_id}", response_model=CustomerFile)
-def get_customer_file(
+@router.get("/files/{file_id}", response_model=PatientFile)
+def get_patient_file(
     file_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("customers:read")),
+    _actor: User = Depends(require_permission("patients:read")),
 ):
     return crud.get_file_or_404(cursor, file_id)
 
 
 @router.get("/files/{file_id}/content")
-def download_customer_file(
+def download_patient_file(
     file_id: str,
     deidentified: bool = False,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("customers:read")),
+    _actor: User = Depends(require_permission("patients:read")),
 ):
     """Serves the bytes.
 
@@ -157,13 +157,13 @@ def download_customer_file(
     )
 
 
-@router.post("/files/{file_id}/deidentify", response_model=CustomerFile)
-def deidentify_customer_file(
+@router.post("/files/{file_id}/deidentify", response_model=PatientFile)
+def deidentify_patient_file(
     file_id: str,
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("customers:update")),
+    _actor: User = Depends(require_permission("patients:update")),
 ):
     """Queues OCR + PII redaction for one file.
 
@@ -187,7 +187,7 @@ def deidentify_customer_file(
     # Marked before the task starts so the UI reflects it on the very next
     # read, rather than looking like nothing happened.
     updated = crud.update_file(
-        cursor, file_id, CustomerFileUpdate(deid_status="processing")
+        cursor, file_id, PatientFileUpdate(deid_status="processing")
     )
 
     background.add_task(
@@ -196,25 +196,25 @@ def deidentify_customer_file(
         request_id=request.headers.get("X-Request-ID"),
     )
 
-    log.info("deid_queued", file_id=file_id, customer_id=record.customer_id)
+    log.info("deid_queued", file_id=file_id, patient_id=record.patient_id)
     return updated
 
 
-@router.put("/files/{file_id}", response_model=CustomerFile)
-def update_customer_file(
+@router.put("/files/{file_id}", response_model=PatientFile)
+def update_patient_file(
     file_id: str,
-    payload: CustomerFileUpdate,
+    payload: PatientFileUpdate,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("customers:update")),
+    _actor: User = Depends(require_permission("patients:update")),
 ):
     return crud.update_file(cursor, file_id, payload)
 
 
 @router.delete("/files/{file_id}", status_code=204)
-def delete_customer_file(
+def delete_patient_file(
     file_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("customers:update")),
+    _actor: User = Depends(require_permission("patients:update")),
 ):
     record = crud.delete_file(cursor, file_id)
     # Row first, bytes after: an orphaned file on disk is harmless, a row

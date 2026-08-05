@@ -2,21 +2,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { createCrudHooks, errorMessage } from './createCrudHooks'
 import {
-  customerFilesApi,
-  customersApi,
+  patientFilesApi,
+  patientsApi,
   logsApi,
   rolesApi,
   usersApi,
 } from '@/lib/api/resources'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AuditLogFilters } from '@/schemas/log'
-import type { CustomerFormValues } from '@/schemas/customer'
+import type { PatientFormValues } from '@/schemas/patient'
 import type { RoleFormValues } from '@/schemas/role'
 import type { UserFormValues } from '@/schemas/user'
-import type { Customer, Role, User } from '@/lib/api/resources'
+import type { Patient, Role, User } from '@/lib/api/resources'
 
 /**
- * Writes to users and customers produce audit rows in the background, so
+ * Writes to users and patients produce audit rows in the background, so
  * those mutations also invalidate the logs cache -- otherwise the audit
  * page would keep showing a stale list after a change made elsewhere in
  * the app.
@@ -28,10 +28,10 @@ export const userHooks = createCrudHooks<User, UserFormValues>({
   alsoInvalidate: [queryKeys.logs.all],
 })
 
-export const customerHooks = createCrudHooks<Customer, CustomerFormValues>({
-  api: customersApi,
-  keys: queryKeys.customers,
-  label: 'Customer',
+export const patientHooks = createCrudHooks<Patient, PatientFormValues>({
+  api: patientsApi,
+  keys: queryKeys.patients,
+  label: 'Patient',
   alsoInvalidate: [queryKeys.logs.all],
 })
 
@@ -48,26 +48,26 @@ export const roleHooks = createCrudHooks<Role, RoleFormValues>({
 })
 
 /**
- * Customer documents. Not built on createCrudHooks: uploads are
+ * Patient documents. Not built on createCrudHooks: uploads are
  * multipart and produce many records from one request, which does not
  * fit the single-entity create/update shape.
  */
-export function useCustomerFiles(customerId: string | undefined, enabled = true) {
+export function usePatientFiles(patientId: string | undefined, enabled = true) {
   return useQuery({
-    queryKey: queryKeys.customerFiles.list(customerId ?? ''),
-    queryFn: () => customerFilesApi.list(customerId as string),
-    enabled: Boolean(customerId) && enabled,
+    queryKey: queryKeys.patientFiles.list(patientId ?? ''),
+    queryFn: () => patientFilesApi.list(patientId as string),
+    enabled: Boolean(patientId) && enabled,
   })
 }
 
-export function useUploadCustomerFiles(customerId: string) {
+export function useUploadPatientFiles(patientId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ files, description }: { files: File[]; description?: string }) =>
-      customerFilesApi.upload(customerId, files, description),
+      patientFilesApi.upload(patientId, files, description),
     onSuccess: (created) => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.customerFiles.list(customerId),
+        queryKey: queryKeys.patientFiles.list(patientId),
       })
       toast.success(
         created.length === 1 ? '1 file uploaded' : `${created.length} files uploaded`
@@ -80,27 +80,27 @@ export function useUploadCustomerFiles(customerId: string) {
 }
 
 /**
- * Upload where the customer id is only known at call time.
+ * Upload where the patient id is only known at call time.
  *
- * The customer form needs this: on create there is no id until the record
+ * The patient form needs this: on create there is no id until the record
  * has been saved, so the files are staged in the form and sent once the
- * customer exists.
+ * patient exists.
  */
-export function useUploadFilesForCustomer() {
+export function useUploadFilesForPatient() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({
-      customerId,
+      patientId,
       files,
       description,
     }: {
-      customerId: string
+      patientId: string
       files: File[]
       description?: string
-    }) => customerFilesApi.upload(customerId, files, description),
+    }) => patientFilesApi.upload(patientId, files, description),
     onSuccess: (created, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.customerFiles.list(variables.customerId),
+        queryKey: queryKeys.patientFiles.list(variables.patientId),
       })
       toast.success(
         created.length === 1 ? '1 file uploaded' : `${created.length} files uploaded`
@@ -117,13 +117,13 @@ export function useUploadFilesForCustomer() {
  * so the list is invalidated to pick up 'processing' immediately; the
  * finished state appears on the next refresh.
  */
-export function useDeidentifyFile(customerId: string) {
+export function useDeidentifyFile(patientId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (fileId: string) => customerFilesApi.deidentify(fileId),
+    mutationFn: (fileId: string) => patientFilesApi.deidentify(fileId),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.customerFiles.list(customerId),
+        queryKey: queryKeys.patientFiles.list(patientId),
       })
       toast.success('De-identification started', {
         description: 'Refresh in a moment to see the redacted copy.',
@@ -135,13 +135,13 @@ export function useDeidentifyFile(customerId: string) {
   })
 }
 
-export function useDeleteCustomerFile(customerId: string) {
+export function useDeletePatientFile(patientId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (fileId: string) => customerFilesApi.remove(fileId),
+    mutationFn: (fileId: string) => patientFilesApi.remove(fileId),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.customerFiles.list(customerId),
+        queryKey: queryKeys.patientFiles.list(patientId),
       })
       toast.success('File deleted')
     },

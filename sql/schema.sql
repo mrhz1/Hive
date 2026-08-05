@@ -43,27 +43,70 @@ CREATE TABLE `users` (
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
-DROP TABLE IF EXISTS `customers`;
+DROP TABLE IF EXISTS `patients`;
 
--- Same shape as `users` minus `username`, plus `phone_number`/`address`.
--- Customers carry no role_id: roles govern API callers (users), and
--- customers are not API callers.
-CREATE TABLE `customers` (
+-- Patients carry no role_id: roles govern API callers (users), and
+-- patients are not API callers.
+--
+-- Naming follows the source records:
+--   p*  / unprefixed address+phone -- the provider / institution the
+--                                     patient is registered with
+--   pt*                            -- the patient's own contact details
+--   fstname / lstname              -- the patient's name
+--   dt_reg / dt_b / dt_d           -- registration, birth, death
+--
+-- original_file_path / deidentified_file_path point at the patient's
+-- source document; per-document rows live in `patient_files`.
+--
+-- Every column is nullable here, because these records are ingested
+-- from systems that do not always populate them. The API requires only
+-- two things: original_file_path, and at least one of fstname / lstname
+-- / ptemail so the row can be recognised. Hive has no CHECK constraints,
+-- so both rules are enforced in app/schemas.py and app/crud/patients.py.
+CREATE TABLE `patients` (
   `id` STRING,
-  `email` STRING,
-  `first_name` STRING,
-  `last_name` STRING,
-  `phone_number` STRING,
-  `address` STRING,
+  `instcode` STRING,
+  `pname` STRING,
+  `pemail` STRING,
+  `phone1` STRING,
+  `phone2` STRING,
+  `wphone1` STRING,
+  `wphone2` STRING,
+  `street` STRING,
+  `street2` STRING,
+  `street3` STRING,
+  `city` STRING,
+  `state` STRING,
+  `zip` STRING,
+  `country` STRING,
+  `fstname` STRING,
+  `lstname` STRING,
+  `ptemail` STRING,
+  `ptphone` STRING,
+  `ptphone2` STRING,
+  `ptwphone` STRING,
+  `ptwphone2` STRING,
+  `ptstreet` STRING,
+  `ptstreet2` STRING,
+  `ptstreet3` STRING,
+  `ptcity` STRING,
+  `ptstate` STRING,
+  `ptzip` STRING,
+  `ptcountry` STRING,
+  `dt_reg` DATE,
+  `dt_b` DATE,
+  `dt_d` DATE,
+  `original_file_path` STRING,
+  `deidentified_file_path` STRING,
   `status` STRING,
   `is_active` BOOLEAN,
   `created_at` TIMESTAMP
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
-DROP TABLE IF EXISTS `customer_files`;
+DROP TABLE IF EXISTS `patient_files`;
 
--- Documents belonging to a customer.
+-- Documents belonging to a patient.
 --
 -- Hive holds only metadata; the bytes live on the filesystem under
 -- FILE_STORAGE_DIR, with `file_path` pointing at them. Storing binaries
@@ -74,9 +117,9 @@ DROP TABLE IF EXISTS `customer_files`;
 --   deid_status  'pending' -> 'processing' -> 'done' | 'failed'
 --   is_identified TRUE while the file still contains identifiers
 --   deidentified_file_name / _path are NULL until a redacted copy exists
-CREATE TABLE `customer_files` (
+CREATE TABLE `patient_files` (
   `id` STRING,
-  `customer_id` STRING,
+  `patient_id` STRING,
   `original_file_name` STRING,
   `sanitized_file_name` STRING,
   `deidentified_file_name` STRING,
@@ -99,7 +142,7 @@ DROP TABLE IF EXISTS `audit_log`;
 --   CREATE -> old_values NULL, new_values populated
 --   UPDATE -> both populated
 --   DELETE -> old_values populated, new_values NULL
--- entity_type is the model name ('user', 'customer').
+-- entity_type is the model name ('user', 'patient').
 CREATE TABLE `audit_log` (
   `id` STRING,
   `action` STRING,

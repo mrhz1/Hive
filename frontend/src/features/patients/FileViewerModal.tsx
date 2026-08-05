@@ -1,7 +1,7 @@
 import { Download, X } from 'lucide-react'
 import { useEffect } from 'react'
 import { Button } from '@/components/ui/Button'
-import { formatFileSize, type CustomerFile } from '@/schemas/customerFile'
+import { formatFileSize, type PatientFile } from '@/schemas/patientFile'
 
 /**
  * In-app document viewer.
@@ -19,7 +19,7 @@ export function FileViewerModal({
   isDeidentified,
   onClose,
 }: {
-  file: CustomerFile
+  file: PatientFile
   blobUrl: string
   isDeidentified: boolean
   onClose: () => void

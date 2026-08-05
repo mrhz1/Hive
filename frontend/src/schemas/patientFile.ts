@@ -4,10 +4,10 @@ import { idSchema, timestampSchema } from './common'
 export const DEID_STATUSES = ['pending', 'processing', 'done', 'failed'] as const
 export type DeidStatus = (typeof DEID_STATUSES)[number]
 
-/** Mirrors app/schemas.py::CustomerFile. */
-export const customerFileSchema = z.object({
+/** Mirrors app/schemas.py::PatientFile. */
+export const patientFileSchema = z.object({
   id: idSchema,
-  customer_id: idSchema,
+  patient_id: idSchema,
   original_file_name: z.string(),
   sanitized_file_name: z.string(),
   deidentified_file_name: z.string().nullable().optional(),
@@ -24,9 +24,9 @@ export const customerFileSchema = z.object({
   deidentified_file_path: z.string().nullable().optional(),
 })
 
-export type CustomerFile = z.infer<typeof customerFileSchema>
+export type PatientFile = z.infer<typeof patientFileSchema>
 
-export const customerFileListSchema = z.array(customerFileSchema)
+export const patientFileListSchema = z.array(patientFileSchema)
 
 /** Human-readable size for the table. */
 export function formatFileSize(bytes: number): string {

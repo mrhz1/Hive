@@ -10,7 +10,7 @@ Cloudera AI. No DuckDB/SQLite substitution.
 make up      # docker compose up -d -- first run takes 1-2 min (embedded
              # Derby metastore init). Needs ~4GB RAM available to Docker.
 make check   # poll until SHOW DATABASES succeeds
-make init    # apply sql/schema.sql, seed roles/users/customers.
+make init    # apply sql/schema.sql, seed roles/users/patients.
              # PRINTS THE admin + viewer USER IDS -- copy them, they are
              # the X-User-Id values the API authenticates with.
 make verify  # prove INSERT/SELECT/DELETE (ACID) works on ORC
@@ -43,12 +43,13 @@ Interactive docs at `http://localhost:8100/docs` once `make run` is up.
 |---|---|
 | `roles` | `id`, `name`, `permissions ARRAY<STRING>` |
 | `users` | `role_id` FK to roles; reads join in `role_name` + `permissions` |
-| `customers` | users minus `username`, plus `phone_number`/`address`; no role |
+| `patients` | `fstname`/`lstname` + provider (`p*`) and patient (`pt*`) contact blocks, `dt_reg`/`dt_b`/`dt_d` DATEs; no role |
+| `patient_files` | one row per uploaded document; bytes live under `FILE_STORAGE_DIR` |
 | `audit_log` | append-only; `old_values`/`new_values` are JSON-in-STRING |
 
 ### Endpoints
 
-`/users`, `/customers`, `/roles` each expose POST / GET (list) / GET
+`/users`, `/patients`, `/roles` each expose POST / GET (list) / GET
 `{id}` / PUT `{id}` / DELETE `{id}`. `/logs` exposes POST / GET (list,
 filterable by `entity_type`, `entity_id`, `limit`) / GET `{id}` -- no
 update or delete, because an audit trail you can rewrite is not an audit
@@ -58,7 +59,7 @@ trail.
 
 Every endpoint except `/health` requires an `X-User-Id` header naming an
 active user, and the permission `<model>:<action>` (e.g. `users:read`,
-`customers:delete`) on that user's role. Missing/unknown user -> 401;
+`patients:delete`) on that user's role. Missing/unknown user -> 401;
 missing grant -> 403.
 
 **`X-User-Id` is a deliberate local stand-in.** No auth scheme was
@@ -76,7 +77,7 @@ curl -H "X-User-Id: <admin-id>" http://localhost:8100/users
 
 ### Audit logging
 
-Writes to users and customers record a CREATE/UPDATE/DELETE entry.
+Writes to users and patients record a CREATE/UPDATE/DELETE entry.
 Convention: CREATE has `old_values` null, DELETE has `new_values` null,
 UPDATE has both. Roles are **not** audited (not requested -- say the word
 and it's a three-line addition).

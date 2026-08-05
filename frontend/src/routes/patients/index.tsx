@@ -10,80 +10,102 @@ import { Badge, PageHeader } from '@/components/ui/Misc'
 import { usePermissions } from '@/hooks/useCurrentUser'
 import { useDeleteDialog } from '@/hooks/useDeleteDialog'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
-import { customerHooks } from '@/hooks/useResources'
-import type { Customer } from '@/schemas/customer'
+import { patientHooks } from '@/hooks/useResources'
+import { patientName, type Patient } from '@/schemas/patient'
 
-const columns: Array<Column<Customer>> = [
+/** Most patient columns are nullable; render a dash, not an empty cell. */
+function Muted({ value }: { value: string | null | undefined }) {
+  return <span className="text-[rgb(var(--foreground-muted))]">{value || '—'}</span>
+}
+
+const columns: Array<Column<Patient>> = [
   // Combined for the same reason as the users table -- see the note there.
   {
     id: 'name',
     header: 'Name',
-    cell: (c) => `${c.first_name} ${c.last_name}`,
-    sortValue: (c) => `${c.first_name} ${c.last_name}`,
+    cell: (p) => patientName(p),
+    sortValue: (p) => patientName(p),
   },
-  { id: 'email', header: 'Email', cell: (c) => c.email, sortValue: (c) => c.email },
   {
-    id: 'phone',
+    id: 'dt_b',
+    header: 'Date of birth',
+    cell: (p) => <Muted value={p.dt_b} />,
+    sortValue: (p) => p.dt_b ?? '',
+  },
+  {
+    id: 'ptemail',
+    header: 'Email',
+    cell: (p) => <Muted value={p.ptemail} />,
+    sortValue: (p) => p.ptemail ?? '',
+  },
+  {
+    id: 'ptphone',
     header: 'Phone',
-    cell: (c) => c.phone_number,
-    sortValue: (c) => c.phone_number,
+    cell: (p) => <Muted value={p.ptphone} />,
+    sortValue: (p) => p.ptphone ?? '',
   },
   {
-    id: 'address',
-    header: 'Address',
-    cell: (c) => (
-      <span className="text-[rgb(var(--foreground-muted))]">{c.address || '—'}</span>
-    ),
-    sortValue: (c) => c.address,
+    id: 'instcode',
+    header: 'Institution',
+    cell: (p) => <Muted value={p.instcode || p.pname} />,
+    sortValue: (p) => p.instcode ?? '',
   },
   {
     id: 'status',
     header: 'Status',
-    cell: (c) => (
-      <Badge tone={c.is_active ? 'success' : 'danger'}>
-        {c.is_active || c.status === 'inactive' ? c.status : `${c.status} (inactive)`}
+    cell: (p) => (
+      <Badge tone={p.is_active ? 'success' : 'danger'}>
+        {p.is_active || p.status === 'inactive' ? p.status : `${p.status} (inactive)`}
       </Badge>
     ),
-    sortValue: (c) => c.status,
+    sortValue: (p) => p.status,
   },
 ]
 
-function CustomersList() {
-  useDocumentTitle('Customers')
+function PatientsList() {
+  useDocumentTitle('Patients')
 
   const navigate = useNavigate()
   const { can } = usePermissions()
   const [search, setSearch] = useState('')
 
-  const { data, isLoading, isFetching, error } = customerHooks.useList()
-  const remove = customerHooks.useRemove()
+  const { data, isLoading, isFetching, error } = patientHooks.useList()
+  const remove = patientHooks.useRemove()
 
-  const deleteDialog = useDeleteDialog<Customer>((customer) =>
-    remove.mutateAsync(customer.id)
+  const deleteDialog = useDeleteDialog<Patient>((patient) =>
+    remove.mutateAsync(patient.id)
   )
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
     if (!term) return data
-    return (data ?? []).filter((customer) =>
-      [customer.first_name, customer.last_name, customer.email, customer.phone_number]
+    return (data ?? []).filter((patient) =>
+      [
+        patient.fstname,
+        patient.lstname,
+        patient.ptemail,
+        patient.ptphone,
+        patient.instcode,
+        patient.pname,
+      ]
+        .filter(Boolean)
         .join(' ')
         .toLowerCase()
         .includes(term)
     )
   }, [data, search])
 
-  const canModify = can('customers:update') || can('customers:delete')
+  const canModify = can('patients:update') || can('patients:delete')
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Customer Management"
-        description="Customer records held in Hive."
+        title="Patient Management"
+        description="Patient records held in Hive."
         actions={
-          <Can permission="customers:create">
-            <Button onClick={() => void navigate({ to: '/customers/new' })}>
-              Add Customer
+          <Can permission="patients:create">
+            <Button onClick={() => void navigate({ to: '/patients/new' })}>
+              Add Patient
             </Button>
           </Can>
         }
@@ -94,33 +116,33 @@ function CustomersList() {
           label="Search"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search by name, email or phone..."
-          aria-label="Search customers"
+          placeholder="Search by name, email, phone or institution..."
+          aria-label="Search patients"
         />
       </div>
 
       <DataTable
         data={filtered}
         columns={columns}
-        getRowId={(customer) => customer.id}
+        getRowId={(patient) => patient.id}
         isLoading={isLoading}
         isFetching={isFetching}
         error={error}
-        loadingLabel="Loading customers"
-        emptyMessage="No customers found."
-        rowActions={(customer) => (
+        loadingLabel="Loading patients"
+        emptyMessage="No patients found."
+        rowActions={(patient) => (
           <>
-            {/* Files is available to anyone who can read customers, so
+            {/* Files is available to anyone who can read patients, so
                 this column renders even for a read-only role. */}
             <Button
               size="sm"
               variant="secondary"
-              aria-label={`Files for ${customer.email}`}
+              aria-label={`Files for ${patientName(patient)}`}
               leadingIcon={<FileText className="size-3.5" aria-hidden="true" />}
               onClick={() =>
                 void navigate({
-                  to: '/customers/$customerId/files',
-                  params: { customerId: customer.id },
+                  to: '/patients/$patientId/files',
+                  params: { patientId: patient.id },
                 })
               }
             >
@@ -128,26 +150,26 @@ function CustomersList() {
             </Button>
             {canModify ? (
               <>
-                <Can permission="customers:update">
+                <Can permission="patients:update">
                   <Button
                     size="sm"
-                    aria-label={`Edit ${customer.email}`}
+                    aria-label={`Edit ${patientName(patient)}`}
                     onClick={() =>
                       void navigate({
-                        to: '/customers/$customerId/edit',
-                        params: { customerId: customer.id },
+                        to: '/patients/$patientId/edit',
+                        params: { patientId: patient.id },
                       })
                     }
                   >
                     Edit
                   </Button>
                 </Can>
-                <Can permission="customers:delete">
+                <Can permission="patients:delete">
                   <Button
                     size="sm"
                     variant="danger"
-                    aria-label={`Delete ${customer.email}`}
-                    onClick={() => deleteDialog.request(customer)}
+                    aria-label={`Delete ${patientName(patient)}`}
+                    onClick={() => deleteDialog.request(patient)}
                   >
                     Delete
                   </Button>
@@ -160,12 +182,8 @@ function CustomersList() {
 
       <ConfirmDeleteModal
         open={deleteDialog.isOpen}
-        entityLabel="Customer"
-        targetName={
-          deleteDialog.target
-            ? `${deleteDialog.target.first_name} ${deleteDialog.target.last_name}`
-            : undefined
-        }
+        entityLabel="Patient"
+        targetName={deleteDialog.target ? patientName(deleteDialog.target) : undefined}
         isDeleting={deleteDialog.isDeleting}
         onCancel={deleteDialog.cancel}
         onConfirm={() => void deleteDialog.confirm()}
@@ -174,10 +192,10 @@ function CustomersList() {
   )
 }
 
-export const Route = createFileRoute('/customers/')({
+export const Route = createFileRoute('/patients/')({
   component: () => (
-    <RequirePermission permission="customers:read">
-      <CustomersList />
+    <RequirePermission permission="patients:read">
+      <PatientsList />
     </RequirePermission>
   ),
 })
