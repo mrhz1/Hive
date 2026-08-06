@@ -2,7 +2,7 @@ import { FolderUp, X } from 'lucide-react'
 import { useRef } from 'react'
 import { Button } from '@/components/ui/Button'
 import { folderPathFromFiles } from '@/lib/folderPath'
-import { formatFileSize } from '@/schemas/patientFile'
+import { formatFileSize } from '@/schemas/applicationFile'
 
 /**
  * A path column filled in by choosing a folder rather than by typing.

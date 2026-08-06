@@ -40,7 +40,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.crud import patient_files as crud  # noqa: E402
+from app.crud import patient_application_files as crud  # noqa: E402
 from app.db import hive_cursor  # noqa: E402
 from app.deid import run_deidentification  # noqa: E402
 from app.logging_setup import configure_logging, get_logger  # noqa: E402
@@ -76,7 +76,8 @@ def parse_args(argv=None):
         help=(
             "Also pick up rows stuck in 'processing' whose file was "
             "uploaded this many minutes ago (0 = never). Guards against a "
-            "run that died mid-file. NOTE: patient_files has no "
+            "run that died mid-file. NOTE: patient_application_files "
+            "has no "
             "updated_at column, so this measures age since upload, not "
             "since the row was claimed -- set it comfortably longer than "
             "a run takes, or a file uploaded yesterday will be re-claimed "

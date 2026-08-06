@@ -31,13 +31,13 @@ COLUMNS = (
     "submitted_by_id",
     "reviewed_by_id",
     "status",
+    "submitted_at",
+    "reviewed_at",
+    "created_at",
+    "updated_at",
     "description",
     "created_by_id",
     "updated_by_id",
-    "submitted_at",
-    "created_at",
-    "updated_at",
-    "reviewed_at",
 )
 
 # Hive will not implicitly cast a bound STRING parameter into a TIMESTAMP

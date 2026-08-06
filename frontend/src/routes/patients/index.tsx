@@ -1,12 +1,11 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { FileText } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { DataTable, type Column } from '@/components/DataTable'
 import { Can, RequirePermission } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/Field'
-import { Badge, PageHeader } from '@/components/ui/Misc'
+import { PageHeader } from '@/components/ui/Misc'
 import { usePermissions } from '@/hooks/useCurrentUser'
 import { useDeleteDialog } from '@/hooks/useDeleteDialog'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
@@ -49,16 +48,6 @@ const columns: Array<Column<Patient>> = [
     header: 'Institution',
     cell: (p) => <Muted value={p.instcode || p.pname} />,
     sortValue: (p) => p.instcode ?? '',
-  },
-  {
-    id: 'status',
-    header: 'Status',
-    cell: (p) => (
-      <Badge tone={p.is_active ? 'success' : 'danger'}>
-        {p.is_active || p.status === 'inactive' ? p.status : `${p.status} (inactive)`}
-      </Badge>
-    ),
-    sortValue: (p) => p.status,
   },
 ]
 
@@ -132,22 +121,9 @@ function PatientsList() {
         emptyMessage="No patients found."
         rowActions={(patient) => (
           <>
-            {/* Files is available to anyone who can read patients, so
-                this column renders even for a read-only role. */}
-            <Button
-              size="sm"
-              variant="secondary"
-              aria-label={`Files for ${patientName(patient)}`}
-              leadingIcon={<FileText className="size-3.5" aria-hidden="true" />}
-              onClick={() =>
-                void navigate({
-                  to: '/patients/$patientId/files',
-                  params: { patientId: patient.id },
-                })
-              }
-            >
-              Files
-            </Button>
+            {/* No Files action here any more: documents hang off an
+                application, not off the patient, so they are reached
+                through Applications rather than from this row. */}
             {canModify ? (
               <>
                 <Can permission="patient:update">

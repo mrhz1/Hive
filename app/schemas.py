@@ -115,7 +115,7 @@ _PATIENT_OPTIONAL_FIELDS = (
     "dt_reg",
     "dt_b",
     "dt_d",
-    "de_identified_file_path",
+    "deidentified_file_path",
 )
 
 # Almost every column may be unknown -- these records are ingested from
@@ -191,10 +191,10 @@ class _PatientFields(BaseModel):
     dt_d: Optional[date] = None
 
     # --- source documents recorded on the patient itself, alongside the
-    # per-document rows in `patient_files`. Optional here so a partial
-    # update need not resend it; PatientCreate makes it required.
+    # per-document rows in `patient_application_files`. Optional here so a
+    # partial update need not resend it; PatientCreate makes it required.
     original_file_path: Optional[str] = Field(default=None, min_length=1)
-    de_identified_file_path: Optional[str] = None
+    deidentified_file_path: Optional[str] = None
 
     @field_validator(*_PATIENT_OPTIONAL_FIELDS, mode="before")
     @classmethod
@@ -214,8 +214,6 @@ class _PatientFields(BaseModel):
 
 class PatientCreate(_PatientFields):
     original_file_path: str = Field(min_length=1)
-    status: str = "active"
-    is_active: bool = True
 
     @model_validator(mode="after")
     def _require_an_identifier(self) -> "PatientCreate":
@@ -228,19 +226,19 @@ class PatientCreate(_PatientFields):
 
 
 class PatientUpdate(_PatientFields):
-    status: Optional[str] = None
-    is_active: Optional[bool] = None
+    """Every field optional -- see _PatientFields.
 
-    # The identity rule is enforced against the row a partial update
-    # would produce, not against the patch alone, so it lives in
-    # crud.update_patient where the existing record is in hand.
+    The identity rule is enforced against the row a partial update would
+    produce, not against the patch alone, so it lives in
+    crud.update_patient where the existing record is in hand.
+    """
 
 
 class Patient(_PatientFields):
+    """A patient record. No status / is_active / created_at: the `patient`
+    table holds record data, and lifecycle belongs to the application."""
+
     id: str
-    status: str
-    is_active: bool
-    created_at: datetime
 
     # The read model must not reject a row Hive already holds, so the
     # email columns are plain strings here rather than EmailStr, and the
@@ -250,10 +248,7 @@ class Patient(_PatientFields):
     original_file_path: Optional[str] = None
 
 
-# ------------------------------------------------------------ audit log
-
-
-# --------------------------------------------------------- patient files
+# ---------------------------------------------- patient application files
 
 # 'pending' and 'queued' are genuinely different facts and collapsing
 # them breaks the Cloudera Job backend. A file is 'pending' from the
@@ -268,21 +263,29 @@ class Patient(_PatientFields):
 # has not yet claimed the row.
 DEID_STATUSES = ("pending", "queued", "processing", "done", "failed")
 
-# The reviewer's decision on a document, tracked separately from
-# deid_status: "the OCR job finished" and "a person accepted the result"
-# are different facts, and a file can be de-identified and still rejected.
-REVIEW_STATUSES = ("pending", "approved", "rejected")
 
-
-class PatientFile(BaseModel):
+class PatientApplicationFile(BaseModel):
     """Metadata for one stored document. The bytes live on disk under
-    FILE_STORAGE_DIR; `file_path` points at them."""
+    FILE_STORAGE_DIR; `file_path` points at them.
+
+    Documents hang off an application, not off a patient: a patient's
+    files are reached through their applications, which is what makes
+    "which submission was this uploaded for?" answerable.
+
+    There is no per-file review verdict. Approval is recorded once, on
+    the application (`patient_applications.status`) -- a reviewer accepts
+    or rejects a submission, not each page of it.
+
+    Note the two spellings of the redacted-copy columns:
+    `deidentified_file_name` against `de_identified_file_path`. That is
+    what the Cloudera metastore has; matching it exactly beats being tidy.
+    """
 
     id: str
-    patient_id: str
+    application_id: str
     original_file_name: str
     sanitized_file_name: str
-    de_identified_file_name: Optional[str] = None
+    deidentified_file_name: Optional[str] = None
     file_extension: str
     mime_type: str
     file_size: int
@@ -293,34 +296,8 @@ class PatientFile(BaseModel):
     file_path: str
     de_identified_file_path: Optional[str] = None
 
-    # --- reviewer decision
-    review_status: str = "pending"
-    review_description: Optional[str] = None
-    reviewed_by_id: Optional[str] = None
-    reviewed_at: Optional[datetime] = None
 
-
-class PatientFileReview(BaseModel):
-    """A reviewer approving or rejecting one document.
-
-    `reviewed_by_id` and `reviewed_at` are not accepted from the caller --
-    the router stamps them from the authenticated actor and the clock, so
-    a review cannot be attributed to someone else.
-    """
-
-    review_status: str = Field(pattern="^(approved|rejected)$")
-    review_description: Optional[str] = None
-
-    @model_validator(mode="after")
-    def _rejection_needs_a_reason(self) -> "PatientFileReview":
-        # An approval speaks for itself; a rejection that says nothing
-        # leaves the uploader with no idea what to fix.
-        if self.review_status == "rejected" and not (self.review_description or "").strip():
-            raise ValueError("A rejection requires a description")
-        return self
-
-
-class PatientFileUpdate(BaseModel):
+class PatientApplicationFileUpdate(BaseModel):
     """Fields the de-identification job (or a user) may set afterwards.
 
     Deliberately excludes the storage columns written at upload time --
@@ -332,8 +309,53 @@ class PatientFileUpdate(BaseModel):
         default=None, pattern="^(pending|queued|processing|done|failed)$"
     )
     is_deidentified: Optional[bool] = None
-    de_identified_file_name: Optional[str] = None
+    deidentified_file_name: Optional[str] = None
     de_identified_file_path: Optional[str] = None
+
+
+# --------------------------------------------------------- file metadata
+
+# What extraction did, kept as a value rather than inferred from an empty
+# `metadata` object: "this format carries no metadata" and "we could not
+# read it" and "we do not parse this format" are three different answers,
+# and the UI should say which.
+METADATA_STATUSES = ("ok", "unsupported", "failed")
+
+# The formats app/file_metadata.py knows how to read, by extension.
+# Everything else is recorded 'unsupported' -- a row still exists, so the
+# UI can distinguish "not extracted" from "never uploaded".
+METADATA_EXTENSIONS = {
+    "pdf": "pdf",
+    "dcm": "dicom",
+    "dicom": "dicom",
+    "doc": "word",
+    "docx": "word",
+}
+
+
+class FileMetadata(BaseModel):
+    """Extracted document metadata for one file.
+
+    `metadata` is a free-form object -- a DICOM study and a Word document
+    share almost no fields -- stored in Hive as a JSON string and parsed
+    back on read, the same convention audit_logs uses.
+    """
+
+    id: str
+    file_id: str
+    file_type: str
+    metadata: dict = Field(default_factory=dict)
+    status: str
+    error: Optional[str] = None
+    created_at: datetime
+
+
+class FileMetadataCreate(BaseModel):
+    file_id: str
+    file_type: str
+    metadata: dict = Field(default_factory=dict)
+    status: str = Field(pattern="^(ok|unsupported|failed)$")
+    error: Optional[str] = None
 
 
 # ------------------------------------------------- patient applications
@@ -383,6 +405,10 @@ class AuditLogCreate(BaseModel):
     action: str = Field(pattern="^(CREATE|UPDATE|DELETE)$")
     entity_type: str
     entity_id: str
+    # The authenticated caller. Optional because not every change has
+    # one -- the de-identification job writes results back with no user
+    # in the picture, and attributing that to somebody would be a lie.
+    user_id: Optional[str] = None
     old_values: Optional[dict] = None
     new_values: Optional[dict] = None
 
@@ -392,6 +418,7 @@ class AuditLog(BaseModel):
     action: str
     entity_type: str
     entity_id: str
+    user_id: Optional[str] = None
     # Stored in Hive as JSON-serialised STRING (ORC has no JSON type),
     # parsed back to objects on read. Dates/timestamps inside are already
     # strings by the time they land here (model_dump(mode="json")).

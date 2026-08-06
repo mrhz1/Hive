@@ -29,10 +29,10 @@ from typing import Optional
 import structlog
 
 from app.cloudera import ClouderaError, start_deid_job_run
-from app.crud import patient_files as crud
+from app.crud import patient_application_files as crud
 from app.db import hive_cursor
 from app.logging_setup import get_logger
-from app.schemas import PatientFileUpdate
+from app.schemas import PatientApplicationFileUpdate
 from app.storage import resolve_stored_path
 
 log = get_logger(__name__)
@@ -128,7 +128,7 @@ def _set_status(file_id: str, **fields) -> None:
     the main work has failed."""
     try:
         with hive_cursor() as cursor:
-            crud.update_file(cursor, file_id, PatientFileUpdate(**fields))
+            crud.update_file(cursor, file_id, PatientApplicationFileUpdate(**fields))
     except Exception as exc:  # pragma: no cover - last-resort logging
         log.error("deid_status_write_failed", file_id=file_id, error=str(exc))
 
@@ -226,7 +226,7 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
             deid_status="done",
             # The redacted copy is what no longer carries identifiers.
             is_deidentified=True,
-            de_identified_file_name=produced.name,
+            deidentified_file_name=produced.name,
             de_identified_file_path=str(produced),
         )
         log.info("deid_succeeded", file_id=file_id, output=str(produced))

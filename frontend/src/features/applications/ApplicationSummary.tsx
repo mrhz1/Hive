@@ -1,12 +1,12 @@
 import { Badge, Card, DescriptionItem } from '@/components/ui/Misc'
 import { LoadingBlock } from '@/components/ui/Spinner'
-import { usePatientFiles } from '@/hooks/useResources'
+import { useApplicationFiles } from '@/hooks/useResources'
 import { patientName, type Patient } from '@/schemas/patient'
 import {
   applicationTone,
   type PatientApplication,
 } from '@/schemas/patientApplication'
-import { formatFileSize, reviewTone } from '@/schemas/patientFile'
+import { deidTone, formatFileSize } from '@/schemas/applicationFile'
 
 /** A patient field worth showing back, and only if it has a value. */
 function Detail({ label, value }: { label: string; value: string | null | undefined }) {
@@ -27,7 +27,7 @@ export function ApplicationSummary({
   patient: Patient
   application?: PatientApplication
 }) {
-  const filesQuery = usePatientFiles(patient.id)
+  const filesQuery = useApplicationFiles(application?.id)
   const files = filesQuery.data ?? []
 
   return (
@@ -56,11 +56,10 @@ export function ApplicationSummary({
           <Detail label="Country" value={patient.ptcountry} />
           <Detail label="Institution" value={patient.instcode || patient.pname} />
           <Detail label="Registered" value={patient.dt_reg} />
-          <DescriptionItem label="Status">{patient.status}</DescriptionItem>
           <Detail label="Original file path" value={patient.original_file_path} />
           <Detail
             label="De-identified file path"
-            value={patient.de_identified_file_path}
+            value={patient.deidentified_file_path}
           />
         </dl>
       </Card>
@@ -89,12 +88,12 @@ export function ApplicationSummary({
                   </span>
                   <span className="block truncate text-xs text-[rgb(var(--foreground-muted))]">
                     {formatFileSize(file.file_size)}
-                    {file.review_description ? ` · ${file.review_description}` : ''}
+                    {file.description ? ` · ${file.description}` : ''}
                   </span>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-1.5">
-                  <Badge tone={reviewTone(file.review_status)}>
-                    {file.review_status}
+                  <Badge tone={deidTone(file.deid_status)}>
+                    {file.deid_status}
                   </Badge>
                   {file.is_deidentified ? (
                     <Badge tone="success">de-identified</Badge>

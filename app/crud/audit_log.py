@@ -15,10 +15,19 @@ from app.schemas import AuditLog, AuditLogCreate
 
 log = get_logger(__name__)
 
-_COLS = (
-    "`id`, `action`, `entity_type`, `entity_id`, "
-    "`old_values`, `new_values`, `created_at`"
+# Order must match sql/schema.sql -- Hive INSERT is positional.
+COLUMNS = (
+    "id",
+    "action",
+    "entity_type",
+    "entity_id",
+    "user_id",
+    "old_values",
+    "new_values",
+    "created_at",
 )
+
+_COLS = ", ".join(f"`{c}`" for c in COLUMNS)
 
 
 def dumps(value: Optional[dict]) -> Optional[str]:
@@ -42,15 +51,10 @@ def _loads(raw) -> Optional[dict]:
 
 
 def _row_to_audit(row) -> AuditLog:
-    return AuditLog(
-        id=row[0],
-        action=row[1],
-        entity_type=row[2],
-        entity_id=row[3],
-        old_values=_loads(row[4]),
-        new_values=_loads(row[5]),
-        created_at=row[6],
-    )
+    values = dict(zip(COLUMNS, row))
+    values["old_values"] = _loads(values["old_values"])
+    values["new_values"] = _loads(values["new_values"])
+    return AuditLog(**values)
 
 
 def create_audit_log(cursor, payload: AuditLogCreate) -> AuditLog:
@@ -58,12 +62,14 @@ def create_audit_log(cursor, payload: AuditLogCreate) -> AuditLog:
     created_at = datetime.now(timezone.utc).replace(tzinfo=None)
     execute(
         cursor,
-        f"INSERT INTO `audit_log` ({_COLS}) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        f"INSERT INTO `audit_logs` ({_COLS}) "
+        f"VALUES ({', '.join('%s' for _ in COLUMNS)})",
         (
             audit_id,
             payload.action,
             payload.entity_type,
             payload.entity_id,
+            payload.user_id,
             dumps(payload.old_values),
             dumps(payload.new_values),
             created_at.strftime("%Y-%m-%d %H:%M:%S"),
@@ -81,6 +87,7 @@ def create_audit_log(cursor, payload: AuditLogCreate) -> AuditLog:
         action=payload.action,
         entity_type=payload.entity_type,
         entity_id=payload.entity_id,
+        user_id=payload.user_id,
         old_values=payload.old_values,
         new_values=payload.new_values,
         created_at=created_at,
@@ -88,7 +95,7 @@ def create_audit_log(cursor, payload: AuditLogCreate) -> AuditLog:
 
 
 def get_audit_log(cursor, audit_id: str) -> AuditLog:
-    execute(cursor, f"SELECT {_COLS} FROM `audit_log` WHERE `id` = %s", (audit_id,))
+    execute(cursor, f"SELECT {_COLS} FROM `audit_logs` WHERE `id` = %s", (audit_id,))
     row = cursor.fetchone()
     if row is None:
         raise NotFoundError(f"Audit log '{audit_id}' not found")
@@ -109,7 +116,7 @@ def list_audit_logs(
         where.append("`entity_id` = %s")
         params.append(entity_id)
 
-    sql = f"SELECT {_COLS} FROM `audit_log`"
+    sql = f"SELECT {_COLS} FROM `audit_logs`"
     if where:
         sql += " WHERE " + " AND ".join(where)
     # limit is an int from a validated query param, not caller-controlled

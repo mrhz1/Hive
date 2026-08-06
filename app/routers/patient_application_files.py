@@ -1,9 +1,16 @@
-"""Patient document endpoints.
+"""Application document endpoints.
 
-Access is gated on the patients permissions rather than a new model:
-these files belong to a patient, so anyone who may read a patient may
-read their documents, and uploading/removing is a patient:update.
-That keeps existing roles working unchanged.
+Documents belong to an application, not to a patient directly -- so
+uploading and listing are scoped by application id, and a patient's
+documents are reached through their applications.
+
+Access is gated on the application permissions rather than a new model:
+these files are part of a submission, so anyone who may read an
+application may read its documents, and uploading/removing is an
+application:update. That keeps existing roles working unchanged.
+
+There is no per-file approve/reject here. A reviewer's verdict is
+recorded once, on the application row (PUT /applications/{id}).
 """
 import uuid
 from typing import List, Optional
@@ -11,14 +18,21 @@ from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse
 
-from app.audit import record_audit
-from app.crud import patient_files as crud
-from app.crud import patients as patients_crud
+from app.crud import file_metadata as metadata_crud
+from app.crud import patient_application_files as crud
+from app.crud import patient_applications as applications_crud
 from app.db import get_cursor
 from app.deid import dispatch_deidentification, queued_status
-from app.errors import ValidationError
+from app.errors import NotFoundError, ValidationError
+from app.file_metadata import extract
 from app.logging_setup import get_logger
-from app.schemas import PatientFile, PatientFileReview, PatientFileUpdate, User
+from app.schemas import (
+    FileMetadata,
+    FileMetadataCreate,
+    PatientApplicationFile,
+    PatientApplicationFileUpdate,
+    User,
+)
 from app.security import require_permission
 from app.storage import (
     delete_file as remove_from_disk,
@@ -31,47 +45,78 @@ from app.storage import (
 
 log = get_logger(__name__)
 
-router = APIRouter(tags=["patient-files"])
+router = APIRouter(tags=["application-files"])
 
 # A folder upload can contain anything; refuse implausible sizes rather
 # than reading them into memory.
 MAX_FILE_BYTES = 50 * 1024 * 1024
 
 
-@router.get("/patients/{patient_id}/files", response_model=List[PatientFile])
-def list_patient_files(
-    patient_id: str,
+def _record_metadata(cursor, file_id: str, path, extension: str) -> None:
+    """Extract and store metadata for one just-uploaded file.
+
+    Deliberately swallowing: the bytes are on disk and the file row
+    exists, so a metadata failure is a missing panel in the UI, not a
+    lost document. extract() already records *why* it failed on the row;
+    this catch is for the Hive write itself.
+    """
+    file_type, metadata, status, error = extract(path, extension)
+    try:
+        metadata_crud.create_metadata(
+            cursor,
+            FileMetadataCreate(
+                file_id=file_id,
+                file_type=file_type,
+                metadata=metadata,
+                status=status,
+                error=error,
+            ),
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        log.error("file_metadata_write_failed", file_id=file_id, error=str(exc))
+
+
+@router.get(
+    "/applications/{application_id}/files",
+    response_model=List[PatientApplicationFile],
+)
+def list_application_files(
+    application_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patient:view")),
+    _actor: User = Depends(require_permission("application:view")),
 ):
-    # 404 on an unknown patient rather than an empty list, so a wrong id
-    # is distinguishable from a patient with no documents.
-    patients_crud.get_patient_or_404(cursor, patient_id)
-    return crud.list_files(cursor, patient_id)
+    # 404 on an unknown application rather than an empty list, so a wrong
+    # id is distinguishable from an application with no documents.
+    applications_crud.get_application_or_404(cursor, application_id)
+    return crud.list_files(cursor, application_id)
 
 
 @router.post(
-    "/patients/{patient_id}/files", response_model=List[PatientFile], status_code=201
+    "/applications/{application_id}/files",
+    response_model=List[PatientApplicationFile],
+    status_code=201,
 )
-async def upload_patient_files(
-    patient_id: str,
+async def upload_application_files(
+    application_id: str,
     files: List[UploadFile] = File(...),
     description: Optional[str] = Form(default=None),
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patient:update")),
+    _actor: User = Depends(require_permission("application:update")),
 ):
     """Accepts many files at once -- the client sends a whole folder.
 
-    Each file is written to disk first and its row inserted after, so a
-    failed write never leaves a row pointing at nothing. The reverse
-    (orphaned bytes with no row) is recoverable; a dangling row is not.
+    Each file is written to disk first, its row inserted after, and its
+    metadata extracted last. That order is deliberate: a failed write
+    never leaves a row pointing at nothing, and metadata is derived from
+    a file that is already safely stored. The reverse (orphaned bytes
+    with no row) is recoverable; a dangling row is not.
     """
-    patients_crud.get_patient_or_404(cursor, patient_id)
+    applications_crud.get_application_or_404(cursor, application_id)
 
     if not files:
         raise ValidationError("No files were uploaded")
 
-    created: List[PatientFile] = []
+    created: List[PatientApplicationFile] = []
 
     for upload in files:
         raw_name = upload.filename or "file"
@@ -89,46 +134,72 @@ async def upload_patient_files(
             )
 
         sanitized = sanitize_filename(raw_name)
+        extension = file_extension(raw_name)
         record_id = str(uuid.uuid4())
-        stored_path = write_file(patient_id, record_id, sanitized, data)
+        stored_path = write_file(application_id, record_id, sanitized, data)
 
-        created.append(
-            crud.create_file(
-                cursor,
-                patient_id=patient_id,
-                original_file_name=raw_name,
-                sanitized_file_name=sanitized,
-                file_extension=file_extension(raw_name),
-                mime_type=guess_mime_type(raw_name, upload.content_type),
-                file_size=len(data),
-                file_path=str(stored_path),
-                description=description,
-                file_id=record_id,
-            )
+        record = crud.create_file(
+            cursor,
+            application_id=application_id,
+            original_file_name=raw_name,
+            sanitized_file_name=sanitized,
+            file_extension=extension,
+            mime_type=guess_mime_type(raw_name, upload.content_type),
+            file_size=len(data),
+            file_path=str(stored_path),
+            description=description,
+            file_id=record_id,
         )
+        _record_metadata(cursor, record.id, stored_path, extension)
+        created.append(record)
 
     if not created:
         raise ValidationError("None of the selected files contained any data")
 
-    log.info("patient_files_uploaded", patient_id=patient_id, count=len(created))
+    log.info(
+        "application_files_uploaded",
+        application_id=application_id,
+        count=len(created),
+    )
     return created
 
 
-@router.get("/files/{file_id}", response_model=PatientFile)
-def get_patient_file(
+@router.get("/files/{file_id}", response_model=PatientApplicationFile)
+def get_application_file(
     file_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patient:view")),
+    _actor: User = Depends(require_permission("application:view")),
 ):
     return crud.get_file_or_404(cursor, file_id)
 
 
+@router.get("/files/{file_id}/metadata", response_model=FileMetadata)
+def get_application_file_metadata(
+    file_id: str,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("application:view")),
+):
+    """The metadata extracted at upload time.
+
+    404 when there is no row at all, which means the file predates
+    extraction. A file whose format we do not read still *has* a row --
+    status 'unsupported' -- so the UI can tell "nothing to show" apart
+    from "never looked".
+    """
+    crud.get_file_or_404(cursor, file_id)
+
+    record = metadata_crud.get_metadata_for_file(cursor, file_id)
+    if record is None:
+        raise NotFoundError(f"No metadata recorded for file '{file_id}'")
+    return record
+
+
 @router.get("/files/{file_id}/content")
-def download_patient_file(
+def download_application_file(
     file_id: str,
     deidentified: bool = False,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patient:view")),
+    _actor: User = Depends(require_permission("application:view")),
 ):
     """Serves the bytes.
 
@@ -142,7 +213,7 @@ def download_patient_file(
         if not record.de_identified_file_path:
             raise ValidationError("This file has not been de-identified yet")
         path = resolve_stored_path(record.de_identified_file_path)
-        filename = record.de_identified_file_name or record.sanitized_file_name
+        filename = record.deidentified_file_name or record.sanitized_file_name
     else:
         path = resolve_stored_path(record.file_path)
         filename = record.sanitized_file_name
@@ -158,13 +229,13 @@ def download_patient_file(
     )
 
 
-@router.post("/files/{file_id}/deidentify", response_model=PatientFile)
-def deidentify_patient_file(
+@router.post("/files/{file_id}/deidentify", response_model=PatientApplicationFile)
+def deidentify_application_file(
     file_id: str,
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patient:update")),
+    _actor: User = Depends(require_permission("application:update")),
 ):
     """Queues OCR + PII redaction for one file.
 
@@ -194,7 +265,7 @@ def deidentify_patient_file(
     # Marked before dispatch so the UI reflects it on the very next read,
     # rather than looking like nothing happened.
     updated = crud.update_file(
-        cursor, file_id, PatientFileUpdate(deid_status=queued_status())
+        cursor, file_id, PatientApplicationFileUpdate(deid_status=queued_status())
     )
 
     background.add_task(
@@ -203,59 +274,30 @@ def deidentify_patient_file(
         request_id=request.headers.get("X-Request-ID"),
     )
 
-    log.info("deid_queued", file_id=file_id, patient_id=record.patient_id)
+    log.info("deid_queued", file_id=file_id, application_id=record.application_id)
     return updated
 
 
-@router.post("/files/{file_id}/review", response_model=PatientFile)
-def review_patient_file(
+@router.put("/files/{file_id}", response_model=PatientApplicationFile)
+def update_application_file(
     file_id: str,
-    payload: PatientFileReview,
-    background: BackgroundTasks,
-    request: Request,
+    payload: PatientApplicationFileUpdate,
     cursor=Depends(get_cursor),
-    actor: User = Depends(require_permission("application:update")),
-):
-    """Approve or reject one document.
-
-    Gated on application:update rather than patient:update -- reviewing a
-    submission is the application reviewer's job, which is not the same
-    grant as being allowed to edit patient records.
-    """
-    before = crud.get_file_or_404(cursor, file_id)
-    reviewed = crud.review_file(cursor, file_id, payload, reviewer_id=actor.id)
-
-    background.add_task(
-        record_audit,
-        action="UPDATE",
-        entity_type="patient_file",
-        entity_id=file_id,
-        old_values=before.model_dump(mode="json"),
-        new_values=reviewed.model_dump(mode="json"),
-        request_id=request.headers.get("X-Request-ID"),
-    )
-    return reviewed
-
-
-@router.put("/files/{file_id}", response_model=PatientFile)
-def update_patient_file(
-    file_id: str,
-    payload: PatientFileUpdate,
-    cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patient:update")),
+    _actor: User = Depends(require_permission("application:update")),
 ):
     return crud.update_file(cursor, file_id, payload)
 
 
 @router.delete("/files/{file_id}", status_code=204)
-def delete_patient_file(
+def delete_application_file(
     file_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patient:update")),
+    _actor: User = Depends(require_permission("application:update")),
 ):
     record = crud.delete_file(cursor, file_id)
-    # Row first, bytes after: an orphaned file on disk is harmless, a row
-    # pointing at nothing is not.
+    # Metadata next, then the bytes. Row first throughout: an orphaned
+    # file on disk is harmless, a row pointing at nothing is not.
+    metadata_crud.delete_metadata_for_files(cursor, [file_id])
     remove_from_disk(record.file_path)
     if record.de_identified_file_path:
         remove_from_disk(record.de_identified_file_path)

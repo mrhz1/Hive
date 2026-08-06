@@ -55,10 +55,11 @@ def _seed():
             _user(VIEWER_ID, "viewer", "role-viewer"),
             _user(NOBODY_ID, "nobody", "role-none"),
         ],
-        "patients": [],
-        "patient_files": [],
+        "patient": [],
         "patient_applications": [],
-        "audit_log": [],
+        "patient_application_files": [],
+        "file_metadata": [],
+        "audit_logs": [],
     }
 
 
@@ -82,6 +83,7 @@ _SELECT = re.compile(r"^SELECT (?P<cols>.+?) FROM `(?P<table>\w+)`(?P<rest>.*)$"
 _INSERT = re.compile(r"^INSERT INTO `(?P<table>\w+)` \((?P<cols>.+?)\) VALUES", re.S)
 _UPDATE = re.compile(r"^UPDATE `(?P<table>\w+)` SET (?P<sets>.+?) WHERE `(?P<key>\w+)` = %s$", re.S)
 _DELETE = re.compile(r"^DELETE FROM `(?P<table>\w+)` WHERE `(?P<key>\w+)` = %s$", re.S)
+_DELETE_IN = re.compile(r"^DELETE FROM `(?P<table>\w+)` WHERE `(?P<key>\w+)` IN \((?P<slots>[%s, ]+)\)$", re.S)
 _WHERE = re.compile(r"WHERE `(?P<col>\w+)` = %s")
 _COL = re.compile(r"`(\w+)`")
 
@@ -198,9 +200,18 @@ class FakeHiveCursor:
 
     def _delete(self, sql, params):
         match = _DELETE.match(sql)
+        if match:
+            table, key = match.group("table"), match.group("key")
+            self.store[table] = [
+                r for r in self._rows(table) if r.get(key) != params[0]
+            ]
+            return []
+
+        match = _DELETE_IN.match(sql)
         assert match, f"unparsed DELETE: {sql}"
         table, key = match.group("table"), match.group("key")
-        self.store[table] = [r for r in self._rows(table) if r.get(key) != params[0]]
+        wanted = set(params)
+        self.store[table] = [r for r in self._rows(table) if r.get(key) not in wanted]
         return []
 
 

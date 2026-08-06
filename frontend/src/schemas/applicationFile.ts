@@ -25,20 +25,25 @@ export function isDeidInFlight(status: string): boolean {
 }
 
 /**
- * The reviewer's decision, tracked separately from deid_status: "the OCR
- * job finished" and "a person accepted the result" are different facts,
- * and a file can be de-identified and still rejected.
+ * Mirrors app/schemas.py::PatientApplicationFile.
+ *
+ * Documents belong to an application, not to a patient directly -- a
+ * patient's files are reached through their applications.
+ *
+ * Note the two spellings of the redacted-copy fields:
+ * `deidentified_file_name` against `de_identified_file_path`. That is
+ * what the Cloudera metastore has, and the API passes it through
+ * unchanged rather than translating.
+ *
+ * There is no review_status here: a reviewer's verdict is recorded once,
+ * on the application row.
  */
-export const REVIEW_STATUSES = ['pending', 'approved', 'rejected'] as const
-export type ReviewStatus = (typeof REVIEW_STATUSES)[number]
-
-/** Mirrors app/schemas.py::PatientFile. */
-export const patientFileSchema = z.object({
+export const applicationFileSchema = z.object({
   id: idSchema,
-  patient_id: idSchema,
+  application_id: idSchema,
   original_file_name: z.string(),
   sanitized_file_name: z.string(),
-  de_identified_file_name: z.string().nullable().optional(),
+  deidentified_file_name: z.string().nullable().optional(),
   file_extension: z.string(),
   mime_type: z.string(),
   file_size: z.number(),
@@ -50,17 +55,11 @@ export const patientFileSchema = z.object({
   description: z.string().nullable().optional(),
   file_path: z.string(),
   de_identified_file_path: z.string().nullable().optional(),
-
-  // Reviewer decision. Permissive for the same reason as deid_status.
-  review_status: z.string(),
-  review_description: z.string().nullable().optional(),
-  reviewed_by_id: z.string().nullable().optional(),
-  reviewed_at: z.string().nullable().optional(),
 })
 
-export type PatientFile = z.infer<typeof patientFileSchema>
+export type ApplicationFile = z.infer<typeof applicationFileSchema>
 
-export const patientFileListSchema = z.array(patientFileSchema)
+export const applicationFileListSchema = z.array(applicationFileSchema)
 
 /** Colour the de-identification state so progress is scannable. */
 export function deidTone(
@@ -72,15 +71,60 @@ export function deidTone(
   return 'neutral'
 }
 
-export function reviewTone(status: string): 'success' | 'danger' | 'neutral' {
-  if (status === 'approved') return 'success'
-  if (status === 'rejected') return 'danger'
-  return 'neutral'
-}
-
 /** Human-readable size for the table. */
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// -------------------------------------------------------------- metadata
+
+/**
+ * Mirrors app/schemas.py::METADATA_STATUSES. Three different answers,
+ * kept apart because "this file has no metadata" and "we could not read
+ * it" and "we do not parse this format" mean different things to whoever
+ * is looking at the document.
+ */
+export const METADATA_STATUSES = ['ok', 'unsupported', 'failed'] as const
+export type MetadataStatus = (typeof METADATA_STATUSES)[number]
+
+/** The formats the API extracts metadata from (app/file_metadata.py). */
+const METADATA_EXTENSIONS = new Set(['pdf', 'dcm', 'dicom', 'doc', 'docx'])
+
+/**
+ * Whether asking for metadata could return anything useful.
+ *
+ * Used to disable the button rather than hide it: a greyed-out control
+ * says "not for this format", a missing one says nothing at all.
+ */
+export function hasExtractableMetadata(extension: string): boolean {
+  return METADATA_EXTENSIONS.has(extension.toLowerCase())
+}
+
+/**
+ * Mirrors app/schemas.py::FileMetadata.
+ *
+ * `metadata` is deliberately an open record of strings: a DICOM study
+ * and a Word document share almost no fields, and the API normalises
+ * every value to a string precisely so the client does not have to
+ * handle three types per field.
+ */
+export const fileMetadataSchema = z.object({
+  id: idSchema,
+  file_id: idSchema,
+  file_type: z.string(),
+  metadata: z.record(z.string(), z.string()).default({}),
+  // Permissive for the same reason as deid_status: the API owns it.
+  status: z.string(),
+  error: z.string().nullable().optional(),
+  created_at: timestampSchema,
+})
+
+export type FileMetadata = z.infer<typeof fileMetadataSchema>
+
+export function metadataTone(status: string): 'success' | 'danger' | 'neutral' {
+  if (status === 'ok') return 'success'
+  if (status === 'failed') return 'danger'
+  return 'neutral'
 }

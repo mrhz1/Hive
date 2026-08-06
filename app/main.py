@@ -14,7 +14,7 @@ from app.routers import (
     audit_log,
     me,
     patient_applications,
-    patient_files,
+    patient_application_files,
     patients,
     roles,
     users,
@@ -122,7 +122,7 @@ async def validation_error_handler(request, exc: RequestValidationError):
 app.include_router(me.router)
 app.include_router(users.router)
 app.include_router(patients.router)
-app.include_router(patient_files.router)
+app.include_router(patient_application_files.router)
 app.include_router(patient_applications.router)
 app.include_router(roles.router)
 app.include_router(audit_log.router)
