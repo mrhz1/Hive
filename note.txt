@@ -1,0 +1,84 @@
+audit_logs
+	id (string)
+	action (string)
+	entity_type (string)
+	entity_id (string)
+	user_id (string)
+	old_values (string)
+	new_values (string)
+	created_at (timestamp)
+
+
+patient_applicaiton_files
+id (string)
+application_id (string)
+original_file_name (string)
+sanitized_file_name (string)
+deidentified_file_name (string)
+file_extension (string)
+mime_type (string)
+file_size (int)
+deid_status (string)
+is_deidentified (boolean)
+created_at (timestamp)
+description (string)
+file_path (string)
+de_identified_file_path (string)
+
+
+
+patient_applications
+id (string)
+patient_id (string)
+submitted_by_id (string)
+reviewed_by_id (string)
+status (string)
+submitted_at (timestamp)
+reviewed_at (timestamp)
+created_at (timestamp)
+updated_at (timestamp)
+description (string)
+created_by_id (string)
+updated_by_id (string)
+
+patient
+id (string)
+fstname (string)
+lstname (string)
+instcode (string)
+pname (string)
+street (string)
+street2 (string)
+street3 (string)
+city (string)
+state (string)
+zip (string)
+country (string)
+phone1 (string)
+phone2 (string)
+wphone1 (string)
+wphone2 (string)
+pemail (string)
+ptstreet (string)
+ptstreet2 (string)
+ptstreet3 (string)
+ptcity (string)
+ptstate (string)
+ptzip (string)
+ptcountry (string)
+ptphone (string)
+ptphone2 (string)
+ptwphone (string)
+ptwphone2 (string)
+ptemail (string)
+dt_reg (date)
+dt_b (date)
+dt_d (date)
+original_file_path (string)
+deidentified_file_path (string)
+
+
+keep the users and roles models as is 
+
+metadata model
+
