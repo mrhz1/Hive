@@ -42,11 +42,14 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.applications.all, 'detail', id] as const,
   },
 
-  patientFiles: {
-    all: ['patient-files'] as const,
-    // Scoped by patient: uploading for one patient must not invalidate
-    // another's list.
-    list: (patientId: string) =>
-      [...queryKeys.patientFiles.all, 'list', patientId] as const,
+  applicationFiles: {
+    all: ['application-files'] as const,
+    // Scoped by application: uploading for one application must not
+    // invalidate another's list.
+    list: (applicationId: string) =>
+      [...queryKeys.applicationFiles.all, 'list', applicationId] as const,
+    // Per file, fetched on demand when someone opens the metadata panel.
+    metadata: (fileId: string) =>
+      [...queryKeys.applicationFiles.all, 'metadata', fileId] as const,
   },
 } as const

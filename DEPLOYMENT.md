@@ -160,6 +160,11 @@ The models do **not** come from here — see the next step.
 
 ## 3b. Move the model store across
 
+> `OCR/DEPLOY.md` is the same ground as steps 3, 3b, 4 and 5 in one
+> self-contained runbook, with every command spelled out and the
+> Application → Job wiring code. Use it if de-identification is the part
+> you are standing up.
+
 **Cloudera AI blocks `github.com` and `huggingface.co`**, which is where
 all four models normally come from. pip works; model weights do not
 arrive over pip. So the weights are staged on a machine that has egress
@@ -287,7 +292,7 @@ Without it, a single dropped API call strands a document forever.
 > the sweep more often than a run takes to finish.
 
 > `DEID_RETRY_STALE_MINUTES` measures age since *upload*, not since the
-> row was claimed — `patient_files` has no `updated_at` column. Set it
+> row was claimed — `patient_application_files` has no `updated_at` column. Set it
 > comfortably longer than a run takes, or a file uploaded yesterday gets
 > re-claimed the moment it starts processing.
 
@@ -424,7 +429,7 @@ In order, because each step depends on the last:
    ```bash
    cd /home/cdsw/OCR
    .venv-ocr/bin/python scripts/verify_redaction.py \
-       /home/cdsw/storage/patient_files/<patient-id>/deidentified/<file>_deid.pdf \
+       /home/cdsw/storage/patient_files/<application-id>/deidentified/<file>_deid.pdf \
        --expect-absent "the patient's name"
    ```
    A report saying "20 entities redacted" proves 20 boxes were drawn. This

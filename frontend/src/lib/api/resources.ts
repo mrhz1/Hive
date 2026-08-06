@@ -20,10 +20,11 @@ import {
   patientApplicationSchema,
 } from '@/schemas/patientApplication'
 import {
-  patientFileListSchema,
-  patientFileSchema,
-  type PatientFile,
-} from '@/schemas/patientFile'
+  applicationFileListSchema,
+  applicationFileSchema,
+  fileMetadataSchema,
+  type ApplicationFile,
+} from '@/schemas/applicationFile'
 import {
   roleListSchema,
   roleSchema,
@@ -167,12 +168,14 @@ export const logsApi = {
   get: (id: string) => request(auditLogSchema, () => api.get(`/logs/${id}`)),
 }
 
-export const patientFilesApi = {
-  list: (patientId: string) =>
-    request(patientFileListSchema, () => api.get(`/patients/${patientId}/files`)),
+export const applicationFilesApi = {
+  list: (applicationId: string) =>
+    request(applicationFileListSchema, () =>
+      api.get(`/applications/${applicationId}/files`)
+    ),
 
   /** Uploads a whole folder's worth of files in one multipart request. */
-  upload: (patientId: string, files: File[], description?: string) => {
+  upload: (applicationId: string, files: File[], description?: string) => {
     const form = new FormData()
     for (const file of files) {
       // webkitRelativePath preserves the folder structure in the name so
@@ -182,10 +185,10 @@ export const patientFilesApi = {
     }
     if (description) form.append('description', description)
 
-    return request(patientFileListSchema, () =>
+    return request(applicationFileListSchema, () =>
       // Let the browser set the multipart boundary; a manual
       // Content-Type would omit it and the server could not parse it.
-      api.post(`/patients/${patientId}/files`, form, {
+      api.post(`/applications/${applicationId}/files`, form, {
         headers: { 'Content-Type': undefined },
       })
     )
@@ -204,20 +207,15 @@ export const patientFilesApi = {
    * 'processing'; the result appears on a later read, not over a socket.
    */
   deidentify: (fileId: string) =>
-    request(patientFileSchema, () => api.post(`/files/${fileId}/deidentify`)),
+    request(applicationFileSchema, () => api.post(`/files/${fileId}/deidentify`)),
 
   /**
-   * The reviewer's approve/reject decision. `reviewed_by_id` is not sent
-   * -- the API stamps it from the caller, so a decision cannot be
-   * attributed to someone who did not make it.
+   * Metadata extracted at upload time. Fetched on demand rather than
+   * with the file list: it is a per-row detail nobody looks at until
+   * they ask, and a DICOM header is larger than the row describing it.
    */
-  review: (fileId: string, reviewStatus: 'approved' | 'rejected', description?: string) =>
-    request(patientFileSchema, () =>
-      api.post(`/files/${fileId}/review`, {
-        review_status: reviewStatus,
-        review_description: description ?? null,
-      })
-    ),
+  metadata: (fileId: string) =>
+    request(fileMetadataSchema, () => api.get(`/files/${fileId}/metadata`)),
 
   /**
    * Fetches the bytes as a Blob.
@@ -264,4 +262,4 @@ export const meApi = {
     request(userSchema, () => api.put('/me', values)),
 }
 
-export type { AuditLog, Patient, PatientFile, Role, User }
+export type { ApplicationFile, AuditLog, Patient, Role, User }

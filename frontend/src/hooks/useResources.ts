@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { createCrudHooks, errorMessage } from './createCrudHooks'
 import {
   applicationsApi,
-  patientFilesApi,
+  applicationFilesApi,
   patientsApi,
   logsApi,
   rolesApi,
@@ -12,7 +12,7 @@ import {
 } from '@/lib/api/resources'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AuditLogFilters } from '@/schemas/log'
-import type { PatientFile } from '@/schemas/patientFile'
+import type { ApplicationFile } from '@/schemas/applicationFile'
 import type { PatientFormValues } from '@/schemas/patient'
 import type { RoleFormValues } from '@/schemas/role'
 import type { UserFormValues } from '@/schemas/user'
@@ -116,26 +116,31 @@ export function useDeleteApplication() {
 }
 
 /**
- * Patient documents. Not built on createCrudHooks: uploads are
+ * Application documents. Not built on createCrudHooks: uploads are
  * multipart and produce many records from one request, which does not
  * fit the single-entity create/update shape.
+ *
+ * Scoped by application, not patient -- that is what the row references.
  */
-export function usePatientFiles(patientId: string | undefined, enabled = true) {
+export function useApplicationFiles(
+  applicationId: string | undefined,
+  enabled = true
+) {
   return useQuery({
-    queryKey: queryKeys.patientFiles.list(patientId ?? ''),
-    queryFn: () => patientFilesApi.list(patientId as string),
-    enabled: Boolean(patientId) && enabled,
+    queryKey: queryKeys.applicationFiles.list(applicationId ?? ''),
+    queryFn: () => applicationFilesApi.list(applicationId as string),
+    enabled: Boolean(applicationId) && enabled,
   })
 }
 
-export function useUploadPatientFiles(patientId: string) {
+export function useUploadApplicationFiles(applicationId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ files, description }: { files: File[]; description?: string }) =>
-      patientFilesApi.upload(patientId, files, description),
+      applicationFilesApi.upload(applicationId, files, description),
     onSuccess: (created) => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.patientFiles.list(patientId),
+        queryKey: queryKeys.applicationFiles.list(applicationId),
       })
       toast.success(
         created.length === 1 ? '1 file uploaded' : `${created.length} files uploaded`
@@ -148,27 +153,27 @@ export function useUploadPatientFiles(patientId: string) {
 }
 
 /**
- * Upload where the patient id is only known at call time.
+ * Upload where the application id is only known at call time.
  *
- * The patient form needs this: on create there is no id until the record
- * has been saved, so the files are staged in the form and sent once the
- * patient exists.
+ * The application wizard needs this: on create there is no id until the
+ * record has been saved, so the files are staged in the form and sent
+ * once the application exists.
  */
-export function useUploadFilesForPatient() {
+export function useUploadFilesForApplication() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({
-      patientId,
+      applicationId,
       files,
       description,
     }: {
-      patientId: string
+      applicationId: string
       files: File[]
       description?: string
-    }) => patientFilesApi.upload(patientId, files, description),
+    }) => applicationFilesApi.upload(applicationId, files, description),
     onSuccess: (created, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.patientFiles.list(variables.patientId),
+        queryKey: queryKeys.applicationFiles.list(variables.applicationId),
       })
       toast.success(
         created.length === 1 ? '1 file uploaded' : `${created.length} files uploaded`
@@ -185,19 +190,21 @@ export function useUploadFilesForPatient() {
  * so the list is invalidated to pick up 'processing' immediately; the
  * finished state appears on the next refresh.
  */
-export function useDeidentifyFile(patientId: string) {
+export function useDeidentifyFile(applicationId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (fileId: string) => patientFilesApi.deidentify(fileId),
+    mutationFn: (fileId: string) => applicationFilesApi.deidentify(fileId),
     onSuccess: (file) => {
-      // Same reason as the review mutation: show 'processing' at once
-      // rather than after a Hive round trip.
-      queryClient.setQueryData<PatientFile[]>(
-        queryKeys.patientFiles.list(patientId),
+      // Written straight into the cache rather than only invalidated: a
+      // Hive refetch takes hundreds of milliseconds, and until it lands
+      // the row would still read 'pending' -- which looks like the click
+      // did nothing. The API already returned the updated row.
+      queryClient.setQueryData<ApplicationFile[]>(
+        queryKeys.applicationFiles.list(applicationId),
         (current) => current?.map((f) => (f.id === file.id ? file : f))
       )
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.patientFiles.list(patientId),
+        queryKey: queryKeys.applicationFiles.list(applicationId),
       })
       toast.success('De-identification started', {
         description: 'Refresh in a moment to see the redacted copy.',
@@ -210,52 +217,33 @@ export function useDeidentifyFile(patientId: string) {
 }
 
 /**
- * Approve or reject one document. Also invalidates the logs cache: a
- * review writes an audit row, same as any other change.
+ * Metadata extracted from one document at upload time.
+ *
+ * Enabled only when something asks for it -- the panel is closed until a
+ * user opens it, and fetching a DICOM header for every row of a table
+ * nobody has expanded is wasted work. It never goes stale either: the
+ * row is written once and never updated, so a long staleTime is honest
+ * rather than a guess.
  */
-export function useReviewPatientFile(patientId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({
-      fileId,
-      reviewStatus,
-      description,
-    }: {
-      fileId: string
-      reviewStatus: 'approved' | 'rejected'
-      description?: string
-    }) => patientFilesApi.review(fileId, reviewStatus, description),
-    onSuccess: (file) => {
-      // Written straight into the cache rather than only invalidated: a
-      // Hive refetch takes hundreds of milliseconds, and until it lands
-      // anything else reading this list -- the wizard's summary step, one
-      // click away -- would render the pre-review state. The API already
-      // returned the updated row, so there is nothing to wait for.
-      queryClient.setQueryData<PatientFile[]>(
-        queryKeys.patientFiles.list(patientId),
-        (current) => current?.map((f) => (f.id === file.id ? file : f))
-      )
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.patientFiles.list(patientId),
-      })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
-      toast.success(
-        file.review_status === 'approved' ? 'File approved' : 'File rejected'
-      )
-    },
-    onError: (error) => {
-      toast.error(errorMessage(error, 'Could not record the review'))
-    },
+export function useFileMetadata(fileId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.applicationFiles.metadata(fileId ?? ''),
+    queryFn: () => applicationFilesApi.metadata(fileId as string),
+    enabled: Boolean(fileId),
+    staleTime: Infinity,
+    // A file whose format is not read still has a row, so a 404 here
+    // means the file predates extraction -- not worth retrying.
+    retry: false,
   })
 }
 
-export function useDeletePatientFile(patientId: string) {
+export function useDeleteApplicationFile(applicationId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (fileId: string) => patientFilesApi.remove(fileId),
+    mutationFn: (fileId: string) => applicationFilesApi.remove(fileId),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.patientFiles.list(patientId),
+        queryKey: queryKeys.applicationFiles.list(applicationId),
       })
       toast.success('File deleted')
     },

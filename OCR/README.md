@@ -5,6 +5,11 @@ PDF. Pure Python, no Docker, no system binaries — built to run as a
 Cloudera AI job and be triggered by the FastAPI/Hive service with a path
 to process.
 
+> **Deploying this?** [`DEPLOY.md`](DEPLOY.md) is the runbook: every
+> command from empty checkout to a Job the dashboard's De-identify button
+> triggers, including the Application → Job wiring code. This file is the
+> reference for how the thing works.
+
 **Models** (all pinned in `deid/config.py`, swappable by env var):
 
 | role | model |

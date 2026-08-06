@@ -23,7 +23,7 @@ def create_user(
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("user:create")),
+    actor: User = Depends(require_permission("user:create")),
 ):
     user = crud.create_user(cursor, payload)
     background.add_task(
@@ -31,6 +31,7 @@ def create_user(
         action="CREATE",
         entity_type="user",
         entity_id=user.id,
+        user_id=actor.id,
         old_values=None,  # nothing existed before a create
         new_values=_snapshot(user),
         request_id=request.headers.get("X-Request-ID"),
@@ -62,7 +63,7 @@ def update_user(
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("user:update")),
+    actor: User = Depends(require_permission("user:update")),
 ):
     before = crud.get_user_or_404(cursor, user_id)
     after = crud.update_user(cursor, user_id, payload)
@@ -71,6 +72,7 @@ def update_user(
         action="UPDATE",
         entity_type="user",
         entity_id=user_id,
+        user_id=actor.id,
         old_values=_snapshot(before),
         new_values=_snapshot(after),
         request_id=request.headers.get("X-Request-ID"),
@@ -84,7 +86,7 @@ def delete_user(
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("user:delete")),
+    actor: User = Depends(require_permission("user:delete")),
 ):
     deleted = crud.delete_user(cursor, user_id)
     background.add_task(
@@ -92,6 +94,7 @@ def delete_user(
         action="DELETE",
         entity_type="user",
         entity_id=user_id,
+        user_id=actor.id,
         old_values=_snapshot(deleted),
         new_values=None,  # nothing remains after a delete
         request_id=request.headers.get("X-Request-ID"),

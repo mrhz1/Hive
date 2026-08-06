@@ -119,7 +119,7 @@ def seed_patients(cursor) -> None:
         "street", "city", "state", "zip", "country",
         "fstname", "lstname", "ptemail", "ptphone", "ptwphone",
         "ptstreet", "ptcity", "ptstate", "ptzip", "ptcountry",
-        "dt_reg", "dt_b", "status", "is_active", "created_at",
+        "dt_reg", "dt_b", "original_file_path",
     )
     date_columns = {"dt_reg", "dt_b"}
 
@@ -148,9 +148,10 @@ def seed_patients(cursor) -> None:
             "US",
             (base + timedelta(days=i)).date().isoformat(),
             date(1960 + i, (i % 12) + 1, (i % 28) + 1).isoformat(),
-            "active" if i % 4 != 0 else "inactive",
-            i % 4 != 0,
-            base + timedelta(days=i),
+            # Required by the API: the source document is the reason the
+            # record exists, so a fixture without one is not loadable
+            # through the endpoints it is meant to exercise.
+            f"/data/patients/pat{i}.pdf",
         )
         for i in range(1, 11)
     ]
@@ -161,10 +162,10 @@ def seed_patients(cursor) -> None:
     )
     for row in rows:
         cursor.execute(
-            f"INSERT INTO `patients` ({column_list}) VALUES ({placeholders})",
+            f"INSERT INTO `patient` ({column_list}) VALUES ({placeholders})",
             row,
         )
-    print(f"seeded {len(rows)} rows into patients")
+    print(f"seeded {len(rows)} rows into patient")
 
 
 def main() -> int:

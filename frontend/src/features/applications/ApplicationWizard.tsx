@@ -65,8 +65,8 @@ function StepRail({
  *
  * Step 1 is the patient form itself: saving it creates (or updates) the
  * patient *and* the application row alongside it, so the two never drift
- * apart. Steps 2 and 3 need a saved patient to hang documents off, which
- * is why they stay locked until step 1 succeeds.
+ * apart. Step 2 needs that application row to hang documents off, which
+ * is why the later steps stay locked until step 1 succeeds.
  */
 export function ApplicationWizard({
   application,
@@ -171,9 +171,12 @@ export function ApplicationWizard({
       ) : null}
 
       {current === 2 ? (
-        patient ? (
+        // Gated on the application, not the patient: documents hang off
+        // the application row, so there is nothing to attach them to
+        // until step 1 has created it.
+        record ? (
           <>
-            <FileReviewPanel patientId={patient.id} />
+            <FileReviewPanel applicationId={record.id} />
             <div className="flex flex-wrap justify-between gap-3">
               <Button variant="outline" onClick={() => goTo(1)}>
                 Back to patient
@@ -183,7 +186,8 @@ export function ApplicationWizard({
           </>
         ) : (
           <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
-            Save the patient in step 1 before attaching documents.
+            Save the patient in step 1 before attaching documents -- the
+            application has to exist before anything can be attached to it.
           </Card>
         )
       ) : null}

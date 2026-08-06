@@ -186,7 +186,7 @@ def test_writes_are_audited_as_patient_application(as_admin, store):
     as_admin.delete(f"/applications/{created['id']}")
 
     entries = [
-        e for e in store["audit_log"] if e["entity_type"] == "patient_application"
+        e for e in store["audit_logs"] if e["entity_type"] == "patient_application"
     ]
     assert [e["action"] for e in entries] == ["CREATE", "UPDATE", "DELETE"]
     assert all(e["entity_id"] == created["id"] for e in entries)

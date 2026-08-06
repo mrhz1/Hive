@@ -1,5 +1,5 @@
 """Patient endpoints, end to end through permissions -> router -> CRUD."""
-from conftest import NOBODY_ID, VIEWER_ID, minimal_patient, patient_columns
+from conftest import ADMIN_ID, NOBODY_ID, VIEWER_ID, minimal_patient, patient_columns
 
 
 # ------------------------------------------------------------ the shape
@@ -19,16 +19,15 @@ def test_model_exposes_every_requested_field(as_admin):
         # dates
         "dt_reg", "dt_b", "dt_d",
         # source documents
-        "original_file_path", "de_identified_file_path",
-        # lifecycle
-        "id", "status", "is_active", "created_at",
+        "original_file_path", "deidentified_file_path",
+        "id",
     }
     assert set(created) == expected
     assert set(patient_columns()) == expected
 
 
 def test_round_trips_every_field(as_admin):
-    """Every one of the 37 columns survives write -> read unchanged.
+    """Every one of the 34 columns survives write -> read unchanged.
 
     Not a column-order check -- see the KNOWN LIMIT in conftest.
     """
@@ -46,8 +45,7 @@ def test_round_trips_every_field(as_admin):
         ptstate="IL", ptzip="62702", ptcountry="US",
         dt_reg="2026-07-01", dt_b="1990-01-02", dt_d="2026-08-01",
         original_file_path="/data/in.pdf",
-        de_identified_file_path="/data/in_deid.pdf",
-        status="active", is_active=True,
+        deidentified_file_path="/data/in_deid.pdf",
     )
     created = as_admin.post("/patients", json=payload)
     assert created.status_code == 201, created.text
@@ -171,13 +169,13 @@ def test_date_columns_are_cast_in_sql(as_admin, cursor):
     """Hive will not coerce a bound STRING into a DATE column."""
     as_admin.post("/patients", json=minimal_patient(dt_b="1990-01-02"))
 
-    insert = next(s for s, _ in cursor.statements if s.startswith("INSERT INTO `patients`"))
+    insert = next(s for s, _ in cursor.statements if s.startswith("INSERT INTO `patient`"))
     assert "CAST(%s AS DATE)" in insert
 
     patient_id = as_admin.get("/patients").json()[0]["id"]
     as_admin.put(f"/patients/{patient_id}", json={"dt_d": "2026-08-01"})
 
-    update = next(s for s, _ in cursor.statements if s.startswith("UPDATE `patients`"))
+    update = next(s for s, _ in cursor.statements if s.startswith("UPDATE `patient`"))
     assert "`dt_d` = CAST(%s AS DATE)" in update
 
 
@@ -334,9 +332,19 @@ def test_writes_are_audited_as_patient(as_admin, store):
     as_admin.put(f"/patients/{created['id']}", json={"ptcity": "Shelbyville"})
     as_admin.delete(f"/patients/{created['id']}")
 
-    entries = [e for e in store["audit_log"] if e["entity_type"] == "patient"]
+    entries = [e for e in store["audit_logs"] if e["entity_type"] == "patient"]
     assert [e["action"] for e in entries] == ["CREATE", "UPDATE", "DELETE"]
     assert all(e["entity_id"] == created["id"] for e in entries)
+
+
+def test_the_audit_row_names_who_made_the_change(as_admin, store):
+    """user_id comes from the authenticated caller, never the body -- an
+    audit table that cannot say who acted is not an audit table."""
+    created = as_admin.post("/patients", json=minimal_patient()).json()
+    as_admin.put(f"/patients/{created['id']}", json={"ptcity": "Shelbyville"})
+
+    entries = [e for e in store["audit_logs"] if e["entity_type"] == "patient"]
+    assert [e["user_id"] for e in entries] == [ADMIN_ID, ADMIN_ID]
 
 
 def test_the_audit_snapshot_serialises_dates(as_admin, store):
@@ -346,5 +354,5 @@ def test_the_audit_snapshot_serialises_dates(as_admin, store):
 
     as_admin.post("/patients", json=minimal_patient(dt_b="1990-01-02"))
 
-    entry = store["audit_log"][0]
+    entry = store["audit_logs"][0]
     assert json.loads(entry["new_values"])["dt_b"] == "1990-01-02"

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { idSchema, timestampSchema } from './common'
+import { idSchema } from './common'
 
 /**
  * Naming follows the source records, and mirrors app/schemas.py::Patient:
@@ -60,14 +60,9 @@ export const patientSchema = z.object({
   dt_d: dateText,
 
   // source documents recorded on the patient itself, alongside the
-  // per-document rows in `patient_files`
+  // per-document rows in `patient_application_files`
   original_file_path: text,
-  de_identified_file_path: text,
-
-  // lifecycle
-  status: z.string(),
-  is_active: z.boolean(),
-  created_at: timestampSchema,
+  deidentified_file_path: text,
 })
 
 export type Patient = z.infer<typeof patientSchema>
@@ -152,11 +147,7 @@ const patientFormFields = z.object({
     .string()
     .min(1, 'Original file path is required')
     .max(512, 'Too long'),
-  de_identified_file_path: optionalText(512),
-
-  // lifecycle
-  status: z.string().min(1, 'Status is required'),
-  is_active: z.boolean(),
+  deidentified_file_path: optionalText(512),
 })
 
 /**
@@ -186,8 +177,6 @@ export type PatientFormValues = z.infer<typeof patientFormFields>
 export const PATIENT_FIELD_NAMES = Object.keys(patientFormFields.shape) as Array<
   keyof PatientFormValues
 >
-
-export const PATIENT_STATUSES = ['active', 'inactive', 'discharged', 'deceased'] as const
 
 export const EMPTY_PATIENT_FORM: PatientFormValues = {
   instcode: '',
@@ -222,16 +211,13 @@ export const EMPTY_PATIENT_FORM: PatientFormValues = {
   dt_b: '',
   dt_d: '',
   original_file_path: '',
-  de_identified_file_path: '',
-  status: 'active',
-  is_active: true,
+  deidentified_file_path: '',
 }
 
 /** A record from the API into the shape the form edits: null becomes ''. */
 export function toPatientFormValues(patient: Patient): PatientFormValues {
-  const values: PatientFormValues = { ...EMPTY_PATIENT_FORM, is_active: patient.is_active }
+  const values: PatientFormValues = { ...EMPTY_PATIENT_FORM }
   for (const name of PATIENT_FIELD_NAMES) {
-    if (name === 'is_active') continue
     const value = patient[name]
     values[name] = typeof value === 'string' ? value : ''
   }

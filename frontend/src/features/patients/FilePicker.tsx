@@ -1,7 +1,7 @@
 import { FolderUp, X } from 'lucide-react'
 import { useRef } from 'react'
 import { Button } from '@/components/ui/Button'
-import { formatFileSize } from '@/schemas/patientFile'
+import { formatFileSize } from '@/schemas/applicationFile'
 
 /**
  * Controlled folder/file selection.

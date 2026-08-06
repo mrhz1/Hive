@@ -43,10 +43,11 @@ Interactive docs at `http://localhost:8100/docs` once `make run` is up.
 |---|---|
 | `roles` | `id`, `name`, `permissions ARRAY<STRING>` |
 | `users` | `role_id` FK to roles; reads join in `role_name` + `permissions` |
-| `patients` | `fstname`/`lstname` + provider (`p*`) and patient (`pt*`) contact blocks, `dt_reg`/`dt_b`/`dt_d` DATEs; no role |
-| `patient_files` | one row per uploaded document; bytes live under `FILE_STORAGE_DIR`; carries both the de-identification state and the reviewer's approve/reject decision |
+| `patient` | singular, matching the Cloudera metastore. `fstname`/`lstname` + provider (`p*`) and patient (`pt*`) contact blocks, `dt_reg`/`dt_b`/`dt_d` DATEs; no role, and no lifecycle columns — record data only |
+| `patient_application_files` | one row per uploaded document, keyed on `application_id` — documents belong to a submission, not to a patient directly. Bytes live under `FILE_STORAGE_DIR`; the row carries the de-identification state. No per-file review verdict: that is recorded once, on the application |
+| `file_metadata` | one row per file, holding metadata extracted at upload time (PDF / DICOM / Word) as JSON-in-STRING. Schemaless on purpose — a DICOM study and a Word document share almost no fields |
 | `patient_applications` | one submission of a patient + their documents for review; holds who did what and when |
-| `audit_log` | append-only; `old_values`/`new_values` are JSON-in-STRING |
+| `audit_logs` | append-only; `user_id` names the acting caller; `old_values`/`new_values` are JSON-in-STRING |
 
 ### Endpoints
 
@@ -59,13 +60,17 @@ not an audit trail.
 `/applications` accepts a `patient_id` query parameter to scope the list
 to one patient.
 
-Documents hang off a patient: `/patients/{id}/files` (POST multipart /
-GET), and per file `/files/{id}` (GET / PUT / DELETE),
-`/files/{id}/content` (GET, `?deidentified=true` for the redacted copy),
-`/files/{id}/deidentify` (POST) and `/files/{id}/review` (POST -- the
-reviewer's approve/reject, which requires `application:update` rather
-than `patient:update`, because reviewing a submission is not the same
-job as editing a clinical record).
+Documents hang off an **application**, not a patient:
+`/applications/{id}/files` (POST multipart / GET), and per file
+`/files/{id}` (GET / PUT / DELETE), `/files/{id}/content` (GET,
+`?deidentified=true` for the redacted copy), `/files/{id}/deidentify`
+(POST) and `/files/{id}/metadata` (GET -- what was extracted from the
+document at upload time).
+
+All of them are gated on `application:*` rather than `patient:*`: these
+files are part of a submission, so anyone who may read an application may
+read its documents. A patient's documents are reached through their
+applications.
 
 ### Auth and permissions
 

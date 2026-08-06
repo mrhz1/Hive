@@ -1,10 +1,15 @@
-"""Patient CRUD. Patients carry no role: roles govern API callers.
+"""Patient CRUD, against the singular `patient` table.
+
+Patients carry no role: roles govern API callers, and patients are not
+API callers. They carry no lifecycle columns either -- no status,
+is_active or created_at -- because a patient row is record data. What
+moves through states is the application, in patient_applications.
 
 HiveQL only: %s paramstyle, backtick identifiers, no
 RETURNING/ON CONFLICT/sequences.
 """
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from typing import List, Optional
 
 from app.db import execute
@@ -27,14 +32,12 @@ log = get_logger(__name__)
 # here (and to sql/schema.sql) and nowhere else.
 COLUMNS = (
     "id",
+    # patient identity
+    "fstname",
+    "lstname",
     # provider / institution
     "instcode",
     "pname",
-    "pemail",
-    "phone1",
-    "phone2",
-    "wphone1",
-    "wphone2",
     "street",
     "street2",
     "street3",
@@ -42,14 +45,12 @@ COLUMNS = (
     "state",
     "zip",
     "country",
-    # patient
-    "fstname",
-    "lstname",
-    "ptemail",
-    "ptphone",
-    "ptphone2",
-    "ptwphone",
-    "ptwphone2",
+    "phone1",
+    "phone2",
+    "wphone1",
+    "wphone2",
+    "pemail",
+    # patient's own contact details
     "ptstreet",
     "ptstreet2",
     "ptstreet3",
@@ -57,17 +58,18 @@ COLUMNS = (
     "ptstate",
     "ptzip",
     "ptcountry",
+    "ptphone",
+    "ptphone2",
+    "ptwphone",
+    "ptwphone2",
+    "ptemail",
     # dates
     "dt_reg",
     "dt_b",
     "dt_d",
     # source documents
     "original_file_path",
-    "de_identified_file_path",
-    # lifecycle
-    "status",
-    "is_active",
-    "created_at",
+    "deidentified_file_path",
 )
 
 # Hive will not implicitly cast a bound STRING parameter into a DATE
@@ -101,12 +103,11 @@ def _row_to_patient(row) -> Patient:
     values = dict(zip(COLUMNS, row))
     for column in DATE_COLUMNS:
         values[column] = _to_date(values[column])
-    values["is_active"] = bool(values["is_active"])
     return Patient(**values)
 
 
 def get_patient(cursor, patient_id: str) -> Optional[Patient]:
-    execute(cursor, f"SELECT {_COLS} FROM `patients` WHERE `id` = %s", (patient_id,))
+    execute(cursor, f"SELECT {_COLS} FROM `patient` WHERE `id` = %s", (patient_id,))
     row = cursor.fetchone()
     return _row_to_patient(row) if row else None
 
@@ -119,12 +120,12 @@ def get_patient_or_404(cursor, patient_id: str) -> Patient:
 
 
 def list_patients(cursor) -> List[Patient]:
-    execute(cursor, f"SELECT {_COLS} FROM `patients`")
+    execute(cursor, f"SELECT {_COLS} FROM `patient`")
     return [_row_to_patient(r) for r in cursor.fetchall()]
 
 
 def _find_by(cursor, column: str, value: str) -> Optional[str]:
-    execute(cursor, f"SELECT `id` FROM `patients` WHERE `{column}` = %s", (value,))
+    execute(cursor, f"SELECT `id` FROM `patient` WHERE `{column}` = %s", (value,))
     row = cursor.fetchone()
     return row[0] if row else None
 
@@ -150,10 +151,8 @@ def create_patient(cursor, payload: PatientCreate) -> Patient:
     _assert_unique(cursor, fields)
 
     patient_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     fields["id"] = patient_id
-    fields["created_at"] = created_at.strftime("%Y-%m-%d %H:%M:%S")
     for column in DATE_COLUMNS:
         value = fields[column]
         fields[column] = value.isoformat() if value else None
@@ -161,7 +160,7 @@ def create_patient(cursor, payload: PatientCreate) -> Patient:
     placeholders = ", ".join(_placeholder(c) for c in COLUMNS)
     execute(
         cursor,
-        f"INSERT INTO `patients` ({_COLS}) VALUES ({placeholders})",
+        f"INSERT INTO `patient` ({_COLS}) VALUES ({placeholders})",
         tuple(fields[c] for c in COLUMNS),
     )
     # lstname is optional, so the log records which identifier the record
@@ -205,13 +204,13 @@ def update_patient(cursor, patient_id: str, payload: PatientUpdate) -> Patient:
 
     set_clause = ", ".join(f"`{c}` = {_placeholder(c)}" for c in fields)
     params = tuple(fields.values()) + (patient_id,)
-    execute(cursor, f"UPDATE `patients` SET {set_clause} WHERE `id` = %s", params)
+    execute(cursor, f"UPDATE `patient` SET {set_clause} WHERE `id` = %s", params)
     log.info("patient_updated", patient_id=patient_id, fields=sorted(fields))
     return get_patient_or_404(cursor, patient_id)
 
 
 def delete_patient(cursor, patient_id: str) -> Patient:
     existing = get_patient_or_404(cursor, patient_id)
-    execute(cursor, "DELETE FROM `patients` WHERE `id` = %s", (patient_id,))
+    execute(cursor, "DELETE FROM `patient` WHERE `id` = %s", (patient_id,))
     log.info("patient_deleted", patient_id=patient_id)
     return existing

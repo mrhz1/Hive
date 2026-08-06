@@ -23,7 +23,6 @@ import { Route as RolesNewRouteImport } from './routes/roles/new'
 import { Route as UsersIndexRouteImport } from './routes/users/index'
 import { Route as UsersNewRouteImport } from './routes/users/new'
 import { Route as PatientsPatientIdEditRouteImport } from './routes/patients/$patientId.edit'
-import { Route as PatientsPatientIdFilesRouteImport } from './routes/patients/$patientId.files'
 import { Route as RolesRoleIdEditRouteImport } from './routes/roles/$roleId.edit'
 import { Route as UsersUserIdEditRouteImport } from './routes/users/$userId.edit'
 
@@ -98,11 +97,6 @@ const PatientsPatientIdEditRoute = PatientsPatientIdEditRouteImport.update({
   path: '/patients/$patientId/edit',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PatientsPatientIdFilesRoute = PatientsPatientIdFilesRouteImport.update({
-  id: '/patients/$patientId/files',
-  path: '/patients/$patientId/files',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const RolesRoleIdEditRoute = RolesRoleIdEditRouteImport.update({
   id: '/roles/$roleId/edit',
   path: '/roles/$roleId/edit',
@@ -129,7 +123,6 @@ export interface FileRoutesByFullPath {
   '/roles/': typeof RolesIndexRoute
   '/users/': typeof UsersIndexRoute
   '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
-  '/patients/$patientId/files': typeof PatientsPatientIdFilesRoute
   '/roles/$roleId/edit': typeof RolesRoleIdEditRoute
   '/users/$userId/edit': typeof UsersUserIdEditRoute
 }
@@ -148,7 +141,6 @@ export interface FileRoutesByTo {
   '/roles': typeof RolesIndexRoute
   '/users': typeof UsersIndexRoute
   '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
-  '/patients/$patientId/files': typeof PatientsPatientIdFilesRoute
   '/roles/$roleId/edit': typeof RolesRoleIdEditRoute
   '/users/$userId/edit': typeof UsersUserIdEditRoute
 }
@@ -168,7 +160,6 @@ export interface FileRoutesById {
   '/roles/': typeof RolesIndexRoute
   '/users/': typeof UsersIndexRoute
   '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
-  '/patients/$patientId/files': typeof PatientsPatientIdFilesRoute
   '/roles/$roleId/edit': typeof RolesRoleIdEditRoute
   '/users/$userId/edit': typeof UsersUserIdEditRoute
 }
@@ -189,7 +180,6 @@ export interface FileRouteTypes {
     | '/roles/'
     | '/users/'
     | '/patients/$patientId/edit'
-    | '/patients/$patientId/files'
     | '/roles/$roleId/edit'
     | '/users/$userId/edit'
   fileRoutesByTo: FileRoutesByTo
@@ -208,7 +198,6 @@ export interface FileRouteTypes {
     | '/roles'
     | '/users'
     | '/patients/$patientId/edit'
-    | '/patients/$patientId/files'
     | '/roles/$roleId/edit'
     | '/users/$userId/edit'
   id:
@@ -227,7 +216,6 @@ export interface FileRouteTypes {
     | '/roles/'
     | '/users/'
     | '/patients/$patientId/edit'
-    | '/patients/$patientId/files'
     | '/roles/$roleId/edit'
     | '/users/$userId/edit'
   fileRoutesById: FileRoutesById
@@ -247,7 +235,6 @@ export interface RootRouteChildren {
   RolesIndexRoute: typeof RolesIndexRoute
   UsersIndexRoute: typeof UsersIndexRoute
   PatientsPatientIdEditRoute: typeof PatientsPatientIdEditRoute
-  PatientsPatientIdFilesRoute: typeof PatientsPatientIdFilesRoute
   RolesRoleIdEditRoute: typeof RolesRoleIdEditRoute
   UsersUserIdEditRoute: typeof UsersUserIdEditRoute
 }
@@ -352,13 +339,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PatientsPatientIdEditRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/patients/$patientId/files': {
-      id: '/patients/$patientId/files'
-      path: '/patients/$patientId/files'
-      fullPath: '/patients/$patientId/files'
-      preLoaderRoute: typeof PatientsPatientIdFilesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/roles/$roleId/edit': {
       id: '/roles/$roleId/edit'
       path: '/roles/$roleId/edit'
@@ -391,7 +371,6 @@ const rootRouteChildren: RootRouteChildren = {
   RolesIndexRoute: RolesIndexRoute,
   UsersIndexRoute: UsersIndexRoute,
   PatientsPatientIdEditRoute: PatientsPatientIdEditRoute,
-  PatientsPatientIdFilesRoute: PatientsPatientIdFilesRoute,
   RolesRoleIdEditRoute: RolesRoleIdEditRoute,
   UsersUserIdEditRoute: UsersUserIdEditRoute,
 }

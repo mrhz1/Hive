@@ -76,9 +76,3 @@ dt_b (date)
 dt_d (date)
 original_file_path (string)
 deidentified_file_path (string)
-
-
-keep the users and roles models as is 
-
-metadata model
-

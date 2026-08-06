@@ -1,13 +1,12 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { FormLayout, FullWidth } from '@/components/FormLayout'
-import { CheckboxField, SelectField, TextField } from '@/components/ui/Field'
+import { TextField } from '@/components/ui/Field'
 import { applyServerErrors, useApiForm } from '@/hooks/useApiForm'
-import { patientHooks, useUploadFilesForPatient } from '@/hooks/useResources'
+import { patientHooks } from '@/hooks/useResources'
 import {
   EMPTY_PATIENT_FORM,
   PATIENT_FIELD_NAMES,
-  PATIENT_STATUSES,
   patientFormSchema,
   patientName,
   toPatientFormValues,
@@ -62,12 +61,6 @@ export function PatientForm({
 
   const create = patientHooks.useCreate()
   const update = patientHooks.useUpdate()
-  const uploadFiles = useUploadFilesForPatient()
-
-  // Staged rather than uploaded on pick: on create there is no patient
-  // id to attach them to until the record has been saved. The folder
-  // chosen for original_file_path is the same folder that gets uploaded.
-  const [pendingFiles, setPendingFiles] = useState<File[]>([])
 
   const form = useApiForm(
     patientFormSchema,
@@ -82,7 +75,7 @@ export function PatientForm({
     formState: { errors },
   } = form
 
-  const isSubmitting = create.isPending || update.isPending || uploadFiles.isPending
+  const isSubmitting = create.isPending || update.isPending
 
   const onSubmit = handleSubmit(async (values) => {
     let saved: Patient
@@ -94,21 +87,6 @@ export function PatientForm({
     } catch (error) {
       applyServerErrors<PatientFormValues>(error, setError, PATIENT_FIELD_NAMES)
       return
-    }
-
-    const patientId = saved.id
-
-    // Uploaded after the record is saved, and deliberately outside the
-    // try above: the patient already exists at this point, so a failed
-    // upload must not look like the save failed. The mutation toasts its
-    // own error and the files stay staged on the page.
-    if (pendingFiles.length > 0) {
-      try {
-        await uploadFiles.mutateAsync({ patientId, files: pendingFiles })
-        setPendingFiles([])
-      } catch {
-        return
-      }
     }
 
     if (onSaved) {
@@ -294,14 +272,17 @@ export function PatientForm({
 
       <Section
         title="Source documents"
-        hint="Choose the folder holding this patient's documents. Its path is recorded on the record and the files themselves are uploaded once the patient is saved."
+        hint="Where this patient's documents live. The path is recorded on the record; the documents themselves are attached to an application, in step 2 of the wizard."
       />
       <FullWidth>
         <FolderPathField
           label="Original file path"
           required
           value={watch('original_file_path')}
-          files={pendingFiles}
+          // Path only. Documents belong to an application, which does not
+          // exist yet at this point in the wizard -- they are uploaded in
+          // step 2, against the application row step 1 creates.
+          files={[]}
           disabled={isSubmitting}
           error={errors.original_file_path?.message}
           hint="Choose a folder to include everything inside it."
@@ -312,24 +293,23 @@ export function PatientForm({
             if (path || files.length === 0) {
               setValue('original_file_path', path, { shouldValidate: true })
             }
-            setPendingFiles(files)
           }}
         />
       </FullWidth>
       <FullWidth>
         <FolderPathField
           label="De-identified file path"
-          value={watch('de_identified_file_path')}
+          value={watch('deidentified_file_path')}
           // Path only: the redacted copies are produced by the OCR job,
           // so pointing at them must not also re-upload them as new
           // patient documents.
           files={[]}
           disabled={isSubmitting}
-          error={errors.de_identified_file_path?.message}
+          error={errors.deidentified_file_path?.message}
           hint="Where the redacted copies live. Usually filled in by the de-identification job."
           onSelect={(path, files) => {
             if (path || files.length === 0) {
-              setValue('de_identified_file_path', path, { shouldValidate: true })
+              setValue('deidentified_file_path', path, { shouldValidate: true })
             }
           }}
         />
@@ -342,20 +322,6 @@ export function PatientForm({
         error={errors.dt_reg?.message}
         {...register('dt_reg')}
       />
-      <SelectField
-        label="Status"
-        required
-        options={PATIENT_STATUSES.map((s) => ({ value: s, label: s }))}
-        error={errors.status?.message}
-        {...register('status')}
-      />
-      <FullWidth>
-        <CheckboxField
-          label="Active"
-          error={errors.is_active?.message}
-          {...register('is_active')}
-        />
-      </FullWidth>
     </FormLayout>
   )
 }

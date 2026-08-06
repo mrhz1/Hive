@@ -1,9 +1,13 @@
-"""Filesystem storage for patient documents.
+"""Filesystem storage for application documents.
 
 Hive holds the metadata; the bytes live here. The layout is
-    <FILE_STORAGE_DIR>/<patient_id>/<file_id>_<sanitized_name>
+    <FILE_STORAGE_DIR>/<application_id>/<file_id>_<sanitized_name>
 so a file is locatable from its row, collisions are impossible (the id is
-unique), and one patient's documents can be removed as a unit.
+unique), and one application's documents can be removed as a unit.
+
+Keyed by application rather than patient because that is what the row
+now references -- a directory per patient would need a join to resolve,
+and the point of this layout is that it needs none.
 """
 import mimetypes
 import os
@@ -65,20 +69,22 @@ def guess_mime_type(name: str, provided: str | None) -> str:
     return guessed or "application/octet-stream"
 
 
-def patient_dir(patient_id: str) -> Path:
-    return STORAGE_ROOT / patient_id
+def application_dir(application_id: str) -> Path:
+    return STORAGE_ROOT / application_id
 
 
-def write_file(patient_id: str, file_id: str, sanitized_name: str, data: bytes) -> Path:
+def write_file(
+    application_id: str, file_id: str, sanitized_name: str, data: bytes
+) -> Path:
     """Writes the bytes and returns the path recorded in Hive."""
-    directory = patient_dir(patient_id)
+    directory = application_dir(application_id)
     directory.mkdir(parents=True, exist_ok=True)
 
     target = directory / f"{file_id}_{sanitized_name}"
     target.write_bytes(data)
     log.info(
         "file_stored",
-        patient_id=patient_id,
+        application_id=application_id,
         file_id=file_id,
         path=str(target),
         bytes=len(data),

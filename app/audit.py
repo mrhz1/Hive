@@ -26,6 +26,7 @@ def record_audit(
     action: str,
     entity_type: str,
     entity_id: str,
+    user_id: Optional[str] = None,
     old_values: Optional[dict] = None,
     new_values: Optional[dict] = None,
     request_id: Optional[str] = None,
@@ -35,6 +36,11 @@ def record_audit(
     request_id is passed explicitly and re-bound because background tasks
     run after the middleware cleared its contextvars -- without this the
     audit line would lose the trace it belongs to.
+
+    user_id is passed explicitly for the same reason, and is optional
+    because not every change has an acting user: the de-identification
+    job writes results back with nobody in the picture, and attributing
+    that to a person would be a lie in an audit table.
     """
     if request_id:
         structlog.contextvars.bind_contextvars(
@@ -48,6 +54,7 @@ def record_audit(
                     action=action,
                     entity_type=entity_type,
                     entity_id=entity_id,
+                    user_id=user_id,
                     old_values=old_values,
                     new_values=new_values,
                 ),
