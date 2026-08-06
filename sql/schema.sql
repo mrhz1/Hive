@@ -114,7 +114,12 @@ DROP TABLE IF EXISTS `patient_files`;
 -- Hive is not a blob store.
 --
 -- The de-identification columns are the hand-off to the OCR job:
---   deid_status  'pending' -> 'processing' -> 'done' | 'failed'
+--   deid_status  'pending' -> ['queued'] -> 'processing' -> 'done' | 'failed'
+--     'pending'    uploaded, nobody has asked for it
+--     'queued'     a Cloudera AI Job run has been requested for it
+--                  (DEID_BACKEND=cml_job only; inline goes straight to
+--                  'processing')
+--     'processing' a worker has claimed it
 --   is_deidentified FALSE on upload, TRUE once a redacted copy exists
 --   de_identified_file_name / _path are NULL until a redacted copy exists
 --

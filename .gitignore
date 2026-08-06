@@ -3,9 +3,19 @@ __pycache__/
 *.pyc
 .env.local
 
-# OCR module
-OCR/.venv/
+# OCR module. Two venvs, because paddle and presidio cannot share one.
+OCR/.venv-ocr/
+OCR/.venv-nlp/
 OCR/out/
+
+# The local model store: ~570MB of weights, staged by
+# OCR/scripts/stage_models.py and moved to Cloudera AI by file copy,
+# because that network cannot reach github or huggingface. Deliberately
+# not in git -- half a gigabyte of binaries would be in every clone
+# forever, and git is not the transport here. The layout documentation
+# (OCR/models/README.md) is tracked; the weights are not.
+OCR/models/*
+!OCR/models/README.md
 
 # Frontend
 frontend/node_modules/

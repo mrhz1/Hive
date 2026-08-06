@@ -20,5 +20,12 @@ python-multipart==0.0.32
 uvicorn==0.30.1
 structlog==24.4.0
 pytest==8.2.2
+# Runtime, not just test: app/cloudera.py posts to the Cloudera AI API v2
+# to start a Job run, and scripts/serve_frontend.py uses it to proxy.
+# (FastAPI's TestClient also needs it.)
 httpx==0.27.0
+# Serves frontend/dist as a Cloudera AI Application -- a React build is
+# not deployable on its own there, something has to run as a process.
+# Only the dashboard Application needs this.
+flask==3.0.3
 python-dotenv==1.0.1

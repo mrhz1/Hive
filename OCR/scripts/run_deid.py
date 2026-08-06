@@ -8,6 +8,13 @@ environment:
     python scripts/run_deid.py --input /path/doc.pdf --output-dir /path/out
     DEID_INPUT=/path/doc.pdf DEID_OUTPUT_DIR=/path/out python scripts/run_deid.py
 
+**This script needs no dependencies.** It is standard library only and
+coordinates two subprocesses -- the paddle OCR stage and the presidio
+redaction stage -- each in its own virtualenv, because the two stacks
+cannot be installed together (see deid/pipeline.py). Run it with whatever
+python the Cloudera runtime provides; point DEID_OCR_PYTHON and
+DEID_NLP_PYTHON at the two venvs.
+
 Exit codes: 0 all succeeded, 1 every file failed, 2 partial failure.
 """
 import argparse
@@ -21,19 +28,21 @@ from typing import List
 # Allow running as `python scripts/run_deid.py` from the OCR directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from deid.config import load_config  # noqa: E402
-from deid.pipeline import Deidentifier  # noqa: E402
+from deid.pipeline import (  # noqa: E402
+    describe_environment,
+    preflight,
+    run_pipeline,
+)
+from deid.results import exit_code, summarise  # noqa: E402
 
 
 def configure_logging(level: str) -> None:
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
-        stream=sys.stdout,
+        # stderr, so the summary on stdout stays machine-readable.
+        stream=sys.stderr,
     )
-    # These are chatty at INFO and drown out the job's own output.
-    for noisy in ("ppocr", "paddle", "transformers", "urllib3", "filelock"):
-        logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 def collect_inputs(raw_inputs: List[str], recursive: bool) -> List[Path]:
@@ -81,6 +90,20 @@ def parse_args(argv=None):
         help="Appended to the output filename stem (default: _deid)",
     )
     parser.add_argument(
+        "--work-dir",
+        default=os.environ.get("DEID_WORK_DIR"),
+        help=(
+            "Where the intermediate OCR handoff is written. Defaults to a "
+            "0700 temp dir that is deleted afterwards. The handoff holds "
+            "raw OCR text (PHI) -- do not point this somewhere shared."
+        ),
+    )
+    parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help="Check both stage interpreters exist, print them, and exit.",
+    )
+    parser.add_argument(
         "--log-level", default=os.environ.get("DEID_LOG_LEVEL", "INFO")
     )
     args = parser.parse_args(argv)
@@ -99,6 +122,24 @@ def main(argv=None) -> int:
     configure_logging(args.log_level)
     log = logging.getLogger("run_deid")
 
+    problems = preflight()
+
+    if args.preflight:
+        print(
+            json.dumps(
+                {"environment": describe_environment(), "problems": problems}, indent=2
+            )
+        )
+        return 0 if not problems else 1
+
+    if problems:
+        # Fail here rather than after collecting inputs: a misconfigured
+        # interpreter path is the most common way this job breaks, and
+        # saying so up front beats a subprocess error 40 lines deep.
+        for problem in problems:
+            log.error("preflight: %s", problem)
+        return 1
+
     if not args.input:
         log.error("no input given (use --input or $DEID_INPUT)")
         return 1
@@ -111,53 +152,18 @@ def main(argv=None) -> int:
         log.error("no PDF files found in: %s", ", ".join(args.input))
         return 1
 
-    output_dir = Path(args.output_dir).expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    log.info("starting: %d file(s) | %s", len(pdfs), describe_environment())
 
-    config = load_config()
-    log.info(
-        "starting: %d file(s) | ocr=%s/%s | ner=%s | dpi=%d",
-        len(pdfs),
-        config.det_model,
-        config.rec_model,
-        config.transformers_model,
-        config.dpi,
+    results = run_pipeline(
+        [str(p) for p in pdfs],
+        output_dir=args.output_dir,
+        suffix=args.suffix,
+        work_dir=args.work_dir,
     )
 
-    # Model load happens on first use and is the expensive part; doing it
-    # once here keeps per-file cost to actual work.
-    deidentifier = Deidentifier(config)
-
-    results = []
-    for pdf in pdfs:
-        stem = pdf.stem + args.suffix
-        result = deidentifier.process_pdf(
-            source_path=str(pdf),
-            output_pdf=str(output_dir / f"{stem}.pdf"),
-            output_text=str(output_dir / f"{stem}.txt"),
-            output_report=str(output_dir / f"{stem}.report.json"),
-        )
-        results.append(result)
-
-    ok = [r for r in results if r.status == "ok"]
-    failed = [r for r in results if r.status != "ok"]
-
-    summary = {
-        "files_total": len(results),
-        "files_ok": len(ok),
-        "files_failed": len(failed),
-        "entities_redacted": sum(r.total_entities for r in ok),
-        "boxes_applied": sum(r.total_boxes for r in ok),
-        "failures": [{"path": r.source_path, "error": r.error} for r in failed],
-    }
     # Printed as JSON so the calling job/service can parse it from stdout.
-    print(json.dumps(summary, indent=2))
-
-    if failed and not ok:
-        return 1
-    if failed:
-        return 2
-    return 0
+    print(json.dumps(summarise(results), indent=2))
+    return exit_code(results)
 
 
 if __name__ == "__main__":

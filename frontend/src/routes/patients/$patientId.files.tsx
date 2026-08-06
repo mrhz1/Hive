@@ -24,7 +24,12 @@ import {
 import { ApiError } from '@/lib/api/client'
 import { patientFilesApi } from '@/lib/api/resources'
 import { patientName } from '@/schemas/patient'
-import { deidTone, formatFileSize, type PatientFile } from '@/schemas/patientFile'
+import {
+  deidTone,
+  formatFileSize,
+  isDeidInFlight,
+  type PatientFile,
+} from '@/schemas/patientFile'
 
 function PatientFilesPage() {
   const { patientId } = Route.useParams()
@@ -207,7 +212,7 @@ function PatientFilesPage() {
                 // must not be started twice.
                 disabled={
                   file.file_extension.toLowerCase() !== 'pdf' ||
-                  file.deid_status === 'processing'
+                  isDeidInFlight(file.deid_status)
                 }
                 isLoading={deidentify.isPending && deidentify.variables === file.id}
                 leadingIcon={<ShieldCheck className="size-3.5" aria-hidden="true" />}

@@ -148,7 +148,9 @@ def test_deidentify_rejects_a_non_pdf(as_admin, storage_root):
 def test_deidentify_marks_the_row_processing(as_admin, storage_root, monkeypatch):
     """The row is marked before the job starts, so the UI reflects it on
     the very next read."""
-    monkeypatch.setattr("app.routers.patient_files.run_deidentification", lambda **kw: None)
+    monkeypatch.setattr(
+        "app.routers.patient_files.dispatch_deidentification", lambda **kw: None
+    )
 
     patient_id = _patient(as_admin)
     record = _upload(as_admin, patient_id).json()[0]
@@ -156,6 +158,47 @@ def test_deidentify_marks_the_row_processing(as_admin, storage_root, monkeypatch
     response = as_admin.post(f"/files/{record['id']}/deidentify")
     assert response.status_code == 200
     assert response.json()["deid_status"] == "processing"
+
+
+def test_deidentify_marks_the_row_queued_on_the_job_backend(
+    as_admin, storage_root, monkeypatch
+):
+    """Under DEID_BACKEND=cml_job nothing is processing yet -- a Job run
+    has only been asked for. Marking 'processing' here would strand the
+    row forever if the run never started, and 'pending' would be
+    indistinguishable from a freshly uploaded file."""
+    monkeypatch.setattr(
+        "app.routers.patient_files.dispatch_deidentification", lambda **kw: None
+    )
+    monkeypatch.setattr("app.deid.DEID_BACKEND", "cml_job")
+
+    patient_id = _patient(as_admin)
+    record = _upload(as_admin, patient_id).json()[0]
+
+    response = as_admin.post(f"/files/{record['id']}/deidentify")
+    assert response.status_code == 200
+    assert response.json()["deid_status"] == "queued"
+
+
+def test_deidentify_rejects_a_file_already_in_flight(
+    as_admin, storage_root, monkeypatch
+):
+    """A second click must not start a second run. 'pending' is NOT in
+    flight, though -- that is how every file arrives, so a first request
+    has to be allowed through."""
+    monkeypatch.setattr(
+        "app.routers.patient_files.dispatch_deidentification", lambda **kw: None
+    )
+
+    patient_id = _patient(as_admin)
+    record = _upload(as_admin, patient_id).json()[0]
+    assert record["deid_status"] == "pending"
+
+    assert as_admin.post(f"/files/{record['id']}/deidentify").status_code == 200
+
+    second = as_admin.post(f"/files/{record['id']}/deidentify")
+    assert second.status_code == 422
+    assert "already queued" in second.json()["error"]["detail"]
 
 
 # ---------------------------------------------------------------- review

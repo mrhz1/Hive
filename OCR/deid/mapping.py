@@ -3,27 +3,29 @@
 Presidio works on a flat string; redaction needs pixel rectangles. This
 module builds the page string from OCR spans while remembering where each
 span landed in it, then walks detected entities back to boxes.
+
+Pure geometry and string arithmetic -- no presidio, no paddle -- so it
+stays importable under either virtualenv.
 """
 import logging
-from dataclasses import dataclass, field
 from typing import List, Tuple
 
-from deid.analyzer import PiiSpan
-from deid.ocr_engine import OcrSpan
+from deid.spans import OcrSpan, PageText, PiiSpan, RedactionBox
 
 log = logging.getLogger(__name__)
+
+__all__ = [
+    "PageText",
+    "RedactionBox",
+    "build_page_text",
+    "map_pii_to_boxes",
+    "redact_text",
+]
 
 # Spans are text lines, so joining with a newline preserves the line
 # structure the NER model benefits from. Length must be accounted for
 # when computing offsets.
 SEPARATOR = "\n"
-
-
-@dataclass
-class PageText:
-    text: str
-    # (char_start, char_end, span) per OCR span, in text order.
-    index: List[Tuple[int, int, OcrSpan]] = field(default_factory=list)
 
 
 def build_page_text(spans: List[OcrSpan]) -> PageText:
@@ -41,16 +43,6 @@ def build_page_text(spans: List[OcrSpan]) -> PageText:
         cursor = end
 
     return PageText(text=SEPARATOR.join(parts), index=index)
-
-
-@dataclass
-class RedactionBox:
-    x0: float
-    y0: float
-    x1: float
-    y1: float
-    entity_type: str
-    score: float
 
 
 def _sub_box(

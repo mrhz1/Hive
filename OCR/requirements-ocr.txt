@@ -1,0 +1,29 @@
+# Stage 1: OCR only. Install into .venv-ocr.
+#
+# This file MUST NOT gain a presidio/transformers/torch dependency. The
+# whole reason for two files is that paddle and presidio are mutually
+# unsatisfiable:
+#
+#   paddleocr -> paddlex          pins  PyYAML==6.0.2
+#   presidio-analyzer >= 2.2.363  needs pyyaml>=6.0.3
+#
+# Note there is deliberately no `pyyaml` line below: paddlex's exact pin
+# has to win uncontested, and nothing in deid/ imports yaml itself.
+#
+# Python 3.10 (matches the repo venv standard, 3.10.20, and the
+# Hive/impyla side).
+
+# PP-OCRv6 landed in PaddleOCR 3.7.0 (June 2026); earlier versions do not
+# know the PP-OCRv6_* model names and will fail to resolve them.
+paddleocr>=3.7.0,<4
+paddlepaddle>=3.0.0,<4
+
+# Rasterises pages for OCR. Also present in the NLP env, which is where
+# redaction happens -- pure wheel, no poppler/system binaries, so
+# duplicating it across both venvs costs nothing.
+pymupdf>=1.24.0
+
+pillow>=10.0.0
+# Upper bound is paddlex's (numpy<2.4); stated here so a resolution
+# failure names numpy rather than a transitive paddle package.
+numpy>=1.24.0,<2.4

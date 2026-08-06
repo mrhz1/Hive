@@ -1,10 +1,12 @@
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app import cloudera, deid
 from app.errors import AppError, app_error_handler, unhandled_error_handler
 from app.logging_setup import configure_logging, get_logger
 from app.middleware import RequestContextMiddleware
@@ -21,6 +23,33 @@ from app.routers import (
 configure_logging()
 log = get_logger(__name__)
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Say at boot whether de-identification can actually be dispatched.
+
+    Without this the first symptom of a half-configured cml_job backend
+    is a user clicking De-identify and the row going straight to
+    'failed' -- with the real reason buried in a background task's log.
+    A misconfiguration is not made fatal, though: the rest of the API is
+    perfectly usable, and refusing to start would turn a broken feature
+    into a broken deployment.
+    """
+    if deid.DEID_BACKEND == "cml_job" and not cloudera.is_configured():
+        log.error(
+            "deid_backend_misconfigured",
+            backend=deid.DEID_BACKEND,
+            detail=(
+                "DEID_BACKEND=cml_job but the Cloudera API is not "
+                "configured; set CML_DEID_JOB_ID (and CML_API_KEY / "
+                "CML_PROJECT_ID if not running inside a CML workload)"
+            ),
+        )
+    else:
+        log.info("deid_backend", backend=deid.DEID_BACKEND)
+
+    yield
+
+
 app = FastAPI(
     title="Hive Users API",
     description=(
@@ -28,6 +57,7 @@ app = FastAPI(
         "the X-User-Id header; every endpoint requires a '<model>:<action>' "
         "permission granted through the caller's role."
     ),
+    lifespan=lifespan,
 )
 
 app.add_middleware(RequestContextMiddleware)

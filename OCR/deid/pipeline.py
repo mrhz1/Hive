@@ -1,214 +1,337 @@
-"""Orchestration: PDF in, de-identified PDF (+ text + report) out.
+"""Orchestration across two virtualenvs.
 
-Per page: rasterise -> OCR -> join to text -> Presidio analyse -> map
-entities back to boxes -> redact. Models are loaded once and reused
-across every page and every file in a run, which dominates cost.
+## Why the pipeline is split
+
+PaddleOCR and Presidio cannot be installed into the same environment.
+The conflict is exact and unfixable from our side:
+
+    paddleocr -> paddlex           pins  PyYAML==6.0.2
+    presidio-analyzer >= 2.2.363   needs pyyaml>=6.0.3
+
+so pip has no solution. Pinning presidio back to 2.2.362 does resolve
+today, but it freezes de-identification -- the part of this system with
+actual compliance consequences -- at whatever version happens to predate
+the clash, and it breaks again on the next release of either package.
+Beyond the metadata, the two stacks each ship their own OpenMP runtime
+and a ~3GB torch install that the OCR half has no use for.
+
+So the stages run as two processes with two virtualenvs:
+
+    stage 1  .venv-ocr   paddleocr + paddlepaddle + PyMuPDF   -> spans JSON
+    stage 2  .venv-nlp   presidio + transformers + PyMuPDF    -> redacted PDF
+
+This module is the coordinator. It runs under *neither* of those: it is
+standard library only, so the Cloudera AI runtime's stock python can
+execute it with nothing installed.
+
+## The handoff
+
+Stage 1 writes one JSON file per PDF holding the recognised text and its
+pixel geometry (deid/spans.py). Stage 2 reads it, detects PII, and
+redacts the original PDF.
+
+That file contains raw OCR text, so **it is PHI**. It lives in a 0700
+temp directory that is removed in a `finally`, and it is written 0600.
+DEID_KEEP_WORK_DIR exists for debugging a bad redaction and must stay off
+in production.
+
+## Failure handling
+
+Stage 1 failures are recorded per file and stage 2 is simply not asked to
+process them. A stage crashing outright (missing interpreter, OOM) fails
+every file in its batch with the stage named, because at that point we
+cannot tell which file was to blame.
 """
 import json
 import logging
 import os
-import time
-from dataclasses import asdict, dataclass, field
-from typing import Dict, List, Optional
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from deid.analyzer import analyze_text, build_analyzer
-from deid.config import Config
-from deid.mapping import build_page_text, map_pii_to_boxes, redact_text
-from deid.ocr_engine import OcrEngine
-from deid.pdf_io import apply_redactions, open_pdf, render_pages, save_pdf
+from deid import model_store
+from deid.config import load_config
+from deid.results import DocumentResult
+from deid.spans import write_manifest
 
 log = logging.getLogger(__name__)
 
+# The OCR package root, so every default path works regardless of the
+# process's working directory -- a Cloudera job does not necessarily
+# start where you think it does.
+OCR_ROOT = Path(__file__).resolve().parent.parent
 
-@dataclass
-class PageResult:
-    page_number: int
-    ocr_spans: int
-    entities_found: int
-    boxes_applied: int
-    entity_counts: Dict[str, int] = field(default_factory=dict)
-    # Populated only when config.report_include_values is on.
-    entity_values: List[dict] = field(default_factory=list)
-
-
-@dataclass
-class DocumentResult:
-    source_path: str
-    output_pdf: Optional[str]
-    output_text: Optional[str]
-    output_report: Optional[str]
-    pages: List[PageResult] = field(default_factory=list)
-    duration_seconds: float = 0.0
-    status: str = "ok"
-    error: Optional[str] = None
-
-    @property
-    def total_entities(self) -> int:
-        return sum(p.entities_found for p in self.pages)
-
-    @property
-    def total_boxes(self) -> int:
-        return sum(p.boxes_applied for p in self.pages)
+# Interpreters for the two stages. Defaults point at the venvs the
+# Makefile builds; on Cloudera AI set them to wherever the environment
+# build put them (they must be absolute there).
+DEFAULT_OCR_PYTHON = str(OCR_ROOT / ".venv-ocr" / "bin" / "python")
+DEFAULT_NLP_PYTHON = str(OCR_ROOT / ".venv-nlp" / "bin" / "python")
 
 
-class Deidentifier:
-    """Holds the loaded models. Construct once per job, call
-    process_pdf per file."""
+def ocr_python() -> str:
+    return os.environ.get("DEID_OCR_PYTHON", DEFAULT_OCR_PYTHON)
 
-    def __init__(self, config: Config):
-        self.config = config
-        self.ocr = OcrEngine(config)
-        self._analyzer = None
-        # Whole-span redaction is the conservative mode: cover the entire
-        # OCR line whenever any part of it is PII. Default is the
-        # proportional estimate, which keeps non-PII text readable.
-        self.whole_span = os.environ.get(
-            "DEID_REDACT_WHOLE_SPAN", ""
-        ).strip().lower() in ("1", "true", "yes", "on")
 
-    @property
-    def analyzer(self):
-        if self._analyzer is None:
-            self._analyzer = build_analyzer(self.config)
-        return self._analyzer
+def nlp_python() -> str:
+    return os.environ.get("DEID_NLP_PYTHON", DEFAULT_NLP_PYTHON)
 
-    def process_pdf(
-        self, source_path: str, output_pdf: str,
-        output_text: Optional[str] = None,
-        output_report: Optional[str] = None,
-    ) -> DocumentResult:
-        started = time.perf_counter()
-        result = DocumentResult(
-            source_path=source_path,
-            output_pdf=output_pdf,
-            output_text=output_text,
-            output_report=output_report,
+
+def _log_stage_output() -> bool:
+    return os.environ.get("DEID_LOG_STAGE_OUTPUT", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+class StageError(RuntimeError):
+    """A whole stage failed, as opposed to individual files failing."""
+
+
+def _run_stage(
+    interpreter: str,
+    script: str,
+    manifest_path: str,
+    result_path: str,
+    stage: str,
+) -> List[dict]:
+    """Run one stage subprocess and read back its result file.
+
+    Results come from a file rather than stdout because the ML stacks
+    print to stdout at import time -- paddle in particular -- and mixing
+    that into a JSON payload makes the parse fail in a way that looks
+    like a pipeline bug.
+    """
+    command = [
+        interpreter,
+        str(OCR_ROOT / "scripts" / script),
+        "--manifest",
+        manifest_path,
+        "--result",
+        result_path,
+    ]
+    log.info("stage %s: %s", stage, " ".join(command))
+
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(OCR_ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+            # The stages inherit the environment: OCR_*/DEID_* config vars
+            # are read inside them, and PATH/HF_HOME matter for model
+            # resolution.
+            env=os.environ.copy(),
+        )
+    except FileNotFoundError as exc:
+        raise StageError(
+            f"{stage} stage interpreter not found at '{interpreter}'. "
+            f"Set DEID_{stage.upper()}_PYTHON to the venv that has the "
+            f"{stage} dependencies installed."
+        ) from exc
+
+    if completed.stderr and (completed.returncode != 0 or _log_stage_output()):
+        # Forwarded only on failure, because a stage's stderr can quote
+        # the document: warnings from the NLP libraries embed the text
+        # they choked on, which is patient text. Copying that into a
+        # Cloudera job log would re-leak exactly what this pipeline
+        # removes. On failure the diagnostic is worth the risk; routinely
+        # it is not. DEID_LOG_STAGE_OUTPUT forces it on for debugging.
+        for line in completed.stderr.strip().splitlines():
+            log.info("[%s] %s", stage, line)
+
+    if not os.path.exists(result_path):
+        detail = (completed.stderr or completed.stdout or "").strip()[-800:]
+        raise StageError(
+            f"{stage} stage produced no result file "
+            f"(exit {completed.returncode}): {detail}"
         )
 
+    with open(result_path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _fail_all(sources: List[str], stage: str, error: str) -> List[DocumentResult]:
+    return [
+        DocumentResult(
+            source_path=source, status="error", error=error, failed_stage=stage
+        )
+        for source in sources
+    ]
+
+
+def run_pipeline(
+    sources: List[str],
+    output_dir: str,
+    suffix: str = "_deid",
+    work_dir: Optional[str] = None,
+) -> List[DocumentResult]:
+    """De-identify every PDF in `sources`, writing results to `output_dir`.
+
+    Returns one DocumentResult per input, in input order.
+    """
+    if not sources:
+        return []
+
+    output_root = Path(output_dir).expanduser()
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    keep_work_dir = os.environ.get("DEID_KEEP_WORK_DIR", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+    if work_dir:
+        work = Path(work_dir).expanduser()
+        work.mkdir(parents=True, mode=0o700, exist_ok=True)
+        owned = False
+    else:
+        # mkdtemp is 0700 by default, which is what we want for a
+        # directory about to hold OCR'd patient text.
+        work = Path(tempfile.mkdtemp(prefix="deid-work-"))
+        owned = True
+
+    try:
+        return _run(sources, output_root, suffix, work)
+    finally:
+        if owned and not keep_work_dir:
+            shutil.rmtree(work, ignore_errors=True)
+        elif keep_work_dir:
+            log.warning(
+                "DEID_KEEP_WORK_DIR is set: OCR text (PHI) left in %s", work
+            )
+
+
+def _run(
+    sources: List[str], output_root: Path, suffix: str, work: Path
+) -> List[DocumentResult]:
+    # Index-prefixed names, because two inputs in different directories
+    # can share a basename and would otherwise overwrite each other's
+    # handoff file.
+    plan: List[Dict[str, Any]] = []
+    for index, source in enumerate(sources):
+        stem = Path(source).stem + suffix
+        plan.append(
+            {
+                "source": source,
+                "spans": str(work / f"{index:05d}.spans.json"),
+                "output_pdf": str(output_root / f"{stem}.pdf"),
+                "output_text": str(output_root / f"{stem}.txt"),
+                "output_report": str(output_root / f"{stem}.report.json"),
+            }
+        )
+
+    # --- stage 1: OCR ------------------------------------------------
+    ocr_manifest = str(work / "ocr-manifest.json")
+    write_manifest(
+        ocr_manifest, [{"source": j["source"], "spans": j["spans"]} for j in plan]
+    )
+
+    try:
+        ocr_outcomes = _run_stage(
+            ocr_python(),
+            "stage_ocr.py",
+            ocr_manifest,
+            str(work / "ocr-result.json"),
+            "ocr",
+        )
+    except StageError as exc:
+        log.error("OCR stage failed: %s", exc)
+        return _fail_all([j["source"] for j in plan], "ocr", str(exc))
+
+    ocr_status = {o["source"]: o for o in ocr_outcomes}
+
+    # --- stage 2: PII detection + redaction ---------------------------
+    ready = [j for j in plan if ocr_status.get(j["source"], {}).get("status") == "ok"]
+    results: List[DocumentResult] = []
+
+    if ready:
+        nlp_manifest = str(work / "nlp-manifest.json")
+        write_manifest(nlp_manifest, ready)
         try:
-            doc = open_pdf(source_path)
-        except Exception as exc:
-            log.error("open failed for %s: %s", source_path, exc)
-            result.status = "error"
-            result.error = str(exc)
-            result.duration_seconds = time.perf_counter() - started
-            return result
+            nlp_results = _run_stage(
+                nlp_python(),
+                "stage_nlp.py",
+                nlp_manifest,
+                str(work / "nlp-result.json"),
+                "nlp",
+            )
+            results = [DocumentResult.from_dict(r) for r in nlp_results]
+        except StageError as exc:
+            log.error("NLP stage failed: %s", exc)
+            results = _fail_all([j["source"] for j in ready], "nlp", str(exc))
 
-        text_pages: List[str] = []
+    by_source = {r.source_path: r for r in results}
 
-        try:
-            for rendered in render_pages(doc, self.config.dpi):
-                page_result, page_text = self._process_page(doc, rendered)
-                result.pages.append(page_result)
-                text_pages.append(page_text)
+    # Reassemble in input order, filling in the files stage 1 rejected.
+    ordered: List[DocumentResult] = []
+    for job in plan:
+        source = job["source"]
+        if source in by_source:
+            ordered.append(by_source[source])
+            continue
 
-            os.makedirs(os.path.dirname(os.path.abspath(output_pdf)), exist_ok=True)
-            save_pdf(doc, output_pdf)
-
-            if output_text and self.config.write_text:
-                os.makedirs(os.path.dirname(os.path.abspath(output_text)), exist_ok=True)
-                with open(output_text, "w", encoding="utf-8") as fh:
-                    fh.write("\n\n".join(text_pages))
-
-            if output_report and self.config.write_report:
-                os.makedirs(
-                    os.path.dirname(os.path.abspath(output_report)), exist_ok=True
-                )
-                with open(output_report, "w", encoding="utf-8") as fh:
-                    json.dump(self._build_report(result), fh, indent=2)
-
-        except Exception as exc:
-            log.exception("processing failed for %s", source_path)
-            result.status = "error"
-            result.error = str(exc)
-        finally:
-            doc.close()
-
-        result.duration_seconds = round(time.perf_counter() - started, 2)
-        log.info(
-            "%s -> %s | pages=%d entities=%d boxes=%d %.2fs [%s]",
-            source_path,
-            output_pdf,
-            len(result.pages),
-            result.total_entities,
-            result.total_boxes,
-            result.duration_seconds,
-            result.status,
-        )
-        return result
-
-    def _process_page(self, doc, rendered):
-        spans = self.ocr.read_page(rendered.image)
-        page_text = build_page_text(spans)
-        pii = analyze_text(self.analyzer, page_text.text, self.config)
-
-        boxes = map_pii_to_boxes(
-            page_text,
-            pii,
-            padding=self.config.box_padding,
-            whole_span=self.whole_span,
-        )
-        applied = apply_redactions(
-            doc,
-            rendered.page_number,
-            boxes,
-            rendered.scale,
-            fill=self.config.redaction_fill,
+        outcome = ocr_status.get(source, {})
+        ordered.append(
+            DocumentResult(
+                source_path=source,
+                status="error",
+                error=outcome.get("error") or "OCR stage returned no result",
+                failed_stage="ocr",
+                duration_seconds=float(outcome.get("duration_seconds", 0.0)),
+            )
         )
 
-        counts: Dict[str, int] = {}
-        for p in pii:
-            counts[p.entity_type] = counts.get(p.entity_type, 0) + 1
+    return ordered
 
-        values: List[dict] = []
-        if self.config.report_include_values:
-            values = [
-                {
-                    "entity_type": p.entity_type,
-                    "score": round(p.score, 3),
-                    "text": page_text.text[p.start : p.end],
-                }
-                for p in pii
-            ]
 
-        page_result = PageResult(
-            page_number=rendered.page_number,
-            ocr_spans=len(spans),
-            entities_found=len(pii),
-            boxes_applied=applied,
-            entity_counts=counts,
-            entity_values=values,
-        )
-        return page_result, redact_text(page_text.text, pii)
+def preflight() -> List[str]:
+    """Problems that would make a run fail, checked before doing work.
 
-    def _build_report(self, result: DocumentResult) -> dict:
-        totals: Dict[str, int] = {}
-        for page in result.pages:
-            for entity, count in page.entity_counts.items():
-                totals[entity] = totals.get(entity, 0) + count
+    Worth having as its own step: the failure mode without it is a job
+    that spends a minute loading models and then dies on a missing path.
+    """
+    problems: List[str] = []
 
-        return {
-            "source_path": result.source_path,
-            "output_pdf": result.output_pdf,
-            "status": result.status,
-            "error": result.error,
-            "duration_seconds": result.duration_seconds,
-            "page_count": len(result.pages),
-            "total_entities": result.total_entities,
-            "total_boxes_applied": result.total_boxes,
-            "entity_totals": totals,
-            "models": {
-                "ocr_detection": self.config.det_model,
-                "ocr_recognition": self.config.rec_model,
-                "spacy": self.config.spacy_model,
-                "transformers": self.config.transformers_model,
-            },
-            "settings": {
-                "dpi": self.config.dpi,
-                "score_threshold": self.config.score_threshold,
-                "min_ocr_confidence": self.config.min_ocr_confidence,
-                "redact_whole_span": self.whole_span,
-                "box_padding": self.config.box_padding,
-            },
-            "pages": [asdict(p) for p in result.pages],
-        }
+    for name, interpreter in (("ocr", ocr_python()), ("nlp", nlp_python())):
+        if not os.path.isfile(interpreter):
+            problems.append(
+                f"{name} interpreter not found at '{interpreter}' "
+                f"(set DEID_{name.upper()}_PYTHON)"
+            )
+        elif not os.access(interpreter, os.X_OK):
+            problems.append(f"{name} interpreter '{interpreter}' is not executable")
+
+    for script in ("stage_ocr.py", "stage_nlp.py"):
+        path = OCR_ROOT / "scripts" / script
+        if not path.is_file():
+            problems.append(f"missing stage script {path}")
+
+    # Weights are checked here, in the dependency-free orchestrator,
+    # precisely because the stages cannot check them cheaply: finding out
+    # that the NER model is missing costs a python start plus a torch
+    # import first. A missing model directory is also the expected
+    # failure on Cloudera AI, where the store arrives by file copy and
+    # nothing downloads it if the copy was incomplete.
+    problems.extend(model_store.missing_models(load_config()))
+
+    return problems
+
+
+def describe_environment() -> dict:
+    """What the orchestrator resolved to -- printed by --preflight and
+    worth having in a job log when something is misconfigured."""
+    return {
+        "orchestrator_python": sys.executable,
+        "ocr_root": str(OCR_ROOT),
+        "ocr_python": ocr_python(),
+        "nlp_python": nlp_python(),
+        "models": model_store.describe(load_config()),
+    }

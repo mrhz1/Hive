@@ -17,6 +17,7 @@ import { patientFilesApi } from '@/lib/api/resources'
 import {
   deidTone,
   formatFileSize,
+  isDeidInFlight,
   reviewTone,
   type PatientFile,
 } from '@/schemas/patientFile'
@@ -156,7 +157,7 @@ export function FileReviewPanel({ patientId }: { patientId: string }) {
               // must not be started twice.
               disabled={
                 file.file_extension.toLowerCase() !== 'pdf' ||
-                file.deid_status === 'processing'
+                isDeidInFlight(file.deid_status)
               }
               isLoading={deidentify.isPending && deidentify.variables === file.id}
               leadingIcon={<ShieldCheck className="size-3.5" aria-hidden="true" />}

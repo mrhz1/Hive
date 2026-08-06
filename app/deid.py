@@ -3,26 +3,32 @@
 This is the single place that knows how to de-identify a stored file, and
 it is deliberately independent of *what* triggers it:
 
-  * today  -- the API calls run_deidentification() in a FastAPI
-              BackgroundTask when the user clicks De-identify
-  * later  -- a Cloudera AI job runs scripts/deid_worker.py, which drains
-              the pending queue by calling exactly the same function
+  * `DEID_BACKEND=inline`  -- the API calls run_deidentification() in a
+    FastAPI BackgroundTask when the user clicks De-identify. Fine locally
+    and at low volume.
+  * `DEID_BACKEND=cml_job` -- the API only marks the row `pending` and
+    asks Cloudera AI to start the de-identification Job, which runs
+    scripts/deid_worker.py and calls exactly the same function.
 
-Moving to the job model therefore changes scheduling, not logic.
+Switching therefore changes *scheduling*, not logic.
 
-The OCR/Presidio stack (paddle, torch, transformers, spacy) lives in its
-own virtualenv and is invoked as a subprocess rather than imported. That
-keeps ~3GB of ML dependencies out of the API process, and it is the same
-shape the job will use -- a Cloudera job runs a script, not an import.
-Only DEID_PYTHON changes between the two.
+The OCR/Presidio stack is invoked as a subprocess, never imported, so
+~3GB of ML dependencies stay out of the API process. Note that the stack
+is itself split across two virtualenvs -- paddle and presidio cannot be
+installed together -- but that is entirely OCR/scripts/run_deid.py's
+problem: it is standard-library-only and coordinates the two. See
+OCR/deid/pipeline.py. Which is why DEID_PYTHON below defaults to *this*
+interpreter: the orchestrator needs nothing installed.
 """
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
 import structlog
 
+from app.cloudera import ClouderaError, start_deid_job_run
 from app.crud import patient_files as crud
 from app.db import hive_cursor
 from app.logging_setup import get_logger
@@ -31,10 +37,24 @@ from app.storage import resolve_stored_path
 
 log = get_logger(__name__)
 
-# Interpreter that has the OCR stack installed. On Cloudera AI point this
-# at the runtime's python if the deps are baked into the image.
-DEID_PYTHON = os.environ.get("DEID_PYTHON", "OCR/.venv/bin/python")
-DEID_SCRIPT = os.environ.get("DEID_SCRIPT", "OCR/scripts/run_deid.py")
+# Absolute, derived from this file, so nothing depends on the process's
+# working directory -- a Cloudera Application does not necessarily start
+# where you think it does, and the old relative defaults broke silently
+# when it did not.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# "inline" runs the pipeline in this process's background task;
+# "cml_job" hands off to the Cloudera AI Job. Configuration, not an
+# environment check -- the code path is chosen by value, not by sniffing
+# for CDSW_* vars.
+DEID_BACKEND = os.environ.get("DEID_BACKEND", "inline").strip().lower()
+
+# The orchestrator is stdlib-only, so the API's own interpreter can run
+# it. Override only if the OCR tree lives under a different python.
+DEID_PYTHON = os.environ.get("DEID_PYTHON", sys.executable)
+DEID_SCRIPT = os.environ.get(
+    "DEID_SCRIPT", str(REPO_ROOT / "OCR" / "scripts" / "run_deid.py")
+)
 
 # OCR is slow (tens of seconds per page), so this is generous by design.
 DEID_TIMEOUT_SECONDS = int(os.environ.get("DEID_TIMEOUT_SECONDS", "1800"))
@@ -50,6 +70,57 @@ DEID_SUBFOLDER = "deidentified"
 
 class DeidError(Exception):
     """Raised internally so every failure path marks the row 'failed'."""
+
+
+def queued_status() -> str:
+    """The status a freshly-queued file should be given.
+
+    Inline runs mark `processing` immediately, because the work begins in
+    this process a moment later. The Cloudera Job backend marks `queued`:
+    the run has been *asked for* but no worker has claimed the row yet,
+    and marking `processing` before anything is processing it would leave
+    a permanently stuck row if the run never starts. It cannot use
+    `pending` either -- that is the state every file is uploaded in, so
+    it carries no information about whether anyone asked.
+    """
+    return "queued" if DEID_BACKEND == "cml_job" else "processing"
+
+
+def dispatch_deidentification(
+    file_id: str, request_id: Optional[str] = None
+) -> None:
+    """Start de-identification by whichever route is configured.
+
+    Runs as a background task in both modes: the inline path does minutes
+    of work, and the cml_job path makes a network call to the control
+    plane that must not sit in the user's request.
+
+    Never raises, for the same reason run_deidentification does not --
+    there is no request left to return an error to.
+    """
+    if DEID_BACKEND == "inline":
+        run_deidentification(file_id, request_id=request_id)
+        return
+
+    if DEID_BACKEND != "cml_job":
+        log.error("deid_backend_unknown", backend=DEID_BACKEND, file_id=file_id)
+        _set_status(file_id, deid_status="failed")
+        return
+
+    if request_id:
+        structlog.contextvars.bind_contextvars(
+            request_id=request_id, background_task="deidentify_dispatch"
+        )
+
+    try:
+        # DEID_FILE_ID scopes the run to this file. The worker still
+        # drains anything else left pending, so a dropped trigger is
+        # recovered by the next run rather than stranding a row.
+        run_id = start_deid_job_run(environment={"DEID_FILE_ID": file_id})
+        log.info("deid_job_dispatched", file_id=file_id, run_id=run_id)
+    except ClouderaError as exc:
+        log.error("deid_job_dispatch_failed", file_id=file_id, error=str(exc))
+        _set_status(file_id, deid_status="failed")
 
 
 def _set_status(file_id: str, **fields) -> None:
@@ -130,6 +201,13 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
         return
 
     log.info("deid_started", file_id=file_id, name=record.sanitized_file_name)
+
+    # Claim the row here rather than relying on the caller. The API marks
+    # it before dispatch, but a Job run started on a schedule picks up
+    # rows nobody marked -- and a file that is genuinely being worked on
+    # for the next several minutes must not still read as 'queued'.
+    if record.deid_status != "processing":
+        _set_status(file_id, deid_status="processing")
 
     try:
         if record.file_extension.lower() != "pdf":

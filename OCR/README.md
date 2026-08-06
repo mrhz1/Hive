@@ -2,10 +2,10 @@
 
 Scans PDFs with OCR, detects PII/PHI, and writes a genuinely redacted
 PDF. Pure Python, no Docker, no system binaries — built to run as a
-Cloudera AI job and later be triggered by the FastAPI/Hive service with a
-path to process.
+Cloudera AI job and be triggered by the FastAPI/Hive service with a path
+to process.
 
-**Models** (both pinned in `deid/config.py`, swappable by env var):
+**Models** (all pinned in `deid/config.py`, swappable by env var):
 
 | role | model |
 |---|---|
@@ -14,36 +14,143 @@ path to process.
 | tokenization/lemmatization | spaCy `en_core_web_sm` |
 | NER | `StanfordAIMI/stanford-deidentifier-base` via Presidio |
 
+## Two virtualenvs, and why
+
+**PaddleOCR and Presidio cannot be installed together.** The conflict is
+exact:
+
+```
+paddleocr → paddlex           pins  PyYAML==6.0.2
+presidio-analyzer ≥ 2.2.363   needs pyyaml>=6.0.3
+```
+
+pip has no solution. Reproduce it in one line:
+
+```bash
+uv pip compile - <<< $'paddleocr>=3.7.0\npresidio-analyzer==2.2.364'
+# × No solution found when resolving dependencies
+```
+
+Pinning presidio back to 2.2.362 *does* resolve today. That is the wrong
+fix: it freezes de-identification — the part of this system with actual
+compliance consequences — at whatever release happens to predate the
+clash, and it breaks again the next time either package moves. Beyond the
+metadata, the two stacks each ship their own OpenMP runtime, and torch
+(~3GB with CUDA, ~200MB CPU-only) is dead weight in the OCR half.
+
+So the pipeline runs as two processes:
+
+```
+                 scripts/run_deid.py          ← stdlib only, no venv needed
+                   ├── stage 1  .venv-ocr     paddleocr + paddlepaddle + PyMuPDF
+                   │      ↓  spans JSON (text + pixel geometry)
+                   └── stage 2  .venv-nlp     presidio + transformers + torch + PyMuPDF
+                          ↓  redacted PDF + text + report
+```
+
+`run_deid.py` is the **orchestrator** and imports nothing outside the
+standard library, so the Cloudera runtime's stock python can run it with
+nothing installed. Only the two stage subprocesses need dependencies.
+
+The handoff file holds raw OCR text, so **it is PHI**. It lives in a 0700
+temp directory written 0600 and deleted in a `finally`. `DEID_KEEP_WORK_DIR`
+keeps it for debugging and must stay off in production.
+
+Note that stage 2 redacts the **original** PDF using stage 1's geometry —
+it never re-rasterises, and a stage-2 failure cannot leave a
+half-redacted file behind.
+
+## The model store, and why models never download
+
+**Cloudera AI blocks `github.com` and `huggingface.co`**, which is where
+all four models normally come from. pip works; model weights do not
+arrive over pip.
+
+So the weights live in `OCR/models/`, are loaded **by path**, and are
+moved to Cloudera as a file copy. Nothing downloads at job time — see
+[`models/README.md`](models/README.md) for the layout and the transfer.
+
+```
+models/
+  paddle/PP-OCRv6_medium_det/                       133MB, both det+rec
+  paddle/PP-OCRv6_medium_rec/
+  spacy/en_core_web_sm/                             15MB
+  transformers/StanfordAIMI/stanford-deidentifier-base/   419MB
+```
+
+Directory names are the model identifiers verbatim — the same strings
+`deid/config.py` pins — so swapping a model means dropping in a folder
+with the matching name, not editing code. `deid/model_store.py` resolves
+them.
+
+`DEID_OFFLINE` defaults to **on**, which means two things: the
+HuggingFace offline switches are set before transformers is imported, so
+a stray `from_pretrained("org/name")` anywhere in the dependency tree
+fails fast instead of hanging on a blocked host until the job times out;
+and a model missing from the store raises immediately, naming the
+directory it looked in. Set `DEID_OFFLINE=0` only on a machine with
+egress.
+
 ## Setup
+
+On a machine **with** network access:
 
 ```bash
 cd OCR
-python3.10 -m venv .venv                     # Presidio supports 3.10–3.13
-.venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
-.venv/bin/pip install -r requirements.txt
-.venv/bin/python -m spacy download en_core_web_sm
-.venv/bin/python scripts/download_models.py  # pre-fetch all weights
+make venvs        # .venv-ocr and .venv-nlp, both python3.10
+make install      # both requirement sets; torch comes from the CPU index
+make models       # fill models/ from the network — ~570MB, a few minutes
+make check-models # load every staged model with the network switched off
+make preflight    # interpreters resolvable, models present?
 ```
 
-Install torch from the CPU index **first** — otherwise pip pulls the
-~2.5GB CUDA build for what is a CPU job.
+Or by hand:
 
-`scripts/download_models.py` is not optional in practice: Cloudera AI job
-runs shouldn't be pulling hundreds of MB on first request, and may have
-no egress at all. Run it at environment build time.
+```bash
+python3.10 -m venv .venv-ocr && python3.10 -m venv .venv-nlp
+
+.venv-ocr/bin/pip install -r requirements-ocr.txt
+.venv-ocr/bin/python scripts/stage_models.py --stage ocr
+
+# torch from the CPU index FIRST, or pip pulls the ~3GB CUDA build.
+.venv-nlp/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
+.venv-nlp/bin/pip install -r requirements-nlp.txt
+.venv-nlp/bin/python scripts/stage_models.py --stage nlp
+```
+
+Never `pip install -r requirements-ocr.txt -r requirements-nlp.txt` into
+one environment. That is the thing that does not work.
+
+Two staging runs, not one, for the same reason: each virtualenv can only
+download what it can import.
+
+Then move `models/` to the target and re-run `make check-models` **there**.
+That is the check that matters — `--preflight` verifies the directories
+exist, which catches an incomplete copy but not a corrupt one, and a
+truncated `pytorch_model.bin` otherwise surfaces several minutes into
+the first real job.
 
 ## Usage
 
+Run with any python — the orchestrator needs no dependencies:
+
 ```bash
 # one file
-.venv/bin/python scripts/run_deid.py --input doc.pdf --output-dir out/
+python3 scripts/run_deid.py --input doc.pdf --output-dir out/
 
 # a directory
-.venv/bin/python scripts/run_deid.py --input /data/pdfs --recursive --output-dir out/
+python3 scripts/run_deid.py --input /data/pdfs --recursive --output-dir out/
 
 # env-var form (how a Cloudera job usually passes arguments)
-DEID_INPUT=/data/pdfs DEID_OUTPUT_DIR=/data/out .venv/bin/python scripts/run_deid.py
+DEID_INPUT=/data/pdfs DEID_OUTPUT_DIR=/data/out python3 scripts/run_deid.py
+
+# is the deployment wired up at all?
+python3 scripts/run_deid.py --preflight
 ```
+
+Point `DEID_OCR_PYTHON` / `DEID_NLP_PYTHON` at the two venvs if they are
+not at `OCR/.venv-ocr` and `OCR/.venv-nlp` (on Cloudera AI they must be
+absolute paths).
 
 For each `doc.pdf` you get `doc_deid.pdf`, `doc_deid.txt` (de-identified
 text, entities replaced by `<PERSON>` etc.), and `doc_deid.report.json`
@@ -61,7 +168,9 @@ in a leftover text layer:
 
 ```bash
 make run && make verify        # against the synthetic sample
-.venv/bin/python scripts/verify_redaction.py out/doc_deid.pdf \
+
+# Verification only re-reads, so it runs in the OCR env.
+.venv-ocr/bin/python scripts/verify_redaction.py out/doc_deid.pdf \
     --expect-absent "Jane Doe" --expect-absent "543-22-9087"
 ```
 
@@ -75,13 +184,19 @@ retained, 0 residual text-layer characters.
 
 ## How it works
 
-Per page: rasterise at `OCR_DPI` → PP-OCRv6 det+rec → join line spans into
-page text (tracking each span's character range) → Presidio analyse →
-map entity character offsets back to pixel boxes → redact.
+**Stage 1** (`.venv-ocr`), per page: rasterise at `OCR_DPI` → PP-OCRv6
+det+rec → spans (text + confidence + pixel box) → one JSON per PDF.
 
-Models load once per job run and are reused across every page and file —
-that load dominates cost, so batch many PDFs into one invocation rather
-than one process per file.
+**Stage 2** (`.venv-nlp`), per page: join line spans into page text
+(tracking each span's character range) → Presidio analyse → map entity
+character offsets back to pixel boxes → redact the original PDF.
+
+Models load once per **stage run** and are reused across every page and
+file in it — that load dominates cost, so batch many PDFs into one
+invocation rather than one process per file. Splitting the pipeline does
+not change that: each stage still pays its own load exactly once, and the
+paddle models are unloaded before torch is even imported, which halves
+peak memory versus the old single-process design.
 
 ### Redaction is real, not cosmetic
 
@@ -108,6 +223,13 @@ values change between local and Cloudera AI.
 | `DEID_REDACT_WHOLE_SPAN` | `false` | `true` = redact the whole OCR line if any part is PII |
 | `DEID_BOX_PADDING` | `2.0` | pixels of growth around each box |
 | `DEID_REPORT_INCLUDE_VALUES` | `false` | off by design — see below |
+| `DEID_MODELS_DIR` | `OCR/models` | the local model store; a read-only mount is fine |
+| `DEID_OFFLINE` | `true` | load models by path only, never download |
+| `DEID_OCR_PYTHON` | `OCR/.venv-ocr/bin/python` | stage 1 interpreter |
+| `DEID_NLP_PYTHON` | `OCR/.venv-nlp/bin/python` | stage 2 interpreter |
+| `DEID_WORK_DIR` | a 0700 temp dir | where the PHI-bearing handoff lands |
+| `DEID_KEEP_WORK_DIR` | `false` | debugging only — leaves OCR text on disk |
+| `DEID_LOG_STAGE_OUTPUT` | `false` | forward stage stderr even on success |
 
 **Why the threshold is low (0.35).** For de-identification a false
 positive costs a redacted word; a false negative leaks PHI. The asymmetry
@@ -167,9 +289,43 @@ disjoint spans, keeping the highest-scoring label. On the sample this cut
 32 raw detections to 20 real ones.
 
 **The NER model download is the slow part** (~440MB `pytorch_model.bin`,
-no safetensors in the repo). `scripts/fetch_ner_model.py` downloads it
-with resume + retries and `max_workers=1`, which survives a flaky link
-far better than parallel range requests. It took ~14 minutes here.
+no safetensors in the repo). `scripts/stage_models.py` fetches it with
+resume + retries and `max_workers=1`, which survives a flaky link far
+better than parallel range requests. It took ~14 minutes here — and it
+happens once, on a machine with egress, never on the job node.
+
+**The HuggingFace cache is symlinks, not files.** Every blob in
+`~/.cache/huggingface` is a symlink into a content-addressed store, so
+copying that directory to another machine produces a model store full of
+dangling links — which passes a "does the directory exist?" check and
+fails at load time on the far side. `stage_models.py` resolves them
+(`snapshot_download(local_dir=...)`, `copytree(symlinks=False)`); the
+store is real files only.
+
+**PaddleOCR takes a bare model name as permission to download.** Passing
+`text_detection_model_dir` / `text_recognition_model_dir` is what makes
+it load locally instead. PaddleX has no offline flag, and before
+downloading it probes huggingface/modelscope/aistudio/BOS for
+reachability — on a network that drops rather than refuses, that probe is
+a multi-minute stall before you even get the real error.
+`PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK` (set by
+`model_store.apply_offline_env()`) skips it.
+
+**Presidio downloads spaCy models it cannot find.**
+`SpacyNlpEngine._download_spacy_model_if_needed()` calls
+`spacy.cli.download` unless the name is a package *or a path that
+exists*. The wheel it would fetch is hosted on github, which is blocked —
+so a path is the only offline-safe form, and that is what
+`deid/analyzer.py` passes.
+
+**The NLP libraries quote your documents into their warnings.**
+`spacy_huggingface_pipelines` emits `UserWarning: Skipping annotation ...
+for doc '<the document>'` on any entity it cannot align — with the
+patient's name in the message. Forwarding stage stderr to the job log
+therefore re-leaks exactly what the pipeline removes. `stage_nlp.py`
+filters that warning at source, and `pipeline.py` forwards stage stderr
+only on failure (or under `DEID_LOG_STAGE_OUTPUT`). Anything new added to
+either stage's logging needs the same scrutiny.
 
 ## Limitations
 
@@ -190,18 +346,48 @@ far better than parallel range requests. It took ~14 minutes here.
 
 ## Layout
 
+Which environment a module belongs to is not a convention, it is a
+constraint: importing across the line is how the venv split silently
+stops working.
+
 ```
 OCR/
+  requirements-ocr.txt   stage 1 deps           ─┐ never install
+  requirements-nlp.txt   stage 2 deps           ─┘ into one venv
+
   deid/
+    ── both envs (stdlib / pure python only) ──
     config.py        env-driven config, model pins, entity mapping
+    model_store.py   resolves models/ by path; enforces offline
+    spans.py         the stage-boundary types + JSON handoff
+    results.py       per-document/page results, summary, exit codes
+    mapping.py       char offsets <-> pixel boxes
+    pdf_io.py        rasterise + true redaction (PyMuPDF, numpy)
+    pipeline.py      the orchestrator itself — stdlib only
+
+    ── .venv-ocr only (imports paddle) ──
     ocr_engine.py    PaddleOCR PP-OCRv6 wrapper -> OcrSpan list
+    stage_ocr.py     PDF -> spans JSON
+
+    ── .venv-nlp only (imports presidio/torch) ──
     analyzer.py      Presidio + transformers NLP engine
     recognizers.py   custom address/ZIP/MRN/age recognizers
-    mapping.py       char offsets <-> pixel boxes
-    pdf_io.py        rasterise + true redaction (PyMuPDF)
-    pipeline.py      orchestration, reporting
+    stage_nlp.py     spans JSON -> redacted PDF
+
   scripts/
-    run_deid.py         job entrypoint (CLI or env vars)
-    download_models.py  pre-fetch all weights
-    make_sample_pdf.py  synthetic test document
+    run_deid.py         job entrypoint (CLI or env vars), no deps
+    stage_ocr.py        stage 1 entrypoint   (.venv-ocr)
+    stage_nlp.py        stage 2 entrypoint   (.venv-nlp)
+    stage_models.py     fill models/ from the network, --stage ocr|nlp
+    check_models.py     load every staged model offline, --stage ocr|nlp
+    verify_redaction.py re-OCR the output and hunt for leaks (.venv-ocr)
+    make_sample_pdf.py  synthetic test document (.venv-ocr)
+
+  models/              the weights, loaded by path, never downloaded
+    README.md            layout + how to move it to Cloudera AI
 ```
+
+The rule in one line: **nothing in the "both envs" group may import from
+the two below it.** `pdf_io.py` and `mapping.py` in particular are shared,
+which is why the dataclasses they pass around live in `spans.py` rather
+than next to the code that produces them.

@@ -18,7 +18,7 @@ from typing import List
 
 import numpy as np
 
-from deid.mapping import RedactionBox
+from deid.spans import RedactionBox
 
 log = logging.getLogger(__name__)
 

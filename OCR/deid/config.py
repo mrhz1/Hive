@@ -5,7 +5,10 @@ used by the Hive/FastAPI side of this repo: no code branches on
 environment, only values change between local and Cloudera AI.
 
 Model identifiers are pinned here rather than scattered through the code
-so a model swap is a one-line change.
+so a model swap is a one-line change. The names below are also the
+directory names in the local model store -- see deid/model_store.py, which
+turns each one into a path under OCR/models/ because the target
+deployment cannot reach github.com or huggingface.co.
 """
 import os
 from dataclasses import dataclass, field

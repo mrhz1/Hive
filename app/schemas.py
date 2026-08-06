@@ -255,7 +255,18 @@ class Patient(_PatientFields):
 
 # --------------------------------------------------------- patient files
 
-DEID_STATUSES = ("pending", "processing", "done", "failed")
+# 'pending' and 'queued' are genuinely different facts and collapsing
+# them breaks the Cloudera Job backend. A file is 'pending' from the
+# moment it is uploaded -- meaning "eligible for a sweep, nobody has
+# asked for it yet" -- and 'queued' only once someone pressed the button.
+# Without the distinction, either every upload counts as requested, or a
+# never-de-identified file cannot be requested at all.
+#
+# Under DEID_BACKEND=inline the row goes straight to 'processing',
+# because the work starts in-process a moment later; 'queued' is the
+# state that exists only while a Cloudera Job run is being started and
+# has not yet claimed the row.
+DEID_STATUSES = ("pending", "queued", "processing", "done", "failed")
 
 # The reviewer's decision on a document, tracked separately from
 # deid_status: "the OCR job finished" and "a person accepted the result"
@@ -317,7 +328,9 @@ class PatientFileUpdate(BaseModel):
     """
 
     description: Optional[str] = None
-    deid_status: Optional[str] = Field(default=None, pattern="^(pending|processing|done|failed)$")
+    deid_status: Optional[str] = Field(
+        default=None, pattern="^(pending|queued|processing|done|failed)$"
+    )
     is_deidentified: Optional[bool] = None
     de_identified_file_name: Optional[str] = None
     de_identified_file_path: Optional[str] = None

@@ -15,7 +15,7 @@ from app.audit import record_audit
 from app.crud import patient_files as crud
 from app.crud import patients as patients_crud
 from app.db import get_cursor
-from app.deid import run_deidentification
+from app.deid import dispatch_deidentification, queued_status
 from app.errors import ValidationError
 from app.logging_setup import get_logger
 from app.schemas import PatientFile, PatientFileReview, PatientFileUpdate, User
@@ -168,31 +168,37 @@ def deidentify_patient_file(
 ):
     """Queues OCR + PII redaction for one file.
 
-    Returns immediately with the row marked 'processing'; the work runs in
-    the background and the row is updated when it finishes. The client
-    re-reads to see the result -- no socket, by design.
+    Returns immediately with the row marked as queued; the work runs
+    elsewhere and the row is updated when it finishes. The client re-reads
+    to see the result -- no socket, by design.
 
-    The same run_deidentification() is what a Cloudera AI job will call
-    when this moves off the API process, so the contract does not change.
+    Where "elsewhere" is depends on DEID_BACKEND: this process's
+    background task, or a Cloudera AI Job run. Both end up in the same
+    run_deidentification(), so the contract here does not change either
+    way -- including which status the row lands in, which the deid module
+    owns because the two backends need different ones.
     """
     record = crud.get_file_or_404(cursor, file_id)
 
-    if record.deid_status == "processing":
-        raise ValidationError("This file is already being de-identified")
+    # 'pending' is deliberately not in this list: that is the state every
+    # file is uploaded in, so rejecting it would make a document
+    # impossible to de-identify the first time.
+    if record.deid_status in ("queued", "processing"):
+        raise ValidationError("This file is already queued for de-identification")
 
     if record.file_extension.lower() != "pdf":
         raise ValidationError(
             f"Only PDF files can be de-identified (got '{record.file_extension}')"
         )
 
-    # Marked before the task starts so the UI reflects it on the very next
-    # read, rather than looking like nothing happened.
+    # Marked before dispatch so the UI reflects it on the very next read,
+    # rather than looking like nothing happened.
     updated = crud.update_file(
-        cursor, file_id, PatientFileUpdate(deid_status="processing")
+        cursor, file_id, PatientFileUpdate(deid_status=queued_status())
     )
 
     background.add_task(
-        run_deidentification,
+        dispatch_deidentification,
         file_id=file_id,
         request_id=request.headers.get("X-Request-ID"),
     )
