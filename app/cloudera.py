@@ -78,6 +78,23 @@ class ClouderaError(Exception):
     """Raised for any failure to reach or command the CML API."""
 
 
+class ClouderaCapacityError(ClouderaError):
+    """The control plane refused the run for want of capacity, not because
+    anything is wrong with it.
+
+    Separate from ClouderaError because the two want opposite handling: a
+    bad job id will never succeed and the row should say so, while a
+    quota rejection means "not now" and the row should stay claimable so
+    the sweep run picks it up once capacity frees.
+    """
+
+
+# 409 is what CML returns for "out of quota: CPU request limit reached",
+# 429 for rate limiting, and 5xx is the control plane having a bad day.
+# None of them say the request was wrong.
+_RETRYABLE_STATUS = (409, 429, 500, 502, 503, 504)
+
+
 def _api_url() -> str:
     explicit = os.environ.get("CML_API_URL")
     if explicit:
@@ -175,6 +192,11 @@ def start_deid_job_run(environment: Optional[Dict[str, str]] = None) -> str:
                 "bundle PEM for your workspace."
             ) from exc
         raise ClouderaError(f"Could not reach the Cloudera API: {exc}") from exc
+
+    if response.status_code in _RETRYABLE_STATUS:
+        raise ClouderaCapacityError(
+            f"Cloudera API returned {response.status_code}: {response.text[:300]}"
+        )
 
     if response.status_code >= 400:
         # The body carries the actual reason (bad job id, expired key);
