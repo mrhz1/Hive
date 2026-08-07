@@ -80,7 +80,9 @@ def _user(user_id: str, username: str, role_id: str, is_active: bool = True):
 # ------------------------------------------------------------- the cursor
 
 _SELECT = re.compile(r"^SELECT (?P<cols>.+?) FROM `(?P<table>\w+)`(?P<rest>.*)$", re.S)
-_INSERT = re.compile(r"^INSERT INTO `(?P<table>\w+)` \((?P<cols>.+?)\) VALUES", re.S)
+_INSERT = re.compile(
+    r"^INSERT INTO `(?P<table>\w+)` \((?P<cols>.+?)\) VALUES \((?P<vals>.+)\)$", re.S
+)
 _UPDATE = re.compile(r"^UPDATE `(?P<table>\w+)` SET (?P<sets>.+?) WHERE `(?P<key>\w+)` = %s$", re.S)
 _DELETE = re.compile(r"^DELETE FROM `(?P<table>\w+)` WHERE `(?P<key>\w+)` = %s$", re.S)
 _DELETE_IN = re.compile(r"^DELETE FROM `(?P<table>\w+)` WHERE `(?P<key>\w+)` IN \((?P<slots>[%s, ]+)\)$", re.S)
@@ -179,23 +181,31 @@ class FakeHiveCursor:
         match = _INSERT.match(sql)
         assert match, f"unparsed INSERT: {sql}"
         columns = _COL.findall(match.group("cols"))
-        assert len(columns) == len(params), (
-            f"INSERT into `{match.group('table')}` binds {len(params)} params "
-            f"for {len(columns)} columns"
+        expressions = _split_values(match.group("vals"))
+        assert len(columns) == len(expressions), (
+            f"INSERT into `{match.group('table')}` supplies "
+            f"{len(expressions)} values for {len(columns)} columns"
         )
-        self._rows(match.group("table")).append(dict(zip(columns, params)))
+
+        values = [_eval_value(e, params) for e in expressions]
+        assert not params, f"INSERT binds {len(params)} params too many: {sql}"
+        self._rows(match.group("table")).append(dict(zip(columns, values)))
         return []
 
     def _update(self, sql, params):
         match = _UPDATE.match(sql)
         assert match, f"unparsed UPDATE: {sql}"
-        columns = _COL.findall(match.group("sets"))
-        values, key = params[:-1], params[-1]
-        assert len(columns) == len(values), "UPDATE arity mismatch"
+        key = params.pop()
+
+        assignments = {}
+        for part in _split_values(match.group("sets")):
+            column, _, expression = part.partition(" = ")
+            assignments[_COL.findall(column)[0]] = _eval_value(expression, params)
+        assert not params, f"UPDATE binds {len(params)} params too many: {sql}"
 
         for row in self._rows(match.group("table")):
             if row.get(match.group("key")) == key:
-                row.update(dict(zip(columns, values)))
+                row.update(assignments)
         return []
 
     def _delete(self, sql, params):
@@ -213,6 +223,48 @@ class FakeHiveCursor:
         wanted = set(params)
         self.store[table] = [r for r in self._rows(table) if r.get(key) not in wanted]
         return []
+
+
+def _split_values(clause):
+    """Split a VALUES list or SET clause on its top-level commas.
+
+    Not every value is a bare placeholder -- current_timestamp() and
+    CAST(NULL AS TIMESTAMP) carry their own parens -- so a plain
+    clause.split(",") would cut array(%s, %s) in half.
+    """
+    parts, depth, start = [], 0, 0
+    for index, char in enumerate(clause):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        elif char == "," and depth == 0:
+            parts.append(clause[start:index].strip())
+            start = index + 1
+    parts.append(clause[start:].strip())
+    return parts
+
+
+def _eval_value(expression, params):
+    """One value expression, resolved to what Hive would store.
+
+    Timestamps are written as SQL text rather than bound (see
+    app/db.py::NOW_SQL), so they consume no parameter: this is where the
+    fake plays the part of the server clock.
+    """
+    slots = expression.count("%s")
+    if slots == 1:
+        return params.pop(0)
+    if slots > 1:
+        # array(%s, %s, ...) -- the one multi-slot expression in the codebase.
+        return [params.pop(0) for _ in range(slots)]
+    if expression.startswith("array("):
+        return []
+    if expression.startswith("current_timestamp()"):
+        return datetime.now()
+    if "NULL" in expression.upper():
+        return None
+    raise AssertionError(f"FakeHiveCursor cannot evaluate: {expression}")
 
 
 def _wire(value):

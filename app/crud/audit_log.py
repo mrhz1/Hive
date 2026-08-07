@@ -5,10 +5,9 @@ no native JSON type.
 """
 import json
 import uuid
-from datetime import datetime, timezone
 from typing import List, Optional
 
-from app.db import execute
+from app.db import NOW_SQL, execute
 from app.errors import NotFoundError
 from app.logging_setup import get_logger
 from app.schemas import AuditLog, AuditLogCreate
@@ -28,6 +27,10 @@ COLUMNS = (
 )
 
 _COLS = ", ".join(f"`{c}`" for c in COLUMNS)
+
+# created_at is written as SQL text, not bound (see db.NOW_SQL), so it
+# takes no placeholder and no parameter.
+_VALUES = ", ".join(NOW_SQL if c == "created_at" else "%s" for c in COLUMNS)
 
 
 def dumps(value: Optional[dict]) -> Optional[str]:
@@ -59,11 +62,9 @@ def _row_to_audit(row) -> AuditLog:
 
 def create_audit_log(cursor, payload: AuditLogCreate) -> AuditLog:
     audit_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).replace(tzinfo=None)
     execute(
         cursor,
-        f"INSERT INTO `audit_logs` ({_COLS}) "
-        f"VALUES ({', '.join('%s' for _ in COLUMNS)})",
+        f"INSERT INTO `audit_logs` ({_COLS}) VALUES ({_VALUES})",
         (
             audit_id,
             payload.action,
@@ -72,7 +73,6 @@ def create_audit_log(cursor, payload: AuditLogCreate) -> AuditLog:
             payload.user_id,
             dumps(payload.old_values),
             dumps(payload.new_values),
-            created_at.strftime("%Y-%m-%d %H:%M:%S"),
         ),
     )
     log.info(
@@ -82,16 +82,9 @@ def create_audit_log(cursor, payload: AuditLogCreate) -> AuditLog:
         entity_type=payload.entity_type,
         entity_id=payload.entity_id,
     )
-    return AuditLog(
-        id=audit_id,
-        action=payload.action,
-        entity_type=payload.entity_type,
-        entity_id=payload.entity_id,
-        user_id=payload.user_id,
-        old_values=payload.old_values,
-        new_values=payload.new_values,
-        created_at=created_at,
-    )
+    # Read back rather than reconstructed: created_at is the Hive server's
+    # clock now, so this process has no way to know what was stored.
+    return get_audit_log(cursor, audit_id)
 
 
 def get_audit_log(cursor, audit_id: str) -> AuditLog:

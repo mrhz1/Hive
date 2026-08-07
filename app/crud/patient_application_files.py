@@ -9,10 +9,9 @@ HiveQL only: %s paramstyle, backtick identifiers, STRING types, no
 RETURNING/ON CONFLICT/sequences.
 """
 import uuid
-from datetime import datetime, timezone
 from typing import List, Optional
 
-from app.db import execute
+from app.db import NOW_SQL, execute
 from app.errors import NotFoundError
 from app.logging_setup import get_logger
 from app.schemas import PatientApplicationFile, PatientApplicationFileUpdate
@@ -72,9 +71,12 @@ def create_file(
     lie.
     """
     new_id = file_id or str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
-    placeholders = ", ".join("%s" for _ in COLUMNS)
+    # created_at is written as SQL text, not bound (see db.NOW_SQL), so it
+    # takes no placeholder and no parameter.
+    placeholders = ", ".join(
+        NOW_SQL if c == "created_at" else "%s" for c in COLUMNS
+    )
     execute(
         cursor,
         f"INSERT INTO `patient_application_files` ({_COLS}) "
@@ -92,7 +94,7 @@ def create_file(
             # A freshly uploaded file has not been through the OCR job,
             # so it is not de-identified until that job says otherwise.
             False,  # is_deidentified
-            created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            # created_at is inlined above, not bound here.
             description,
             file_path,
             None,  # de_identified_file_path

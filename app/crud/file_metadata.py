@@ -9,10 +9,10 @@ RETURNING/ON CONFLICT/sequences.
 """
 import json
 import uuid
-from datetime import datetime, timezone
 from typing import List, Optional
 
-from app.db import execute
+from app.db import NOW_SQL, execute
+from app.errors import DatabaseError
 from app.logging_setup import get_logger
 from app.schemas import FileMetadata, FileMetadataCreate
 
@@ -30,6 +30,10 @@ COLUMNS = (
 )
 
 _COLS = ", ".join(f"`{c}`" for c in COLUMNS)
+
+# created_at is written as SQL text, not bound (see db.NOW_SQL), so it
+# takes no placeholder and no parameter.
+_VALUES = ", ".join(NOW_SQL if c == "created_at" else "%s" for c in COLUMNS)
 
 
 def _dumps(value: Optional[dict]) -> str:
@@ -68,12 +72,10 @@ def _row_to_metadata(row) -> FileMetadata:
 
 def create_metadata(cursor, payload: FileMetadataCreate) -> FileMetadata:
     metadata_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     execute(
         cursor,
-        f"INSERT INTO `file_metadata` ({_COLS}) "
-        f"VALUES ({', '.join('%s' for _ in COLUMNS)})",
+        f"INSERT INTO `file_metadata` ({_COLS}) VALUES ({_VALUES})",
         (
             metadata_id,
             payload.file_id,
@@ -81,7 +83,6 @@ def create_metadata(cursor, payload: FileMetadataCreate) -> FileMetadata:
             _dumps(payload.metadata),
             payload.status,
             payload.error,
-            created_at.strftime("%Y-%m-%d %H:%M:%S"),
         ),
     )
     log.info(
@@ -94,15 +95,21 @@ def create_metadata(cursor, payload: FileMetadataCreate) -> FileMetadata:
         # carries patient names (DICOM PatientName, PDF /Author).
         fields=len(payload.metadata or {}),
     )
-    return FileMetadata(
-        id=metadata_id,
-        file_id=payload.file_id,
-        file_type=payload.file_type,
-        metadata=payload.metadata or {},
-        status=payload.status,
-        error=payload.error,
-        created_at=created_at,
+    # Read back rather than reconstructed: created_at is the Hive server's
+    # clock now, so this process has no way to know what was stored.
+    return _get_metadata(cursor, metadata_id)
+
+
+def _get_metadata(cursor, metadata_id: str) -> FileMetadata:
+    execute(
+        cursor, f"SELECT {_COLS} FROM `file_metadata` WHERE `id` = %s", (metadata_id,)
     )
+    row = cursor.fetchone()
+    if row is None:
+        # The INSERT above succeeded, so a missing row means the write did
+        # not land -- worth failing loudly rather than returning a guess.
+        raise DatabaseError(f"File metadata '{metadata_id}' not found after insert")
+    return _row_to_metadata(row)
 
 
 def get_metadata_for_file(cursor, file_id: str) -> Optional[FileMetadata]:

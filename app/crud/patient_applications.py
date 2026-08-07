@@ -8,10 +8,9 @@ HiveQL only: %s paramstyle, backtick identifiers, no
 RETURNING/ON CONFLICT/sequences.
 """
 import uuid
-from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 
-from app.db import execute
+from app.db import NOW_SQL, NULL_TIMESTAMP_SQL, execute
 from app.errors import NotFoundError
 from app.logging_setup import get_logger
 from app.schemas import (
@@ -40,22 +39,30 @@ COLUMNS = (
     "updated_by_id",
 )
 
-# Hive will not implicitly cast a bound STRING parameter into a TIMESTAMP
-# column, so these get an explicit CAST in INSERT/UPDATE. CAST(NULL AS
-# TIMESTAMP) is valid, so a nullable value needs no special case.
+# These are never bound as parameters -- Hive only stores a timestamp
+# written as SQL text (see db.NOW_SQL), so each of them is either the
+# server clock or a typed NULL, and neither consumes a placeholder.
 TIMESTAMP_COLUMNS = frozenset(
     {"submitted_at", "created_at", "updated_at", "reviewed_at"}
 )
 
+# Sentinel for "stamp this column with the server clock". A timestamp
+# column's value is one of NOW or None; there is no third case, because
+# no caller may supply a timestamp of their own.
+NOW = object()
+
 _COLS = ", ".join(f"`{c}`" for c in COLUMNS)
 
 
-def _placeholder(column: str) -> str:
-    return "CAST(%s AS TIMESTAMP)" if column in TIMESTAMP_COLUMNS else "%s"
+def _value_sql(column: str, value: Any) -> tuple:
+    """The SQL text for one column's value, plus the params it binds.
 
-
-def _now() -> str:
-    return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+    Timestamps inline their SQL and bind nothing; everything else is a
+    plain placeholder.
+    """
+    if column in TIMESTAMP_COLUMNS:
+        return (NOW_SQL if value is NOW else NULL_TIMESTAMP_SQL), ()
+    return "%s", (value,)
 
 
 def _row_to_application(row) -> PatientApplication:
@@ -97,7 +104,6 @@ def create_application(
     cursor, payload: PatientApplicationCreate, actor_id: str
 ) -> PatientApplication:
     application_id = str(uuid.uuid4())
-    now = _now()
 
     fields = {
         "id": application_id,
@@ -111,17 +117,23 @@ def create_application(
         "description": payload.description,
         "created_by_id": actor_id,
         "updated_by_id": actor_id,
-        "submitted_at": now if payload.status == "submitted" else None,
-        "created_at": now,
-        "updated_at": now,
+        "submitted_at": NOW if payload.status == "submitted" else None,
+        "created_at": NOW,
+        "updated_at": NOW,
         "reviewed_at": None,
     }
 
-    placeholders = ", ".join(_placeholder(c) for c in COLUMNS)
+    values, params = [], []
+    for column in COLUMNS:
+        value_sql, bound = _value_sql(column, fields[column])
+        values.append(value_sql)
+        params.extend(bound)
+
     execute(
         cursor,
-        f"INSERT INTO `patient_applications` ({_COLS}) VALUES ({placeholders})",
-        tuple(fields[c] for c in COLUMNS),
+        f"INSERT INTO `patient_applications` ({_COLS}) "
+        f"VALUES ({', '.join(values)})",
+        tuple(params),
     )
     log.info(
         "application_created",
@@ -138,12 +150,11 @@ def update_application(
     existing = get_application_or_404(cursor, application_id)
 
     fields = payload.model_dump(exclude_unset=True)
-    now = _now()
 
     # Every write records who made it and when, even one that only
     # changes the description -- that is the point of the column.
     fields["updated_by_id"] = actor_id
-    fields["updated_at"] = now
+    fields["updated_at"] = NOW
 
     # Status transitions stamp their own actor. Only on the transition:
     # re-saving an already-submitted application must not rewrite who
@@ -151,17 +162,22 @@ def update_application(
     status = fields.get("status")
     if status == "submitted" and existing.status != "submitted":
         fields["submitted_by_id"] = actor_id
-        fields["submitted_at"] = now
+        fields["submitted_at"] = NOW
     elif status in ("approved", "rejected") and existing.status != status:
         fields["reviewed_by_id"] = actor_id
-        fields["reviewed_at"] = now
+        fields["reviewed_at"] = NOW
 
-    set_clause = ", ".join(f"`{c}` = {_placeholder(c)}" for c in fields)
-    params = tuple(fields.values()) + (application_id,)
+    set_parts, params = [], []
+    for column, value in fields.items():
+        value_sql, bound = _value_sql(column, value)
+        set_parts.append(f"`{column}` = {value_sql}")
+        params.extend(bound)
+
     execute(
         cursor,
-        f"UPDATE `patient_applications` SET {set_clause} WHERE `id` = %s",
-        params,
+        f"UPDATE `patient_applications` SET {', '.join(set_parts)} "
+        "WHERE `id` = %s",
+        tuple(params) + (application_id,),
     )
     log.info(
         "application_updated", application_id=application_id, fields=sorted(fields)
