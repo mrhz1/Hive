@@ -36,7 +36,8 @@ def main() -> int:
         cursor.execute(
             "INSERT INTO `users` (`id`, `username`, `email`, `first_name`, "
             "`last_name`, `status`, `is_active`, `role_id`, `created_at`) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            # created_at inlined, not bound -- see app/db.py::NOW_SQL.
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, current_timestamp())",
             (
                 TEST_ID,
                 "acid-test",
@@ -46,7 +47,6 @@ def main() -> int:
                 "active",
                 True,
                 None,
-                "2026-08-01 00:00:00",
             ),
         )
         print(f"inserted row id={TEST_ID}")

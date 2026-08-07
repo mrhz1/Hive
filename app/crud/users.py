@@ -2,11 +2,10 @@
 permissions onto every user read.
 """
 import uuid
-from datetime import datetime, timezone
 from typing import List, Optional
 
 from app.crud.roles import _parse_permissions
-from app.db import execute
+from app.db import NOW_SQL, execute
 from app.errors import ConflictError, NotFoundError, ValidationError
 from app.logging_setup import get_logger
 from app.schemas import User, UserCreate, UserUpdate
@@ -94,11 +93,13 @@ def create_user(cursor, payload: UserCreate) -> User:
     _assert_role_exists(cursor, payload.role_id)
 
     user_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    # _BASE_COLS ends with created_at, which is written as SQL text rather
+    # than bound (see db.NOW_SQL) -- hence eight placeholders for nine
+    # columns.
     execute(
         cursor,
         f"INSERT INTO `users` ({_BASE_COLS}) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, {NOW_SQL})",
         (
             user_id,
             payload.username,
@@ -108,7 +109,6 @@ def create_user(cursor, payload: UserCreate) -> User:
             payload.status,
             payload.is_active,
             payload.role_id,
-            created_at.strftime("%Y-%m-%d %H:%M:%S"),
         ),
     )
     log.info("user_created", user_id=user_id, username=payload.username)

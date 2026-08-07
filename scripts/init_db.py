@@ -75,12 +75,18 @@ def seed_roles(cursor) -> None:
 
 
 def seed_users(cursor) -> None:
-    base = datetime(2026, 7, 1, 12, 0, 0)
+    """Seeds the two named accounts plus filler rows.
+
+    Every created_at is current_timestamp() -- the same rule the app
+    follows (app/db.py::NOW_SQL), since that is the only form Hive stores.
+    The seeded rows therefore share a creation time rather than spreading
+    across days as they once did; nothing here depends on that spread.
+    """
     rows = [
         (ADMIN_USER_ID, "admin", "admin@example.com", "Ada", "Admin",
-         "active", True, ADMIN_ROLE_ID, base),
+         "active", True, ADMIN_ROLE_ID),
         (VIEWER_USER_ID, "viewer", "viewer@example.com", "Vic", "Viewer",
-         "active", True, VIEWER_ROLE_ID, base),
+         "active", True, VIEWER_ROLE_ID),
     ]
     rows += [
         (
@@ -92,7 +98,6 @@ def seed_users(cursor) -> None:
             "active" if i % 5 != 0 else "inactive",
             i % 5 != 0,
             VIEWER_ROLE_ID,
-            base + timedelta(days=i),
         )
         for i in range(1, 19)
     ]
@@ -100,7 +105,7 @@ def seed_users(cursor) -> None:
         cursor.execute(
             "INSERT INTO `users` (`id`, `username`, `email`, `first_name`, "
             "`last_name`, `status`, `is_active`, `role_id`, `created_at`) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, current_timestamp())",
             row,
         )
     print(f"seeded {len(rows)} rows into users")

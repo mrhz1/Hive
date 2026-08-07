@@ -17,6 +17,17 @@ load_dotenv(".env.local")
 
 log = get_logger(__name__)
 
+# Hive will not accept a bound parameter for a TIMESTAMP column -- neither
+# a plain %s nor CAST(%s AS TIMESTAMP) lands a value. The only form that
+# writes is the function itself, inlined into the statement text. So every
+# timestamp this app stores comes from the Hive server's clock, not the
+# app's, and is never a bound parameter.
+NOW_SQL = "current_timestamp()"
+
+# A nullable timestamp still needs its type stated -- Hive cannot tell what
+# an untyped NULL is meant to be in a VALUES list.
+NULL_TIMESTAMP_SQL = "CAST(NULL AS TIMESTAMP)"
+
 
 def _connect():
     try:
