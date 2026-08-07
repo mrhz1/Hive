@@ -10,7 +10,7 @@ once, on the application row.
 import io
 
 import pytest
-from conftest import ADMIN_ID, VIEWER_ID, minimal_patient
+from conftest import ADMIN_USER, VIEWER_USER, minimal_patient
 
 
 def _application(client):
@@ -409,7 +409,7 @@ def test_empty_uploads_are_skipped_not_fatal(as_admin, storage_root):
 def test_file_access_uses_the_application_permissions(client, storage_root):
     """These documents are part of a submission, so anyone who may read an
     application may read them -- and changing them is application:update."""
-    admin = {"X-User-Id": ADMIN_ID}
+    admin = {"REMOTE-USER": ADMIN_USER}
     patient_id = client.post(
         "/patients", json=minimal_patient(), headers=admin
     ).json()["id"]
@@ -418,7 +418,7 @@ def test_file_access_uses_the_application_permissions(client, storage_root):
     ).json()["id"]
     record = _upload(client, application_id, headers=admin).json()[0]
 
-    client.headers.update({"X-User-Id": VIEWER_ID})
+    client.headers.update({"REMOTE-USER": VIEWER_USER})
     # application:view covers reading documents and their metadata...
     assert client.get(f"/applications/{application_id}/files").status_code == 200
     assert client.get(f"/files/{record['id']}").status_code == 200

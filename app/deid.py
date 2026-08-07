@@ -72,6 +72,26 @@ class DeidError(Exception):
     """Raised internally so every failure path marks the row 'failed'."""
 
 
+def _failure_detail(stderr: str, stdout: str) -> str:
+    """The most useful ~500 characters of a failed run's output.
+
+    Prefers the lines the pipeline logged at ERROR over the raw tail. The
+    tail on its own is routinely just the ML stacks' import warnings --
+    paddle emits "No ccache found. Please be aware that recompiling all
+    source files may be required." on every run, including successful
+    ones -- and surfacing that as the failure reason sends whoever reads
+    it after a compiler cache that has nothing to do with anything.
+    """
+    text = (stderr or stdout or "").strip()
+    errors = [
+        line
+        for line in text.splitlines()
+        if "ERROR" in line or "Traceback" in line or "Error:" in line
+    ]
+    detail = " | ".join(errors) if errors else text
+    return detail.strip()[-500:]
+
+
 def queued_status() -> str:
     """The status a freshly-queued file should be given.
 
@@ -169,9 +189,19 @@ def _run_pipeline(source: Path, output_dir: Path) -> Path:
         ) from exc
 
     if completed.returncode != 0:
-        # The pipeline's own stderr is the useful part; truncate so a
-        # stack trace does not end up as a giant Hive STRING.
-        detail = (completed.stderr or completed.stdout or "").strip()[-500:]
+        # The full output goes to the log, once, before anything is
+        # truncated: the pipeline's stderr is the only account of what
+        # went wrong, and it was previously discarded in favour of its
+        # last 500 characters. Same PHI tradeoff _run_stage makes when it
+        # forwards stage stderr -- on failure the diagnostic is worth it,
+        # routinely it is not.
+        log.error(
+            "deid_subprocess_failed",
+            returncode=completed.returncode,
+            stderr=(completed.stderr or "").strip(),
+            stdout=(completed.stdout or "").strip(),
+        )
+        detail = _failure_detail(completed.stderr, completed.stdout)
         raise DeidError(f"De-identification failed (exit {completed.returncode}): {detail}")
 
     produced = output_dir / f"{source.stem}{DEID_SUFFIX}.pdf"

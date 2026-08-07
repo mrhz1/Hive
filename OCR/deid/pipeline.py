@@ -92,6 +92,24 @@ class StageError(RuntimeError):
     """A whole stage failed, as opposed to individual files failing."""
 
 
+def _failure_detail(stderr: str, stdout: str) -> str:
+    """The most useful ~800 characters of a failed stage's output.
+
+    Prefers the lines the stage logged at ERROR over the raw tail. A
+    stage's stderr opens with the ML stack's import chatter -- paddle
+    warns "No ccache found" on every run, successful ones included -- so
+    the tail alone can be pure noise that reads like the cause.
+    """
+    text = (stderr or stdout or "").strip()
+    errors = [
+        line
+        for line in text.splitlines()
+        if "ERROR" in line or "Traceback" in line or "Error:" in line
+    ]
+    detail = " | ".join(errors) if errors else text
+    return detail.strip()[-800:]
+
+
 def _run_stage(
     interpreter: str,
     script: str,
@@ -146,7 +164,7 @@ def _run_stage(
             log.info("[%s] %s", stage, line)
 
     if not os.path.exists(result_path):
-        detail = (completed.stderr or completed.stdout or "").strip()[-800:]
+        detail = _failure_detail(completed.stderr, completed.stdout)
         raise StageError(
             f"{stage} stage produced no result file "
             f"(exit {completed.returncode}): {detail}"

@@ -5,7 +5,7 @@ Applications carry their own `application:*` grants rather than reusing
 the patient ones: reviewing a submission is a different job from editing
 the clinical record.
 """
-from conftest import ADMIN_ID, NOBODY_ID, VIEWER_ID, minimal_patient
+from conftest import ADMIN_ID, NOBODY_USER, VIEWER_USER, minimal_patient
 
 
 def _patient(client):
@@ -158,7 +158,7 @@ def test_deleting_a_patient_removes_their_applications(as_admin):
 # ----------------------------------------------------------- permissions
 
 def test_reader_cannot_write(client):
-    client.headers.update({"X-User-Id": VIEWER_ID})
+    client.headers.update({"REMOTE-USER": VIEWER_USER})
     patient_id = "some-patient"
 
     assert client.get("/applications").status_code == 200
@@ -168,7 +168,7 @@ def test_reader_cannot_write(client):
 
 
 def test_a_role_with_no_grants_is_locked_out(client):
-    client.headers.update({"X-User-Id": NOBODY_ID})
+    client.headers.update({"REMOTE-USER": NOBODY_USER})
     response = client.get("/applications")
     assert response.status_code == 403
     assert "application:view" in response.json()["error"]["detail"]

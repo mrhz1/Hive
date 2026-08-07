@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 /**
  * The local user switcher: proves that picking a different user actually
- * changes the X-User-Id sent to the API, and that the shell re-renders
+ * changes the REMOTE-USER sent to the API, and that the shell re-renders
  * with that user's permissions.
  */
 
@@ -40,12 +40,12 @@ const VIEWER = {
   permissions: ['user:view'],
 }
 
-const BY_ID: Record<string, typeof ADMIN> = {
-  'admin-id': ADMIN,
-  'viewer-id': VIEWER,
+const BY_USERNAME: Record<string, typeof ADMIN> = {
+  admin: ADMIN,
+  viewer: VIEWER,
 }
 
-/** Records every X-User-Id the app sent, in order. */
+/** Records every REMOTE-USER the app sent, in order. */
 async function mockApi(page: Page, seen: string[]) {
   const json = (body: unknown) => ({
     status: 200,
@@ -56,9 +56,9 @@ async function mockApi(page: Page, seen: string[]) {
   await page.route(`${API}/me*`, (route) => {
     // /me resolves whoever the header names -- exactly what the real API
     // does, which is what makes the switch observable.
-    const id = route.request().headers()['x-user-id'] ?? ''
-    seen.push(id)
-    route.fulfill(json(BY_ID[id] ?? ADMIN))
+    const username = route.request().headers()['remote-user'] ?? ''
+    seen.push(username)
+    route.fulfill(json(BY_USERNAME[username] ?? ADMIN))
   })
   await page.route(`${API}/roles*`, (route) => route.fulfill(json([])))
   await page.route(`${API}/users*`, (route) => route.fulfill(json([ADMIN, VIEWER])))
@@ -72,7 +72,7 @@ test.describe('user switcher', () => {
     await page.goto('/users')
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
 
-    // Starts as whoever VITE_DEV_USER_ID names; the switcher is available
+    // Starts as whoever VITE_DEV_USERNAME names; the switcher is available
     // because that variable is configured.
     await expect(page.getByRole('button', { name: 'Switch user' })).toBeVisible()
     const firstIdentity = seen[0]
@@ -87,8 +87,8 @@ test.describe('user switcher', () => {
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
     await expect(page.getByRole('banner').getByText('Vic Viewer')).toBeVisible()
 
-    // A later request carried the switched id, not the configured one.
-    expect(seen[seen.length - 1]).toBe('viewer-id')
+    // A later request carried the switched username, not the configured one.
+    expect(seen[seen.length - 1]).toBe('viewer')
   })
 
   test('acting as a read-only user hides the write actions', async ({ page }) => {

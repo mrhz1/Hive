@@ -192,9 +192,9 @@ def main() -> int:
     finally:
         conn.close()
 
-    print("\ninit_db complete. Use these ids as the X-User-Id header:")
-    print(f"  admin  (all permissions):  {ADMIN_USER_ID}")
-    print(f"  viewer (read-only):        {VIEWER_USER_ID}")
+    print("\ninit_db complete. Use these usernames as the REMOTE-USER header:")
+    print(f"  admin  (all permissions):  admin   (id {ADMIN_USER_ID})")
+    print(f"  viewer (read-only):        viewer  (id {VIEWER_USER_ID})")
     return 0
 
 

@@ -32,6 +32,14 @@ ADMIN_ID = "user-admin"
 VIEWER_ID = "user-viewer"
 NOBODY_ID = "user-nobody"
 
+# Requests authenticate as a *username* -- REMOTE-USER carries the name
+# the platform authenticated, and the API resolves it to the row. The ids
+# above are what the rows hold, and what the actor columns get stamped
+# with, so tests need both.
+ADMIN_USER = "admin"
+VIEWER_USER = "viewer"
+NOBODY_USER = "nobody"
+
 # Derived from the app rather than restated, so adding a model or an
 # action cannot leave the fixtures granting a set the API does not know.
 ALL_PERMISSIONS = [
@@ -315,7 +323,7 @@ def client(cursor, monkeypatch):
 
 @pytest.fixture
 def as_admin(client):
-    client.headers.update({"X-User-Id": ADMIN_ID})
+    client.headers.update({"REMOTE-USER": ADMIN_USER})
     return client
 
 

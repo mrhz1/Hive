@@ -19,35 +19,36 @@ make run                               # FastAPI on :8100
 
 # 2. point the dashboard at a user, then start it
 cd frontend
-cp .env.example .env.local             # set VITE_DEV_USER_ID
+cp .env.example .env.local             # set VITE_DEV_USERNAME
 npm install
 npm run dev                            # http://localhost:5173
 ```
 
-`make init` prints an **admin** id (all 20 permissions) and a **viewer**
-id (read-only). Put one in `VITE_DEV_USER_ID` as the starting identity.
+`make init` seeds an **admin** (all 20 permissions) and a **viewer**
+(read-only). Put one of those usernames in `VITE_DEV_USERNAME` as the
+starting identity.
 
 ### Switching user to test RBAC
 
 Use the **Switch user** button in the header. It lists the users the
 current caller can read, switches to the one you pick, and reloads — no
 dev-server restart, because the identity is resolved per request rather
-than baked in at startup. There is also a field for pasting a user id,
+than baked in at startup. There is also a field for typing a username,
 for when the current role cannot list users.
 
 "Reset to .env.local user" drops the override and returns to
-`VITE_DEV_USER_ID`.
+`VITE_DEV_USERNAME`.
 
 Switching to the viewer is the quickest way to see RBAC working: the
 create/edit/delete buttons disappear, the Actions column goes with them,
 and `/users/new` renders the 403 page.
 
-The switcher only exists when `VITE_DEV_USER_ID` is set. On Cloudera AI
+The switcher only exists when `VITE_DEV_USERNAME` is set. On Cloudera AI
 it is unset, the platform supplies the identity, and the button never
-renders — the same configuration switch that decides whether an
-`X-User-Id` header is sent at all. It grants nothing extra locally
-either: the API already trusts that header in this environment, so this
-is just a faster way to do what editing `.env.local` did.
+renders — the same configuration switch that decides whether a
+`REMOTE-USER` header is sent by the app at all. It grants nothing extra
+locally either: the API already trusts that header in this environment,
+so this is just a faster way to do what editing `.env.local` did.
 
 ### Scripts
 
@@ -84,12 +85,13 @@ with `error while loading shared libraries: libasound.so.2`.
 
 ## How identity works
 
-There is no auth in this app by design. `VITE_DEV_USER_ID` is sent as
-`X-User-Id`, the same header `app/security.py` reads. On Cloudera AI the
-platform authenticates the user, so the variable is left unset and the
-API resolves the caller itself — the app only ever asks `GET /me`.
+There is no auth in this app by design. `VITE_DEV_USERNAME` is sent as
+`REMOTE-USER`, the same header `app/security.py` reads. On Cloudera AI the
+platform authenticates the user and sets that header itself, so the
+variable is left unset and the API resolves the caller — the app only ever
+asks `GET /me`.
 
-Swapping the source of identity means changing `_current_user_id` in the
+Swapping the source of identity means changing `_current_username` in the
 backend. No frontend code branches on environment.
 
 Two endpoints were added to the API for this dashboard:
@@ -184,7 +186,7 @@ headless Chrome:
 - dashboard loads real counts (20 users / 10 patients / 2 roles) and all
   20 permissions for the admin role
 - users table renders all rows with `role_name` inlined from the join
-- switching `VITE_DEV_USER_ID` to the viewer id removes the "New user"
+- switching `VITE_DEV_USERNAME` to `viewer` removes the "New user"
   button, the per-row edit/delete buttons and the whole Actions column
 - `/users/new` as viewer renders the 403 page naming `user:create`
 - an unknown path renders the 404 page
