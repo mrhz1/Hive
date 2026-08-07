@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios'
-import { getActiveUserId } from '@/lib/devIdentity'
+import { getActiveUsername } from '@/lib/devIdentity'
 import { apiErrorSchema } from '@/schemas/common'
 
 export const api = axios.create({
@@ -11,21 +11,21 @@ export const api = axios.create({
  * Caller identity.
  *
  * There is no login: on Cloudera AI the platform authenticates the user
- * and the API resolves them, so the app just asks /me who it is. Locally
- * an id comes from VITE_DEV_USER_ID (optionally overridden by the user
- * switcher) and is sent as X-User-Id -- the same header app/security.py
- * reads.
+ * and sets REMOTE-USER ahead of this app, so it just asks /me who it is.
+ * Locally there is no platform to do that, so a username comes from
+ * VITE_DEV_USERNAME (optionally overridden by the user switcher) and is
+ * sent as REMOTE-USER -- the same header app/security.py reads.
  *
- * This is configuration, not an environment branch: when no id is
+ * This is configuration, not an environment branch: when no username is
  * configured the header is simply omitted and the API decides.
  *
  * Resolved per request rather than once at module load, so switching
  * identity does not require a fresh module graph.
  */
 api.interceptors.request.use((config) => {
-  const userId = getActiveUserId()
-  if (userId) {
-    config.headers.set('X-User-Id', userId)
+  const username = getActiveUsername()
+  if (username) {
+    config.headers.set('REMOTE-USER', username)
   }
   return config
 })

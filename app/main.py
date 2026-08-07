@@ -53,9 +53,9 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title="Hive Users API",
     description=(
-        "FastAPI + HiveServer2 (ORC, ACID). Caller identity is supplied via "
-        "the X-User-Id header; every endpoint requires a '<model>:<action>' "
-        "permission granted through the caller's role."
+        "FastAPI + HiveServer2 (ORC, ACID). Caller identity is the username "
+        "in the REMOTE-USER header; every endpoint requires a "
+        "'<model>:<action>' permission granted through the caller's role."
     ),
     lifespan=lifespan,
 )

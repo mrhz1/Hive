@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Button } from '../ui/Button'
 import { usersApi } from '@/lib/api/resources'
 import {
-  getActiveUserId,
+  getActiveUsername,
   hasIdentityOverride,
   isIdentitySwitchable,
   resetUser,
@@ -15,19 +15,20 @@ import {
  * Switches which user the dashboard is acting as, so RBAC can be checked
  * without restarting the dev server.
  *
- * Only rendered when VITE_DEV_USER_ID is configured. On Cloudera AI that
- * is unset, the platform supplies the identity, and this never appears.
+ * Only rendered when VITE_DEV_USERNAME is configured. On Cloudera AI
+ * that is unset, the platform supplies the identity, and this never
+ * appears.
  *
  * Impersonation is not a privilege escalation here: the API already
- * trusts the X-User-Id header locally, so this exposes nothing that was
+ * trusts the REMOTE-USER header locally, so this exposes nothing that was
  * not already available by editing .env.local.
  */
 export function UserSwitcher() {
   const [open, setOpen] = useState(false)
-  const activeId = getActiveUserId()
+  const activeUsername = getActiveUsername()
 
   // Only fetched once opened -- a user without user:view gets a 403,
-  // which is why the manual id field below is always available.
+  // which is why the manual username field below is always available.
   const { data: users, error } = useQuery({
     queryKey: ['dev-user-switcher'],
     queryFn: usersApi.list,
@@ -36,7 +37,7 @@ export function UserSwitcher() {
     staleTime: 30_000,
   })
 
-  const [manualId, setManualId] = useState('')
+  const [manualUsername, setManualUsername] = useState('')
 
   if (!isIdentitySwitchable()) return null
 
@@ -74,17 +75,17 @@ export function UserSwitcher() {
 
             {error ? (
               <p className="mt-3 text-xs text-[rgb(var(--foreground-muted))]">
-                Your current role cannot list users, so pick by id below.
+                Your current role cannot list users, so type a username below.
               </p>
             ) : (
               <ul className="mt-3 max-h-64 space-y-1 overflow-y-auto">
                 {(users ?? []).map((user) => {
-                  const isActive = user.id === activeId
+                  const isActive = user.username === activeUsername
                   return (
                     <li key={user.id}>
                       <button
                         type="button"
-                        onClick={() => switchUser(user.id)}
+                        onClick={() => switchUser(user.username)}
                         disabled={isActive}
                         className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-[rgb(var(--nav-hover-bg))] disabled:cursor-default disabled:opacity-60"
                       >
@@ -111,23 +112,23 @@ export function UserSwitcher() {
 
             <div className="mt-3 border-t border-[rgb(var(--border))] pt-3">
               <label
-                htmlFor="dev-user-id"
+                htmlFor="dev-username"
                 className="block text-[11px] font-bold tracking-widest text-[rgb(var(--foreground-muted))] uppercase"
               >
-                Or paste a user id
+                Or type a username
               </label>
               <div className="mt-1.5 flex gap-2">
                 <input
-                  id="dev-user-id"
-                  value={manualId}
-                  onChange={(event) => setManualId(event.target.value)}
-                  placeholder="uuid"
+                  id="dev-username"
+                  value={manualUsername}
+                  onChange={(event) => setManualUsername(event.target.value)}
+                  placeholder="username"
                   className="w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--input-bg))] px-3 py-1.5 text-xs text-[rgb(var(--input-text))] outline-none focus:border-[rgb(var(--input-ring))]"
                 />
                 <Button
                   size="sm"
-                  disabled={!manualId.trim()}
-                  onClick={() => switchUser(manualId.trim())}
+                  disabled={!manualUsername.trim()}
+                  onClick={() => switchUser(manualUsername.trim())}
                 >
                   Go
                 </Button>

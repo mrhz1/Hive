@@ -1,20 +1,18 @@
 """Permission enforcement (RBAC).
 
-Caller identity comes from the `X-User-Id` header. That is a deliberate
-local stand-in: no auth scheme was specified, and on Cloudera AI the
-authenticated principal would arrive from the platform (Kerberos/Knox)
-instead. Swapping the source means changing only `_current_user_id` --
-route code and permission strings stay identical, so nothing branches on
-environment.
+Caller identity is the username in the `REMOTE-USER` header -- the
+principal the platform already authenticated (Kerberos/Knox on Cloudera
+AI) and passed down. The app authenticates nobody itself; it only
+resolves that name to a user row and reads their grants. Swapping the
+source means changing only `_current_username` -- route code and
+permission strings stay identical, so nothing branches on environment.
 
 Permission strings are "<model>:<action>", e.g. 'user:view'.
 """
-from typing import Optional
-
 import structlog
-from fastapi import Depends, Header
+from fastapi import Depends, Request
 
-from app.crud.users import get_user
+from app.crud.users import _find_by_username
 from app.db import get_cursor
 from app.errors import AuthError, PermissionDeniedError
 from app.logging_setup import get_logger
@@ -35,24 +33,32 @@ KNOWN_PERMISSIONS = frozenset(
 )
 
 
-def _current_user_id(x_user_id: Optional[str] = Header(default=None)) -> str:
-    if not x_user_id:
-        raise AuthError("Missing X-User-Id header")
-    return x_user_id
+def _current_username(request: Request) -> str:
+    """The authenticated principal, as the platform handed it over.
+
+    Read off the raw request rather than declared as a Header parameter:
+    header names are matched case-insensitively either way, but this
+    keeps the exact spelling the platform sets visible at the one place
+    identity enters the app.
+    """
+    username = request.headers.get("REMOTE-USER")
+    if not username:
+        raise AuthError("Missing REMOTE-USER header")
+    return username
 
 
 def get_current_user(
-    user_id: str = Depends(_current_user_id),
+    username: str = Depends(_current_username),
     cursor=Depends(get_cursor),
 ) -> User:
     """Resolves the acting user, with role_name + permissions already
     joined in by crud.users. Shares the request's cursor via FastAPI
     dependency caching, so this costs no extra Hive connection."""
-    user = get_user(cursor, user_id)
+    user = _find_by_username(cursor, username)
     if user is None:
-        raise AuthError(f"Unknown user '{user_id}'")
+        raise AuthError(f"Unknown user '{username}'")
     if not user.is_active:
-        raise AuthError(f"User '{user_id}' is inactive")
+        raise AuthError(f"User '{username}' is inactive")
 
     structlog.contextvars.bind_contextvars(actor_id=user.id, actor_role=user.role_name)
     return user

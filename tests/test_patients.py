@@ -1,5 +1,11 @@
 """Patient endpoints, end to end through permissions -> router -> CRUD."""
-from conftest import ADMIN_ID, NOBODY_ID, VIEWER_ID, minimal_patient, patient_columns
+from conftest import (
+    ADMIN_ID,
+    NOBODY_USER,
+    VIEWER_USER,
+    minimal_patient,
+    patient_columns,
+)
 
 
 # ------------------------------------------------------------ the shape
@@ -307,7 +313,7 @@ def test_permissions_are_named_patients(as_admin):
 
 
 def test_reader_cannot_write(client):
-    client.headers.update({"X-User-Id": VIEWER_ID})
+    client.headers.update({"REMOTE-USER": VIEWER_USER})
     assert client.get("/patients").status_code == 200
     assert client.post("/patients", json=minimal_patient()).status_code == 403
     assert client.put("/patients/x", json={"ptcity": "X"}).status_code == 403
@@ -315,7 +321,7 @@ def test_reader_cannot_write(client):
 
 
 def test_a_role_with_no_grants_is_locked_out(client):
-    client.headers.update({"X-User-Id": NOBODY_ID})
+    client.headers.update({"REMOTE-USER": NOBODY_USER})
     response = client.get("/patients")
     assert response.status_code == 403
     assert "patient:view" in response.json()["error"]["detail"]

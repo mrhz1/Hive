@@ -11,8 +11,8 @@ make up      # docker compose up -d -- first run takes 1-2 min (embedded
              # Derby metastore init). Needs ~4GB RAM available to Docker.
 make check   # poll until SHOW DATABASES succeeds
 make init    # apply sql/schema.sql, seed roles/users/patients.
-             # PRINTS THE admin + viewer USER IDS -- copy them, they are
-             # the X-User-Id values the API authenticates with.
+             # Seeds the usernames 'admin' and 'viewer' -- those are the
+             # REMOTE-USER values the API authenticates with.
 make verify  # prove INSERT/SELECT/DELETE (ACID) works on ORC
 make run     # start the FastAPI app on CDSW_APP_PORT (8100)
 make test    # run pytest suite (FastAPI app tests)
@@ -74,10 +74,10 @@ applications.
 
 ### Auth and permissions
 
-Every endpoint except `/health` requires an `X-User-Id` header naming an
-active user, and the permission `<model>:<action>` (e.g. `user:view`,
-`patient:delete`) on that user's role. Missing/unknown user -> 401;
-missing grant -> 403.
+Every endpoint except `/health` requires a `REMOTE-USER` header naming an
+active user's **username**, and the permission `<model>:<action>` (e.g.
+`user:view`, `patient:delete`) on that user's role. Missing/unknown user
+-> 401; missing grant -> 403.
 
 The 20 grants are the product of five models -- `user`, `patient`,
 `role`, `log`, `application` -- and four actions: `view`, `create`,
@@ -85,17 +85,17 @@ The 20 grants are the product of five models -- `user`, `patient`,
 `scripts/init_db.py`, the test fixtures and the frontend's
 `schemas/common.ts` all derive from them rather than restating the list.
 
-**`X-User-Id` is a deliberate local stand-in.** No auth scheme was
-specified, and on Cloudera AI the authenticated principal arrives from the
-platform (Kerberos/Knox). Swapping it means changing only
-`_current_user_id` in `app/security.py` -- routes and permission strings
+**The app authenticates nobody.** `REMOTE-USER` is the username the
+platform already authenticated (Kerberos/Knox on Cloudera AI) and passed
+down; locally you set it by hand. Swapping the source means changing only
+`_current_username` in `app/security.py` -- routes and permission strings
 are unchanged, so nothing branches on environment.
 
-`make init` seeds two roles and prints their user ids: **admin** (all 20
-permissions) and **viewer** (read-only). Use those as `X-User-Id`:
+`make init` seeds two roles: **admin** (all 20 permissions) and **viewer**
+(read-only), with usernames to match. Use those as `REMOTE-USER`:
 
 ```bash
-curl -H "X-User-Id: <admin-id>" http://localhost:8100/users
+curl -H "REMOTE-USER: admin" http://localhost:8100/users
 ```
 
 ### Audit logging

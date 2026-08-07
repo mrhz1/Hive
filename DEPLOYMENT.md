@@ -69,10 +69,10 @@ the API wrote.
 | `DEID_MODELS_DIR` | `/home/cdsw/OCR/models` | step 3b; only if not the default |
 | `CML_DEID_JOB_ID` | *(fill in after step 4)* | chicken-and-egg; see below |
 
-> **Do not set `VITE_DEV_USER_ID`.** It is a local stand-in for the
-> authenticated principal. On Cloudera the platform supplies identity;
-> leaving it unset means the dashboard sends no `X-User-Id` header and
-> the switcher does not render.
+> **Do not set `VITE_DEV_USERNAME`.** It is a local stand-in for the
+> authenticated principal. On Cloudera the platform sets `REMOTE-USER`
+> itself; leaving this unset means the dashboard sends no identity header
+> of its own and the switcher does not render.
 
 ---
 
@@ -547,17 +547,17 @@ have it.
 | `FRONTEND_DIST` | `frontend/dist` | Dashboard Application |
 | `API_PROXY_TARGET` | — | Set to serve dashboard + API on one origin |
 | `VITE_API_BASE_URL` | — | **Build-time**; `/api` when proxying |
-| `VITE_DEV_USER_ID` | — | **Leave unset in production** |
+| `VITE_DEV_USERNAME` | — | **Leave unset in production** |
 
 ---
 
 ## Identity in production
 
-There is no login. `app/security.py::_current_user_id` reads an
-`X-User-Id` header, which is a **local stand-in**. On Cloudera the
-authenticated principal arrives from the platform — change that one
-function and nothing else. The proxy deployment (step 6) helps here: the
-dashboard and API share an origin, so platform auth headers reach the API
+There is no login. `app/security.py::_current_username` reads the
+`REMOTE-USER` header — the username the platform already authenticated.
+Locally you set it by hand; on Cloudera the platform sets it ahead of the
+app. The proxy deployment (step 6) is what makes that work: the dashboard
+and API share an origin, so the platform's auth headers reach the API
 unchanged.
 
 ## When to graduate the Job to an Application

@@ -1,10 +1,10 @@
 """Current-user endpoints.
 
 The dashboard has no login screen: it asks the API who the caller is and
-renders from the permissions that come back. On Cloudera AI the caller
-will be the platform-authenticated principal; locally it is the
-X-User-Id header. Either way the frontend reads identity from here rather
-than deciding anything itself.
+renders from the permissions that come back. The caller is whoever the
+REMOTE-USER header names -- the platform-authenticated principal on
+Cloudera AI, a hand-set header locally. Either way the frontend reads
+identity from here rather than deciding anything itself.
 """
 from fastapi import APIRouter, Depends
 

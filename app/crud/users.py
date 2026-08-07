@@ -62,10 +62,17 @@ def list_users(cursor) -> List[User]:
     return [_row_to_user(r) for r in cursor.fetchall()]
 
 
-def _find_by_username(cursor, username: str) -> Optional[str]:
-    execute(cursor, "SELECT `id` FROM `users` WHERE `username` = %s", (username,))
+def _find_by_username(cursor, username: str) -> Optional[User]:
+    """The whole user, role joined in -- not just their id.
+
+    This is how the authenticated principal is resolved (see
+    security.get_current_user): REMOTE-USER names a username, and the
+    permission check that follows needs the role's grants, so fetching
+    only the id would cost a second round trip to Hive for the rest.
+    """
+    execute(cursor, _SELECT_WITH_ROLE + " WHERE u.`username` = %s", (username,))
     row = cursor.fetchone()
-    return row[0] if row else None
+    return _row_to_user(row) if row else None
 
 
 def _find_by_email(cursor, email: str) -> Optional[str]:
@@ -124,7 +131,7 @@ def update_user(cursor, user_id: str, payload: UserUpdate) -> User:
 
     if "username" in fields and fields["username"] != existing.username:
         clash = _find_by_username(cursor, fields["username"])
-        if clash and clash != user_id:
+        if clash and clash.id != user_id:
             raise ConflictError(f"Username '{fields['username']}' already exists")
     if "email" in fields and fields["email"] != existing.email:
         clash = _find_by_email(cursor, fields["email"])
