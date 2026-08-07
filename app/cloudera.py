@@ -40,6 +40,39 @@ log = get_logger(__name__)
 # concerned and retrying beats hanging the request.
 CML_TIMEOUT_SECONDS = float(os.environ.get("CML_TIMEOUT_SECONDS", "20"))
 
+# httpx verifies against certifi's bundle, NOT the operating system trust
+# store. A workspace fronted by an internal or corporate CA therefore
+# fails with "unable to get local issuer certificate" even though curl on
+# the same host is perfectly happy -- curl reads the OS store, this does
+# not. The two REQUESTS_*/SSL_* names are the de-facto standard and are
+# already set in most CML runtimes, so usually nothing needs setting by
+# hand; CML_CA_BUNDLE is the explicit override.
+CML_CA_BUNDLE = (
+    os.environ.get("CML_CA_BUNDLE")
+    or os.environ.get("REQUESTS_CA_BUNDLE")
+    or os.environ.get("SSL_CERT_FILE")
+)
+
+
+def _tls_verify():
+    """What to pass as httpx's `verify`: a CA bundle path, or True/False.
+
+    Turning verification off is opt-in and never the default -- this call
+    carries the API key in an Authorization header, so an unverified
+    connection hands that key to whoever answers. It exists only for a
+    workspace whose CA genuinely cannot be obtained.
+    """
+    disabled = os.environ.get("CML_VERIFY_TLS", "true").strip().lower() in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+    if disabled:
+        log.warning("cml_tls_verification_disabled")
+        return False
+    return CML_CA_BUNDLE or True
+
 
 class ClouderaError(Exception):
     """Raised for any failure to reach or command the CML API."""
@@ -128,8 +161,19 @@ def start_deid_job_run(environment: Optional[Dict[str, str]] = None) -> str:
             json=payload,
             headers={"Authorization": f"Bearer {config['api_key']}"},
             timeout=CML_TIMEOUT_SECONDS,
+            verify=_tls_verify(),
         )
     except httpx.HTTPError as exc:
+        # A certificate failure here is almost always the internal-CA
+        # case, and the raw OpenSSL wording ("unable to get local issuer
+        # certificate") does not hint at what to set. Say it once, here.
+        if "certificate" in str(exc).lower():
+            raise ClouderaError(
+                f"Could not reach the Cloudera API: {exc}. The workspace's "
+                "certificate was not signed by a CA this process trusts -- "
+                "point CML_CA_BUNDLE (or REQUESTS_CA_BUNDLE) at the CA "
+                "bundle PEM for your workspace."
+            ) from exc
         raise ClouderaError(f"Could not reach the Cloudera API: {exc}") from exc
 
     if response.status_code >= 400:

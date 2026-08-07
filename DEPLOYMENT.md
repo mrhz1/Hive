@@ -349,6 +349,32 @@ If `CDSW_APIV2_KEY` is not injected (API v2 not enabled for the project),
 mint a key under **User Settings → API Keys** and set `CML_API_KEY`
 explicitly. A *legacy* API key will not work — it must be a v2 key.
 
+### "SSL certificate verify failed: unable to get local issuer certificate"
+
+The workspace is fronted by an internal or corporate CA. `httpx` verifies
+against **certifi's** bundle, not the operating system trust store, so
+this fails even though `curl https://$CDSW_DOMAIN` on the same host
+succeeds — curl reads the OS store, httpx does not.
+
+Find the bundle that already works on the host:
+
+```bash
+python -c "import ssl; print(ssl.get_default_verify_paths())"
+ls -l /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt
+curl -v https://$CDSW_DOMAIN 2>&1 | grep -i "CAfile\|issuer"
+```
+
+Then set `CML_CA_BUNDLE` to that PEM as a project environment variable and
+restart the Backend Application. `REQUESTS_CA_BUNDLE` and `SSL_CERT_FILE`
+are honoured too, and are often already set by the runtime — check those
+before adding anything.
+
+> `CML_VERIFY_TLS=false` disables verification and will also make the
+> error go away. Do not use it as the fix: this request carries the API
+> key in an `Authorization` header, and an unverified connection hands
+> that key to whoever answers. It is there for a workspace whose CA
+> genuinely cannot be obtained, and it logs a warning on every call.
+
 ---
 
 ## 6. Build and serve the dashboard
@@ -544,6 +570,8 @@ have it.
 | `DEID_KEEP_WORK_DIR` | `false` | Debugging only |
 | `CML_DEID_JOB_ID` | — | Required for `cml_job` |
 | `CML_PROJECT_ID` / `CML_API_KEY` / `CML_API_URL` | from `CDSW_*` | Override only if not injected |
+| `CML_CA_BUNDLE` | `$REQUESTS_CA_BUNDLE`, else `$SSL_CERT_FILE` | CA bundle PEM for a workspace behind an internal CA |
+| `CML_VERIFY_TLS` | `true` | **Leave on.** `false` sends the API key over an unverified connection |
 | `FRONTEND_DIST` | `frontend/dist` | Dashboard Application |
 | `API_PROXY_TARGET` | — | Set to serve dashboard + API on one origin |
 | `VITE_API_BASE_URL` | — | **Build-time**; `/api` when proxying |
