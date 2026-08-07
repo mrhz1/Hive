@@ -28,7 +28,7 @@ from typing import Optional
 
 import structlog
 
-from app.cloudera import ClouderaError, start_deid_job_run
+from app.cloudera import ClouderaCapacityError, ClouderaError, start_deid_job_run
 from app.crud import patient_application_files as crud
 from app.db import hive_cursor
 from app.logging_setup import get_logger
@@ -138,6 +138,13 @@ def dispatch_deidentification(
         # recovered by the next run rather than stranding a row.
         run_id = start_deid_job_run(environment={"DEID_FILE_ID": file_id})
         log.info("deid_job_dispatched", file_id=file_id, run_id=run_id)
+    except ClouderaCapacityError as exc:
+        # Out of quota is "not now", not "this file is bad". The row is
+        # already 'queued', which deid_worker.py treats as claimable, so
+        # leaving it alone means the sweep run drains it once capacity
+        # frees. Marking it 'failed' here would need a human to notice
+        # and re-trigger something that was never wrong.
+        log.warning("deid_job_dispatch_deferred", file_id=file_id, error=str(exc))
     except ClouderaError as exc:
         log.error("deid_job_dispatch_failed", file_id=file_id, error=str(exc))
         _set_status(file_id, deid_status="failed")

@@ -349,6 +349,30 @@ If `CDSW_APIV2_KEY` is not injected (API v2 not enabled for the project),
 mint a key under **User Settings → API Keys** and set `CML_API_KEY`
 explicitly. A *legacy* API key will not work — it must be a v2 key.
 
+### "409 out of quota: CPU request limit reached"
+
+Not a configuration error — the workspace had no CPU left to start the
+Job's container. Applications hold their reservation for as long as they
+run, so two Applications plus a forgotten Session can leave nothing for a
+Job.
+
+In order of what usually frees the most:
+
+1. **Stop idle Sessions.** A session nobody closed holds its full vCPU
+   reservation. This is the common cause.
+2. **Shrink the Frontend Application** — it serves static files. 1 vCPU /
+   2 GiB is plenty.
+3. **Shrink the Backend Application.** Once `DEID_BACKEND=cml_job` the API
+   does no ML work at all; it does not need the profile it needed inline.
+4. **Drop the `deidentify` Job to 1 vCPU, but keep 8 GiB.** RAM is the
+   hard requirement (the NER model); CPU only changes how long OCR takes.
+   Set `OCR_CPU_THREADS` to match the vCPU you give it — the default of 8
+   on a 1 vCPU container oversubscribes and runs *slower*.
+
+The row is left `queued` rather than `failed` when this happens, so the
+`deidentify-sweep` run drains it once capacity frees. Nothing is lost;
+the file is processed late rather than not at all.
+
 ### "SSL certificate verify failed: unable to get local issuer certificate"
 
 The workspace is fronted by an internal or corporate CA. `httpx` verifies
