@@ -52,7 +52,12 @@ def _repo_root():
     candidates = []
     here = globals().get("__file__")
     if here:
-        candidates.append(("__file__", Path(here).resolve().parent.parent))
+        # Both layouts: <root>/scripts/deid_worker.py in this repo, and
+        # <root>/deid_worker.py when the worker is deployed flat next to
+        # app/. The app/deid.py check below picks whichever is real.
+        own_dir = Path(here).resolve().parent
+        candidates.append(("__file__ dir", own_dir))
+        candidates.append(("__file__ parent", own_dir.parent))
     for var in ("HIVE_REPO_ROOT", "CDSW_PROJECT_DIR", "CDSW_PROJECT"):
         value = os.environ.get(var)
         if value:
