@@ -30,7 +30,10 @@ Exit codes: 0 nothing failed, 1 every file failed, 2 partial failure.
 
 Run ONE instance at a time. Hive has no reliable compare-and-set, so two
 overlapping runs can both claim the same row; the guard below narrows the
-window but does not close it.
+window but does not close it. CML enforces this for Job runs by marking a
+concurrent trigger Skipped -- which is why a run re-queries for `queued`
+rows before finishing, rather than assuming its own trigger was the only
+one.
 """
 import argparse
 import os
@@ -239,6 +242,35 @@ def collect_one(file_id: str):
     return [record]
 
 
+def collect_queued(exclude=()):
+    """Rows sitting in 'queued', oldest first, minus ones already done.
+
+    Used to sweep up triggers Cloudera refused to run. CML will not run
+    two runs of the same Job at once -- a trigger that arrives while a
+    run is in progress is marked Skipped and never retried -- so the row
+    stays `queued` with nothing coming for it. Whoever *is* running picks
+    it up here instead.
+    """
+    with hive_cursor() as cursor:
+        every = crud.list_files(cursor)
+
+    pending = [
+        f for f in every if f.deid_status == "queued" and f.id not in exclude
+    ]
+    pending.sort(key=lambda f: f.created_at)
+    return pending
+
+
+def process(record) -> bool:
+    run_deidentification(record.id)
+
+    # run_deidentification never raises; re-read to see what it did.
+    with hive_cursor() as cursor:
+        after = crud.get_file(cursor, record.id)
+
+    return bool(after and after.deid_status == "done")
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
     configure_logging()
@@ -258,18 +290,23 @@ def main(argv=None) -> int:
 
     succeeded = 0
     failed = 0
+    seen = set()
 
-    for record in queue:
-        run_deidentification(record.id)
+    while queue:
+        for record in queue:
+            seen.add(record.id)
+            if process(record):
+                succeeded += 1
+            else:
+                failed += 1
 
-        # run_deidentification never raises; re-read to see what it did.
-        with hive_cursor() as cursor:
-            after = crud.get_file(cursor, record.id)
-
-        if after and after.deid_status == "done":
-            succeeded += 1
-        else:
-            failed += 1
+        # Re-query rather than stop. A file queued *while* this run was
+        # working had its own Job run skipped by CML, so this run is the
+        # only thing that will ever process it. `seen` stops a row that
+        # keeps failing from looping forever.
+        queue = [f for f in collect_queued(exclude=seen) if f.id not in seen]
+        if queue:
+            log.info("draining_late_arrivals", count=len(queue))
 
     log.info("queue_drained", succeeded=succeeded, failed=failed)
 
@@ -279,4 +316,13 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    _rc = main()
+    if _under_ipython_kernel():
+        # IPython renders *any* SystemExit as a raised exception, and the
+        # Cloudera engine reports that as a failed run -- including
+        # SystemExit(0). So a clean run must end by falling off the end
+        # here, and only a real failure may raise.
+        if _rc:
+            raise SystemExit(_rc)
+    else:
+        sys.exit(_rc)
