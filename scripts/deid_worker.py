@@ -52,21 +52,38 @@ def _repo_root():
     candidates = []
     here = globals().get("__file__")
     if here:
-        candidates.append(Path(here).resolve().parent.parent)
+        candidates.append(("__file__", Path(here).resolve().parent.parent))
     for var in ("HIVE_REPO_ROOT", "CDSW_PROJECT_DIR", "CDSW_PROJECT"):
         value = os.environ.get(var)
         if value:
-            candidates.append(Path(value))
+            candidates.append(("$" + var, Path(value)))
     cwd = Path.cwd().resolve()
-    candidates.extend([cwd, cwd.parent])
+    candidates.append(("cwd", cwd))
+    candidates.append(("cwd parent", cwd.parent))
 
-    for candidate in candidates:
+    for source, candidate in candidates:
         if (candidate / "app" / "deid.py").is_file():
             return candidate
+
+    # Say what was actually tried and what was actually there. Getting
+    # this wrong in a Job means reading the run log, not a debugger.
+    tried = "\n".join(
+        "  {:<12} {}  ({})".format(
+            source,
+            candidate,
+            "exists" if candidate.is_dir() else "no such directory",
+        )
+        for source, candidate in candidates
+    )
+    listing = "  ".join(sorted(p.name for p in cwd.iterdir())[:20]) or "(empty)"
     raise RuntimeError(
-        "Cannot locate the Hive repo root (no app/deid.py under any of: "
-        + ", ".join(str(c) for c in candidates)
-        + "). Set HIVE_REPO_ROOT to the project directory."
+        "Cannot locate the Hive repo root -- no app/deid.py under any of:\n"
+        + tried
+        + "\nContents of {}:\n  {}".format(cwd, listing)
+        + "\nSet HIVE_REPO_ROOT (Job -> Environment Variables) to the "
+        "directory that contains app/. It must be a real environment "
+        "variable: .env.local is loaded by app.db, which cannot be "
+        "imported until this has already succeeded."
     )
 
 

@@ -6,6 +6,7 @@ Cloudera AI runtime differ.
 import os
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 from dotenv import load_dotenv
 from impala.dbapi import connect
@@ -13,7 +14,11 @@ from impala.dbapi import connect
 from app.errors import DatabaseError
 from app.logging_setup import get_logger
 
-load_dotenv(".env.local")
+# Anchored to this file, not the working directory. A Cloudera Job run
+# does not necessarily start in the project root, and a bare relative
+# ".env.local" silently loads nothing when it does not -- leaving the
+# Hive vars unset and failing much later as a connection error.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env.local")
 
 log = get_logger(__name__)
 
