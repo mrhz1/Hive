@@ -38,7 +38,41 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+def _repo_root():
+    """Locate the repo root without assuming how we were started.
+
+    A Cloudera AI Job does not run this file as `python script.py` -- it
+    execs the source inside a session-style kernel, where `__file__` is
+    simply not defined. So try, in order: this file's location (normal
+    `python scripts/deid_worker.py`), an explicit override, the CML
+    project directory, and finally the working directory and its parent.
+    A candidate only counts if `app/deid.py` is actually under it, so a
+    wrong guess fails here rather than as a confusing ImportError.
+    """
+    candidates = []
+    here = globals().get("__file__")
+    if here:
+        candidates.append(Path(here).resolve().parent.parent)
+    for var in ("HIVE_REPO_ROOT", "CDSW_PROJECT_DIR", "CDSW_PROJECT"):
+        value = os.environ.get(var)
+        if value:
+            candidates.append(Path(value))
+    cwd = Path.cwd().resolve()
+    candidates.extend([cwd, cwd.parent])
+
+    for candidate in candidates:
+        if (candidate / "app" / "deid.py").is_file():
+            return candidate
+    raise RuntimeError(
+        "Cannot locate the Hive repo root (no app/deid.py under any of: "
+        + ", ".join(str(c) for c in candidates)
+        + "). Set HIVE_REPO_ROOT to the project directory."
+    )
+
+
+REPO_ROOT = _repo_root()
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from app.crud import patient_application_files as crud  # noqa: E402
 from app.db import hive_cursor  # noqa: E402

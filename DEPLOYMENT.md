@@ -264,6 +264,13 @@ caveats:
 splitting the pipeline means paddle is unloaded before torch is imported,
 the NLP stage on its own still wants several GiB.
 
+A Job run does not exec the script the way `python scripts/deid_worker.py`
+does — the engine runs the source inside a session-style kernel, where
+`__file__` is undefined. The worker finds the repo root without it (CML's
+`CDSW_PROJECT_DIR`, else the working directory). If a runtime sets neither
+usefully and the run dies before it imports anything, set the project
+variable **`HIVE_REPO_ROOT`** to the project directory (`/home/cdsw`).
+
 Create it, then copy the job id out of the URL
 (`.../jobs/<job-id>`) into the project variable **`CML_DEID_JOB_ID`**.
 That is the chicken-and-egg from step 1: the API needs the job's id, and
