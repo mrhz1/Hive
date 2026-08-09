@@ -265,8 +265,12 @@ splitting the pipeline means paddle is unloaded before torch is imported,
 the NLP stage on its own still wants several GiB.
 
 A Job run does not exec the script the way `python scripts/deid_worker.py`
-does — the engine runs the source inside a session-style kernel, where
-`__file__` is undefined. The worker finds the repo root without it (CML's
+does — the engine runs the source inside an IPython kernel. Two things
+follow, and the worker handles both. `__file__` is undefined there, and
+`sys.argv` belongs to the kernel (`-f /tmp/jupyter/runtime/kernel-*.json`),
+not to the script, so **command-line arguments do not reach a Job run** —
+configure a Job with environment variables (`DEID_FILE_ID`,
+`DEID_BATCH_LIMIT`, `DEID_RETRY_STALE_MINUTES`), never the Arguments field. The worker finds the repo root without it (CML's
 `CDSW_PROJECT_DIR`, else the working directory). If a runtime sets neither
 usefully and the run dies before it imports anything, set
 **`HIVE_REPO_ROOT`** to the project directory (`/home/cdsw`).

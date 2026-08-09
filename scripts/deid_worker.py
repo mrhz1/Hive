@@ -108,7 +108,46 @@ log = get_logger("deid_worker")
 CLAIMABLE = ("queued", "pending")
 
 
+def _under_ipython_kernel() -> bool:
+    """Whether sys.argv belongs to a Jupyter kernel rather than to us.
+
+    A Cloudera AI Job does not run this as `python deid_worker.py` -- it
+    execs the source inside an IPython kernel, so sys.argv is the
+    kernel's own launcher line:
+
+        ['.../ipykernel_launcher.py', '-f', '/tmp/jupyter/runtime/kernel-*.json']
+
+    Handing that to argparse gets `-f` rejected and exits 2, killing the
+    run before any work starts.
+    """
+    prog = Path(sys.argv[0]).name if sys.argv else ""
+    if prog.startswith("ipykernel_launcher"):
+        return True
+    if "ipykernel" in sys.modules:
+        return True
+    # Belt and braces: the kernel connection file is unmistakable even if
+    # the launcher was renamed.
+    return any(
+        arg.endswith(".json") and "jupyter" in arg and "kernel-" in arg
+        for arg in sys.argv[1:]
+    )
+
+
+def _cli_argv():
+    """Args for argparse: the real ones, or none at all under a kernel.
+
+    Every option below defaults from an environment variable, so dropping
+    argv costs nothing -- a triggered Job run is configured by
+    DEID_FILE_ID, which is how the API passes the file id anyway.
+    """
+    if _under_ipython_kernel():
+        return []
+    return sys.argv[1:]
+
+
 def parse_args(argv=None):
+    if argv is None:
+        argv = _cli_argv()
     parser = argparse.ArgumentParser(description="De-identify pending patient files")
     parser.add_argument(
         "--file-id",
