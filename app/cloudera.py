@@ -94,6 +94,26 @@ class ClouderaCapacityError(ClouderaError):
 # None of them say the request was wrong.
 _RETRYABLE_STATUS = (409, 429, 500, 502, 503, 504)
 
+# CML will not run two runs of one Job at once, and does not always use
+# 409 to say so -- the refusal can arrive as a 400 whose body is the only
+# thing that identifies it. It means exactly what a quota rejection means
+# ("not now"), so it must not mark the row failed: the run already in
+# flight re-queries for `queued` rows and will absorb this file.
+_BUSY_PHRASES = (
+    "already running",
+    "already in progress",
+    "another run",
+    "run in progress",
+    "concurrent",
+    "is running",
+    "skipped",
+)
+
+
+def _is_busy_response(body: str) -> bool:
+    lowered = body.lower()
+    return any(phrase in lowered for phrase in _BUSY_PHRASES)
+
 
 def _api_url() -> str:
     explicit = os.environ.get("CML_API_URL")
@@ -201,14 +221,36 @@ def start_deid_job_run(environment: Optional[Dict[str, str]] = None) -> str:
     if response.status_code >= 400:
         # The body carries the actual reason (bad job id, expired key);
         # truncated because it can be a full HTML error page.
-        raise ClouderaError(
-            f"Cloudera API returned {response.status_code}: {response.text[:300]}"
-        )
+        detail = f"Cloudera API returned {response.status_code}: {response.text[:300]}"
+        if _is_busy_response(response.text):
+            raise ClouderaCapacityError(detail)
+        raise ClouderaError(detail)
 
     try:
-        run_id = response.json().get("id", "")
+        body = response.json()
     except ValueError:
-        run_id = ""
+        body = {}
 
-    log.info("cml_job_run_started", job_id=config["job_id"], run_id=run_id)
+    run_id = body.get("id", "") if isinstance(body, dict) else ""
+    status = str(body.get("status", "")) if isinstance(body, dict) else ""
+
+    # A 200 does not mean the run will execute. CML accepts the request
+    # and then skips it when a run of the same Job is already going, so
+    # log the state rather than reporting an unconditional success --
+    # "dispatched" for a run that never starts is the log line that makes
+    # this take an afternoon to find.
+    if "skip" in status.lower():
+        log.warning(
+            "cml_job_run_skipped",
+            job_id=config["job_id"],
+            run_id=run_id,
+            status=status,
+            detail="a run of this Job is already active; the row stays "
+            "queued for the active run or the sweep to pick up",
+        )
+        return run_id
+
+    log.info(
+        "cml_job_run_started", job_id=config["job_id"], run_id=run_id, status=status
+    )
     return run_id
