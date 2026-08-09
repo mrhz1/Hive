@@ -303,6 +303,16 @@ The sweep drains anything whose trigger never reached the control plane,
 and re-claims rows stuck in `processing` because a run died mid-file.
 Without it, a single dropped API call strands a document forever.
 
+### Skipped runs are normal
+
+CML will not run two runs of one Job concurrently. De-identify a second
+file while the first is still going and its run shows **Skipped** in the
+history — CML drops it and never retries. The row stays `queued`, so the
+worker re-queries for `queued` rows after each pass and picks up whatever
+arrived mid-run. The Skipped entry in the history is expected; check the
+file's status, not the run count. The sweep above is the backstop for the
+case where nothing was running to absorb it.
+
 > **Run one at a time.** Hive has no reliable compare-and-set, so two
 > overlapping runs can both claim the same row and process it twice. The
 > status guard narrows the window; it does not close it. Do not schedule
