@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app import cloudera, deid
+from app import cloudera, deid, deid_queue
 from app.errors import AppError, app_error_handler, unhandled_error_handler
 from app.logging_setup import configure_logging, get_logger
 from app.middleware import RequestContextMiddleware
@@ -46,8 +46,16 @@ async def lifespan(_app: FastAPI):
         )
     else:
         log.info("deid_backend", backend=deid.DEID_BACKEND)
+        if deid.DEID_BACKEND == "cml_job":
+            # Start the dispatcher now rather than on the first click, so
+            # rows left `queued` by a previous process are picked up
+            # instead of waiting for someone to notice and re-click.
+            deid_queue.request_dispatch()
 
     yield
+
+    if deid.DEID_BACKEND == "cml_job":
+        deid_queue.stop()
 
 
 app = FastAPI(

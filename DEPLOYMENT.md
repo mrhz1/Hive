@@ -286,37 +286,42 @@ Create it, then copy the job id out of the URL
 That is the chicken-and-egg from step 1: the API needs the job's id, and
 the job cannot exist until the project does.
 
-### Manual schedule plus a sweep
+### One Job, no schedule, no second Job
 
-The API starts a run per request (step 5), so the Job does not need a
-schedule to function. Add a **second** Job on a schedule anyway —
-same script, no `DEID_FILE_ID` — every 15 minutes or so:
+Leave the schedule on **Manual** and do **not** create a second Job.
 
-```
-Name:     deidentify-sweep
-Script:   scripts/deid_worker.py
-Schedule: every 15 minutes
-Env:      DEID_RETRY_STALE_MINUTES=120
-```
+The API serialises this itself. `app/deid_queue.py` runs one dispatcher
+thread that starts a single Job run, waits for it to reach a terminal
+state, and only then starts the next. Users can click De-identify on as
+many files as they like: each row is marked `queued` immediately and the
+files are processed one after another, oldest click first.
 
-The sweep drains anything whose trigger never reached the control plane,
-and re-claims rows stuck in `processing` because a run died mid-file.
-Without it, a single dropped API call strands a document forever.
+This exists because CML refuses a second concurrent run of one Job —
+`400 job run for job <id> already active, code 9` — records it as a
+**Skipped** entry, and the API used to turn that refusal into a failed
+file. The dispatcher never makes the request that gets refused, so there
+is nothing to mishandle.
 
-### Skipped runs are normal
+A schedule would be the other way to drain the queue, and it does not fit
+here: CML only offers "every minute" or "N minutes past the hour", while
+this work has no characteristic duration — a one-page PDF finishes in
+under a minute and a hundred-page scan takes far longer than any fixed
+interval.
 
-CML will not run two runs of one Job concurrently. De-identify a second
-file while the first is still going and its run shows **Skipped** in the
-history — CML drops it and never retries. The row stays `queued`, so the
-worker re-queries for `queued` rows after each pass and picks up whatever
-arrived mid-run. The Skipped entry in the history is expected; check the
-file's status, not the run count. The sweep above is the backstop for the
-case where nothing was running to absorb it.
+> **Single replica.** One dispatcher per API process, so two API replicas
+> mean two dispatchers and the refusal comes back. Hive has no reliable
+> compare-and-set either, so overlapping drainers can both claim a row and
+> process it twice. Run the API single-replica, and do not start Job runs
+> by hand while the API is up.
 
-> **Run one at a time.** Hive has no reliable compare-and-set, so two
-> overlapping runs can both claim the same row and process it twice. The
-> status guard narrows the window; it does not close it. Do not schedule
-> the sweep more often than a run takes to finish.
+Tuning, all optional (`DEID_DISPATCH_*`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DEID_DISPATCH_POLL_SECONDS` | 10 | how often to check whether the active run finished |
+| `DEID_DISPATCH_IDLE_SECONDS` | 60 | idle re-check of the table, for rows queued without a click |
+| `DEID_DISPATCH_MAX_RUN_SECONDS` | 10800 | give up waiting on one run (3h) |
+| `DEID_DISPATCH_BACKOFF_SECONDS` | 60 | pause after a dispatch error |
 
 > `DEID_RETRY_STALE_MINUTES` measures age since *upload*, not since the
 > row was claimed — `patient_application_files` has no `updated_at` column. Set it
