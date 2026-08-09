@@ -6,9 +6,12 @@ it is deliberately independent of *what* triggers it:
   * `DEID_BACKEND=inline`  -- the API calls run_deidentification() in a
     FastAPI BackgroundTask when the user clicks De-identify. Fine locally
     and at low volume.
-  * `DEID_BACKEND=cml_job` -- the API only marks the row `pending` and
-    asks Cloudera AI to start the de-identification Job, which runs
-    scripts/deid_worker.py and calls exactly the same function.
+  * `DEID_BACKEND=cml_job` -- the API only marks the row `queued` and
+    hands off to app/deid_queue.py, whose single dispatcher thread starts
+    one Cloudera Job run at a time. Each run executes
+    scripts/deid_worker.py, which calls exactly the same function. The
+    dispatcher exists because CML refuses a second concurrent run of one
+    Job; serialising here means that refusal never happens.
 
 Switching therefore changes *scheduling*, not logic.
 
@@ -28,7 +31,7 @@ from typing import Optional
 
 import structlog
 
-from app.cloudera import ClouderaCapacityError, ClouderaError, start_deid_job_run
+from app import deid_queue
 from app.crud import patient_application_files as crud
 from app.db import hive_cursor
 from app.logging_setup import get_logger
@@ -112,8 +115,9 @@ def dispatch_deidentification(
     """Start de-identification by whichever route is configured.
 
     Runs as a background task in both modes: the inline path does minutes
-    of work, and the cml_job path makes a network call to the control
-    plane that must not sit in the user's request.
+    of work, and the cml_job path must not sit in the user's request
+    either -- though it now returns almost immediately, because the
+    waiting happens on the dispatcher thread rather than here.
 
     Never raises, for the same reason run_deidentification does not --
     there is no request left to return an error to.
@@ -132,22 +136,15 @@ def dispatch_deidentification(
             request_id=request_id, background_task="deidentify_dispatch"
         )
 
-    try:
-        # DEID_FILE_ID scopes the run to this file. The worker still
-        # drains anything else left pending, so a dropped trigger is
-        # recovered by the next run rather than stranding a row.
-        run_id = start_deid_job_run(environment={"DEID_FILE_ID": file_id})
-        log.info("deid_job_dispatched", file_id=file_id, run_id=run_id)
-    except ClouderaCapacityError as exc:
-        # Out of quota is "not now", not "this file is bad". The row is
-        # already 'queued', which deid_worker.py treats as claimable, so
-        # leaving it alone means the sweep run drains it once capacity
-        # frees. Marking it 'failed' here would need a human to notice
-        # and re-trigger something that was never wrong.
-        log.warning("deid_job_dispatch_deferred", file_id=file_id, error=str(exc))
-    except ClouderaError as exc:
-        log.error("deid_job_dispatch_failed", file_id=file_id, error=str(exc))
-        _set_status(file_id, deid_status="failed")
+    # Hand off to the dispatcher rather than calling Cloudera here. Two
+    # clicks in the same second used to mean two run requests, the second
+    # of which CML refuses ("job run ... already active") -- a Skipped
+    # entry in the run history and, worse, a row marked failed. The
+    # dispatcher keeps exactly one run in flight, so the second file
+    # waits its turn instead of being rejected. The row is already
+    # `queued`; that is the whole handoff.
+    deid_queue.request_dispatch()
+    log.info("deid_job_enqueued", file_id=file_id)
 
 
 def _set_status(file_id: str, **fields) -> None:

@@ -100,6 +100,8 @@ _RETRYABLE_STATUS = (409, 429, 500, 502, 503, 504)
 # ("not now"), so it must not mark the row failed: the run already in
 # flight re-queries for `queued` rows and will absorb this file.
 _BUSY_PHRASES = (
+    "already active",  # the exact wording CML uses: "job run for job <id>
+    # already active, code 9", and it arrives as a 400
     "already running",
     "already in progress",
     "another run",
@@ -108,6 +110,27 @@ _BUSY_PHRASES = (
     "is running",
     "skipped",
 )
+
+# Substrings of a CML run status that mean the run is over, whatever the
+# outcome. Matched loosely because the platform prefixes them
+# (ENGINE_SUCCEEDED, ENGINE_TIMEDOUT) and the exact set varies by
+# version -- an unrecognised status is treated as still-running, which
+# errs towards waiting rather than towards starting a second run.
+_TERMINAL_RUN_STATES = (
+    "succeeded",
+    "failed",
+    "stopped",
+    "timedout",
+    "timed_out",
+    "killed",
+    "cancelled",
+    "canceled",
+)
+
+
+def is_terminal_run_status(status: str) -> bool:
+    lowered = (status or "").lower()
+    return any(state in lowered for state in _TERMINAL_RUN_STATES)
 
 
 def _is_busy_response(body: str) -> bool:
@@ -254,3 +277,47 @@ def start_deid_job_run(environment: Optional[Dict[str, str]] = None) -> str:
         "cml_job_run_started", job_id=config["job_id"], run_id=run_id, status=status
     )
     return run_id
+
+
+def get_job_run_status(run_id: str) -> str:
+    """Current status of one run, or "" when it cannot be determined.
+
+    Best effort by design: this is used to decide whether the previous
+    run has finished, and an unreadable answer must not be mistaken for
+    "finished" -- the caller treats "" as still-running and waits.
+    """
+    if not run_id:
+        return ""
+
+    config = _config()
+    url = (
+        f"{config['url']}/projects/{config['project_id']}"
+        f"/jobs/{config['job_id']}/runs/{run_id}"
+    )
+
+    try:
+        response = httpx.get(
+            url,
+            headers={"Authorization": f"Bearer {config['api_key']}"},
+            timeout=CML_TIMEOUT_SECONDS,
+            verify=_tls_verify(),
+        )
+    except httpx.HTTPError as exc:
+        log.warning("cml_job_run_status_unreachable", run_id=run_id, error=str(exc))
+        return ""
+
+    if response.status_code >= 400:
+        log.warning(
+            "cml_job_run_status_error",
+            run_id=run_id,
+            status_code=response.status_code,
+            body=response.text[:200],
+        )
+        return ""
+
+    try:
+        body = response.json()
+    except ValueError:
+        return ""
+
+    return str(body.get("status", "")) if isinstance(body, dict) else ""
