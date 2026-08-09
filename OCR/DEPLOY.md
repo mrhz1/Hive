@@ -374,6 +374,12 @@ HIVE_USER=<workload user>
 `DEID_MODELS_DIR` and `DEID_OFFLINE` only need setting if the store is
 somewhere other than `OCR/models` — the defaults are right.
 
+A Job run does not exec the script the way `python scripts/deid_worker.py`
+does — the engine runs the source inside a session-style kernel, where
+`__file__` is undefined. The worker finds the repo root without it (CML's
+`CDSW_PROJECT_DIR`, else the working directory). If a run dies immediately
+with a path or import error, set `HIVE_REPO_ROOT=/home/cdsw` here.
+
 Create it, then **copy the job id out of the URL** (`.../jobs/<job-id>`)
 into the project variable `CML_DEID_JOB_ID`. That is the chicken-and-egg:
 the API needs the job's id, and the job cannot exist until the project
