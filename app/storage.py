@@ -22,7 +22,17 @@ log = get_logger(__name__)
 
 # Configuration, not an environment check: on Cloudera AI point this at a
 # project or mounted path.
+#
+# A relative value is anchored to the repo, never to the working
+# directory. The API and the de-identification Job run from different
+# cwds on Cloudera, so a bare "storage/patient_files" used to mean two
+# different directories -- the API would write a file the Job then
+# reported as missing from disk.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
 STORAGE_ROOT = Path(os.environ.get("FILE_STORAGE_DIR", "storage/patient_files"))
+if not STORAGE_ROOT.is_absolute():
+    STORAGE_ROOT = REPO_ROOT / STORAGE_ROOT
 
 # Uploads arrive from a user-chosen folder, so names are arbitrary. Only
 # these characters survive sanitisation.
@@ -99,15 +109,33 @@ def resolve_stored_path(stored: str) -> Path:
     The column is only ever written by write_file(), but a row is data
     like any other -- if it were ever tampered with, serving it must not
     turn into arbitrary file read.
+
+    Two shapes exist in the column. Rows written while STORAGE_ROOT was
+    relative hold a relative path, which is anchored to the repo (never
+    to cwd, which differs between the API and the Job). Rows written
+    under an absolute root hold that absolute path. A path that no longer
+    sits under the current root -- FILE_STORAGE_DIR was changed, or
+    storage moved -- is re-anchored by its <application_id>/<name> tail,
+    which cannot escape the root because only those two segments survive.
     """
     root = STORAGE_ROOT.resolve()
-    candidate = Path(stored).resolve()
 
-    if not candidate.is_relative_to(root):
-        log.error("file_path_outside_storage_root", path=stored)
-        raise ValidationError("Stored file path is outside the storage root")
+    raw = Path(stored)
+    candidate = (raw if raw.is_absolute() else REPO_ROOT / raw).resolve()
 
-    return candidate
+    if candidate.is_relative_to(root):
+        return candidate
+
+    tail = Path(*raw.parts[-2:]) if len(raw.parts) >= 2 else None
+    if tail is not None:
+        rehomed = (root / tail).resolve()
+        # Re-check: '..' in the stored value must not survive the join.
+        if rehomed.is_relative_to(root) and rehomed.exists():
+            log.info("file_path_rehomed", stored=stored, resolved=str(rehomed))
+            return rehomed
+
+    log.error("file_path_outside_storage_root", path=stored, storage_root=str(root))
+    raise ValidationError("Stored file path is outside the storage root")
 
 
 def delete_file(stored: str) -> None:
