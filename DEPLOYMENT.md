@@ -268,8 +268,14 @@ A Job run does not exec the script the way `python scripts/deid_worker.py`
 does — the engine runs the source inside a session-style kernel, where
 `__file__` is undefined. The worker finds the repo root without it (CML's
 `CDSW_PROJECT_DIR`, else the working directory). If a runtime sets neither
-usefully and the run dies before it imports anything, set the project
-variable **`HIVE_REPO_ROOT`** to the project directory (`/home/cdsw`).
+usefully and the run dies before it imports anything, set
+**`HIVE_REPO_ROOT`** to the project directory (`/home/cdsw`).
+
+`HIVE_REPO_ROOT` has to be a real environment variable — Job → Environment
+Variables, or a project variable. It cannot go in `.env.local`: that file
+is loaded by `app.db`, which cannot be imported until the repo root has
+already been found. Every other variable here is read after the imports,
+so `.env.local` is fine for those.
 
 Create it, then copy the job id out of the URL
 (`.../jobs/<job-id>`) into the project variable **`CML_DEID_JOB_ID`**.
