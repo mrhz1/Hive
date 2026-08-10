@@ -411,8 +411,30 @@ uploads the result against the same row — same id, still `done`, only
 the redacted bytes change.
 
 `scripts/init_db.py` seeds these onto the admin role, and `files:read`
-onto the viewer role. An existing deployment needs the admin role
-updated, or nobody will see the new section.
+onto the viewer role — but only for a **fresh** database.
+
+**On a running deployment nobody has them yet**, and a permission held
+by nobody looks exactly like a feature that was never built: the
+sidebar entry is gated on `files:read`, so it simply does not appear.
+Grant them in a Session:
+
+```bash
+# what is each role missing?
+python scripts/grant_permissions.py --list
+
+# give admin everything the API knows about
+python scripts/grant_permissions.py --role admin --all-missing
+
+# or just browsing, for a read-only role
+python scripts/grant_permissions.py --role viewer --grant files:read
+```
+
+It only ever adds; nothing is removed. Sign out and back in afterwards —
+permissions are read into the session at sign-in.
+
+The same script covers any permission added after launch, which is worth
+remembering: `init_db.py` is for empty databases and silently does
+nothing for one that already has roles in it.
 
 Check the Application log after it starts. You want:
 
