@@ -234,6 +234,21 @@ class PatientApplicationFileUpdate(BaseModel):
     de_identified_file_path: Optional[str] = None
 
 
+class DeidentifiedFile(BaseModel):
+    """One row of the de-identified file library."""
+
+    id: str
+    application_id: str
+    patient_id: str
+    name: str
+    original_file_name: str
+    file_type: str
+    file_size: int
+    created_at: datetime
+    deid_status: str
+    de_identified_file_path: Optional[str] = None
+
+
 # --------------------------------------------------------- file metadata
 
 METADATA_STATUSES = ("ok", "unsupported", "failed")

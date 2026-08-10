@@ -43,4 +43,10 @@ export const queryKeys = {
     metadata: (fileId: string) =>
       [...queryKeys.applicationFiles.all, 'metadata', fileId] as const,
   },
+
+  deidentifiedFiles: {
+    all: ['deidentified-files'] as const,
+    list: (patientId?: string) =>
+      [...queryKeys.deidentifiedFiles.all, 'list', patientId ?? null] as const,
+  },
 } as const

@@ -10,13 +10,18 @@ from app.schemas import User
 
 log = get_logger(__name__)
 
-PERMISSION_MODELS = ("user", "patient", "role", "log", "application")
+PERMISSION_MODELS = ("user", "patient", "role", "log", "application", "files")
 PERMISSION_ACTIONS = ("view", "create", "update", "delete")
+
+MODEL_ACTIONS = {
+    model: PERMISSION_ACTIONS for model in PERMISSION_MODELS if model != "files"
+}
+MODEL_ACTIONS["files"] = ("read", "upload", "download", "delete")
 
 KNOWN_PERMISSIONS = frozenset(
     f"{model}:{action}"
-    for model in PERMISSION_MODELS
-    for action in PERMISSION_ACTIONS
+    for model, actions in MODEL_ACTIONS.items()
+    for action in actions
 )
 
 

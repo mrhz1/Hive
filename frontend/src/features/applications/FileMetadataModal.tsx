@@ -1,22 +1,25 @@
-import { X } from 'lucide-react'
-import { useEffect } from 'react'
+import { Search, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Misc'
 import { Spinner } from '@/components/ui/Spinner'
 import { useFileMetadata } from '@/hooks/useResources'
-import {
-  metadataTone,
-  type ApplicationFile,
-} from '@/schemas/applicationFile'
+import { metadataTone } from '@/schemas/applicationFile'
+
+export type MetadataSubject = {
+  id: string
+  original_file_name: string
+}
 
 export function FileMetadataModal({
   file,
   onClose,
 }: {
-  file: ApplicationFile
+  file: MetadataSubject
   onClose: () => void
 }) {
   const { data, isLoading, error } = useFileMetadata(file.id)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -26,7 +29,17 @@ export function FileMetadataModal({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
-  const entries = Object.entries(data?.metadata ?? {})
+  const all = useMemo(() => Object.entries(data?.metadata ?? {}), [data])
+
+  const entries = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    if (!needle) return all
+    return all.filter(
+      ([name, value]) =>
+        name.toLowerCase().includes(needle) ||
+        String(value).toLowerCase().includes(needle)
+    )
+  }, [all, query])
 
   return (
     <div
@@ -62,6 +75,30 @@ export function FileMetadataModal({
           </Button>
         </div>
 
+        {all.length > 0 ? (
+          <div className="border-b border-[rgb(var(--border))] px-5 py-3">
+            <label className="relative block">
+              <span className="sr-only">Search metadata</span>
+              <Search
+                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[rgb(var(--foreground-muted))]"
+                aria-hidden="true"
+              />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search field names and values"
+                className="w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--background))] py-2 pr-3 pl-9 text-sm"
+              />
+            </label>
+            <p className="mt-1.5 text-xs text-[rgb(var(--foreground-muted))]">
+              {query.trim()
+                ? `${entries.length} of ${all.length} fields`
+                : `${all.length} fields`}
+            </p>
+          </div>
+        ) : null}
+
         <div className="min-h-0 flex-1 overflow-auto p-5">
           {isLoading ? (
             <div className="flex items-center gap-3 text-sm text-[rgb(var(--foreground-muted))]">
@@ -87,7 +124,9 @@ export function FileMetadataModal({
             </div>
           ) : entries.length === 0 ? (
             <p className="text-sm text-[rgb(var(--foreground-muted))]">
-              This document carries no metadata.
+              {query.trim()
+                ? `No field matches "${query}".`
+                : 'This document carries no metadata.'}
             </p>
           ) : (
             <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-[minmax(0,14rem)_1fr]">

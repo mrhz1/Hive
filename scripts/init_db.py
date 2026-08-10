@@ -12,16 +12,17 @@ load_dotenv(".env.local")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.security import PERMISSION_ACTIONS, PERMISSION_MODELS  # noqa: E402
+from app.security import KNOWN_PERMISSIONS, MODEL_ACTIONS  # noqa: E402
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "sql" / "schema.sql"
 
-ALL_PERMISSIONS = [
-    f"{model}:{action}"
-    for model in PERMISSION_MODELS
-    for action in PERMISSION_ACTIONS
+ALL_PERMISSIONS = sorted(KNOWN_PERMISSIONS)
+
+# The read grant for each model, whatever it is called there.
+READONLY_PERMISSIONS = [
+    f"{model}:{'read' if 'read' in actions else 'view'}"
+    for model, actions in MODEL_ACTIONS.items()
 ]
-READONLY_PERMISSIONS = [f"{model}:view" for model in PERMISSION_MODELS]
 
 ADMIN_ROLE_ID = str(uuid.uuid4())
 VIEWER_ROLE_ID = str(uuid.uuid4())

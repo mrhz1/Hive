@@ -2,6 +2,7 @@
 import mimetypes
 import os
 import re
+import shutil
 import unicodedata
 from datetime import datetime
 from pathlib import Path
@@ -15,9 +16,39 @@ log = get_logger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-STORAGE_ROOT = Path(os.environ.get("FILE_STORAGE_DIR", "storage/patient_files"))
-if not STORAGE_ROOT.is_absolute():
-    STORAGE_ROOT = REPO_ROOT / STORAGE_ROOT
+def _configured_dir(name: str, default: str) -> Path:
+    """An env-configured directory, anchored to the repo when relative."""
+    value = Path(os.environ.get(name, default))
+    return value if value.is_absolute() else REPO_ROOT / value
+
+
+STORAGE_ROOT = _configured_dir("FILE_STORAGE_DIR", "storage/patient_files")
+
+DEID_PDF_DIR = _configured_dir("DEID_PDF_DIR", "storage/deidentified/pdf")
+DEID_DICOM_DIR = _configured_dir("DEID_DICOM_DIR", "storage/deidentified/dicom")
+
+DEID_WORD_DIR = _configured_dir("DEID_WORD_DIR", "storage/deidentified/word")
+
+DEID_DIRS = {
+    "pdf": DEID_PDF_DIR,
+    "dcm": DEID_DICOM_DIR,
+    "dicom": DEID_DICOM_DIR,
+    "doc": DEID_WORD_DIR,
+    "docx": DEID_WORD_DIR,
+}
+
+
+def deid_dir_for(extension: str) -> Path:
+    """The final directory for a de-identified file of this format."""
+    return DEID_DIRS.get((extension or "").lower().lstrip("."), DEID_PDF_DIR)
+
+
+def _allowed_roots():
+    """Every directory a stored path is permitted to live under."""
+    return [
+        root.resolve()
+        for root in (STORAGE_ROOT, DEID_PDF_DIR, DEID_DICOM_DIR, DEID_WORD_DIR)
+    ]
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 _MAX_NAME = 120
@@ -139,25 +170,48 @@ def write_file(
 
 
 def resolve_stored_path(stored: str) -> Path:
-    """Resolve a path read back from Hive, refusing anything outside the storage root."""
-    root = STORAGE_ROOT.resolve()
+    """Resolve a path read back from Hive, refusing anything outside the storage roots."""
+    roots = _allowed_roots()
 
     raw = Path(stored)
     candidate = (raw if raw.is_absolute() else REPO_ROOT / raw).resolve()
 
-    if candidate.is_relative_to(root):
-        return candidate
+    for root in roots:
+        if candidate.is_relative_to(root):
+            return candidate
 
     tail = Path(*raw.parts[-2:]) if len(raw.parts) >= 2 else None
     if tail is not None:
-        rehomed = (root / tail).resolve()
-        # Re-check: '..' in the stored value must not survive the join.
-        if rehomed.is_relative_to(root) and rehomed.exists():
-            log.info("file_path_rehomed", stored=stored, resolved=str(rehomed))
-            return rehomed
+        for root in roots:
+            rehomed = (root / tail).resolve()
+            # Re-check: '..' in the stored value must not survive the join.
+            if rehomed.is_relative_to(root) and rehomed.exists():
+                log.info("file_path_rehomed", stored=stored, resolved=str(rehomed))
+                return rehomed
 
-    log.error("file_path_outside_storage_root", path=stored, storage_root=str(root))
+    log.error(
+        "file_path_outside_storage_root",
+        path=stored,
+        storage_roots=[str(r) for r in roots],
+    )
     raise ValidationError("Stored file path is outside the storage root")
+
+
+def file_deidentified_output(stored: str, extension: str) -> Path:
+    """Move a de-identified file from staging to its configured location."""
+    source = resolve_stored_path(stored)
+    destination_dir = deid_dir_for(extension)
+    destination = destination_dir / source.name
+
+    if source.resolve() == destination.resolve():
+        return destination
+
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        destination.unlink()
+    shutil.move(str(source), str(destination))
+    log.info("deid_output_filed", source=str(source), destination=str(destination))
+    return destination
 
 
 def delete_file(stored: str) -> None:

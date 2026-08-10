@@ -22,6 +22,11 @@ const ALL_PERMISSIONS = [
   'application:create',
   'application:update',
   'application:delete',
+  // files takes its own actions, not the CRUD four.
+  'files:read',
+  'files:upload',
+  'files:download',
+  'files:delete',
 ]
 
 const ADMIN = {

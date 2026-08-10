@@ -36,9 +36,21 @@ python-dotenv==1.0.1
 # process -- the heavy OCR/ML stack deliberately stays in the Job.
 #
 # Note this is metadata only: none of these renders or OCRs anything, so
-# they do not overlap with the OCR venvs. pypdf rather than pymupdf for
-# the same reason -- ~1MB of pure Python against a 20MB binary wheel we
-# would only use to read a document info dictionary.
+# they do not overlap with the OCR venvs.
 pypdf==5.1.0
 pydicom==3.0.1
 python-docx==1.1.2
+
+# Stamps the patient id onto de-identified PDFs when an application is
+# submitted (app/stamp.py).
+#
+# This file used to say pypdf was chosen *over* pymupdf because the API
+# "would only use it to read a document info dictionary". That was true
+# while the API only read PDFs. Stamping writes one, and drawing text
+# with pypdf means hand-building an overlay page with its own font
+# resource -- fiddly, easy to get subtly wrong, and still not a real
+# content-stream stamp. A 20MB binary wheel is the cheaper answer.
+#
+# It is still not the ML stack: pymupdf renders and edits PDFs, and the
+# OCR/NER dependencies stay in the Job. Both OCR venvs already carry it.
+pymupdf==1.24.14

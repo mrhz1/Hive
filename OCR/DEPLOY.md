@@ -436,6 +436,13 @@ re-claims rows stuck in `processing` because a run died mid-file. Without
 it a single dropped API call strands a document forever. Do not schedule
 it more often than a run takes to finish.
 
+A run **started with `DEID_FILE_ID` does that file and nothing else.**
+Only a sweep drains the queue. That split matters: the API's dispatcher
+already starts one run per queued file and waits for each, so a
+triggered run that also drained would swallow files whose own runs were
+still being started -- five files became eight runs, all the work
+happening inside the first.
+
 > `DEID_RETRY_STALE_MINUTES` measures age since *upload*, not since the
 > row was claimed — `patient_application_files` has no `updated_at` column. Set it
 > comfortably longer than a run takes.
@@ -579,16 +586,35 @@ def dispatch_deidentification(file_id: str, request_id: Optional[str] = None) ->
         _set_status(file_id, deid_status="failed")
         return
 
-    try:
-        # DEID_FILE_ID scopes the run to this file. The worker still
-        # drains anything else left pending, so a dropped trigger is
-        # recovered by the next run rather than stranding a row.
-        run_id = start_deid_job_run(environment={"DEID_FILE_ID": file_id})
-        log.info("deid_job_dispatched", file_id=file_id, run_id=run_id)
-    except ClouderaError as exc:
-        log.error("deid_job_dispatch_failed", file_id=file_id, error=str(exc))
-        _set_status(file_id, deid_status="failed")
+    # Hand off to the dispatcher rather than calling Cloudera here. The
+    # row is already `queued`; that is the whole handoff.
+    deid_queue.request_dispatch()
+    log.info("deid_job_enqueued", file_id=file_id)
 ```
+
+The API does not POST to Cloudera from here. `app/deid_queue.py` runs a
+single dispatcher thread that starts **one run per queued file** and
+waits for each to reach a terminal state before starting the next:
+
+```
+click, click, click        rows -> queued
+  dispatcher: run for A ───────── wait for the RUN to end ─────┐
+                                                               │
+              run for B ───────── wait ─────┐                  │
+                                            │                  │
+              run for C ── ...              │                  │
+```
+
+Two things it deliberately does **not** treat as "the run is over":
+
+* **The row going `done`.** The worker redacts the file and writes the
+  row before the run process exits. Advancing on that starts the next
+  run while the previous one is still alive — which is what turned five
+  files into eight runs.
+* **An unreadable run status.** A blip in the control plane must read as
+  still-running. Only after `DEID_DISPATCH_UNREADABLE_POLLS` consecutive
+  silent polls does a final row state get to end the wait, so an outage
+  cannot strand the queue either.
 
 ### The API call — `app/cloudera.py`
 

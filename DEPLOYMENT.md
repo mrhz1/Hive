@@ -322,6 +322,15 @@ Tuning, all optional (`DEID_DISPATCH_*`):
 | `DEID_DISPATCH_IDLE_SECONDS` | 60 | idle re-check of the table, for rows queued without a click |
 | `DEID_DISPATCH_MAX_RUN_SECONDS` | 10800 | give up waiting on one run (3h) |
 | `DEID_DISPATCH_BACKOFF_SECONDS` | 60 | pause after a dispatch error |
+| `DEID_DISPATCH_UNREADABLE_POLLS` | 6 | silent polls before a final row state may end the wait |
+
+**One run per file, and the run's own status decides when it is over.**
+Not the row: the worker writes `done` before the run process exits, and
+advancing on that starts the next run while the previous one is still
+alive — five files became eight runs that way, with all the work
+happening inside the first. For the same reason a triggered worker run
+(`DEID_FILE_ID` set) processes exactly that file and never drains the
+queue; only the sweep does.
 
 > `DEID_RETRY_STALE_MINUTES` measures age since *upload*, not since the
 > row was claimed — `patient_application_files` has no `updated_at` column. Set it
@@ -352,7 +361,58 @@ exec uvicorn app.main:app --host 0.0.0.0 --port "$CDSW_APP_PORT"
 
 Note what the API does **not** need: neither OCR virtualenv. With
 `DEID_BACKEND=cml_job` it only marks the row and POSTs to the CML API to
-start a Job run, so the web process stays small.
+start a Job run, so the web process stays small. It does need pymupdf
+(in `requirements-dev.txt`) to stamp patient ids on submission — a 20MB
+wheel, not the ML stack.
+
+### Where de-identified output lands
+
+The pipeline writes its redacted copy into a `deidentified/` folder
+beside the original. **That is a staging area, not a destination.**
+Submitting the application runs a background pass that stamps the
+patient id on the top-left of every page of each redacted PDF and moves
+every output to its configured home:
+
+| Variable | Default | Holds |
+|---|---|---|
+| `DEID_PDF_DIR` | `storage/deidentified/pdf` | redacted PDFs |
+| `DEID_DICOM_DIR` | `storage/deidentified/dicom` | redacted DICOM |
+| `DEID_WORD_DIR` | `storage/deidentified/word` | redacted Word |
+
+Relative paths resolve against the project; absolute ones are used as
+given. All three must be writable by the API Application, and they are
+what the Files section serves from — a path outside them is refused as a
+traversal attempt.
+
+The stamp is what makes a redacted document filable again: it carries no
+name, so the six-character patient id in the corner is the only thing
+tying it back to a person. It goes into the page content stream rather
+than an annotation, so a "print without markup" export cannot drop it.
+
+### The Files section
+
+De-identified documents get their own area in the dashboard, gated on a
+`files:*` permission that is **not** the CRUD four:
+
+| Permission | Allows |
+|---|---|
+| `files:read` | browse the library and open metadata |
+| `files:download` | fetch the redacted bytes |
+| `files:upload` | add a manually redacted file, or replace one |
+| `files:delete` | remove a redacted copy (the original survives) |
+
+`files:download` is deliberately separate from `files:read`: seeing that
+a redacted document exists is not the same authority as taking a copy of
+it away.
+
+Upload exists because the pipeline is good but not perfect. When it
+leaves an identifier behind, someone redacts the document by hand and
+uploads the result against the same row — same id, still `done`, only
+the redacted bytes change.
+
+`scripts/init_db.py` seeds these onto the admin role, and `files:read`
+onto the viewer role. An existing deployment needs the admin role
+updated, or nobody will see the new section.
 
 Check the Application log after it starts. You want:
 

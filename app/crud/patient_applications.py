@@ -79,6 +79,12 @@ def list_applications(
     return [_row_to_application(r) for r in cursor.fetchall()]
 
 
+def newest_for_patient(cursor, patient_id: str) -> Optional[PatientApplication]:
+    """The patient's most recent application, or None."""
+    applications = list_applications(cursor, patient_id)
+    return applications[0] if applications else None
+
+
 def create_application(
     cursor, payload: PatientApplicationCreate, actor_id: str
 ) -> PatientApplication:

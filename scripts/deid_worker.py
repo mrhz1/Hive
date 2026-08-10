@@ -161,18 +161,6 @@ def collect_one(file_id: str):
     return [record]
 
 
-def collect_queued(exclude=()):
-    """Rows sitting in 'queued', oldest first, minus ones already done."""
-    with hive_cursor() as cursor:
-        every = crud.list_files(cursor)
-
-    pending = [
-        f for f in every if f.deid_status == "queued" and f.id not in exclude
-    ]
-    pending.sort(key=lambda f: f.created_at)
-    return pending
-
-
 def process(record) -> bool:
     run_deidentification(record.id)
 
@@ -198,23 +186,16 @@ def main(argv=None) -> int:
         log.info("nothing_to_do")
         return 0
 
-    log.info("draining_queue", count=len(queue))
+    log.info("draining_queue", count=len(queue), triggered=bool(args.file_id))
 
     succeeded = 0
     failed = 0
-    seen = set()
 
-    while queue:
-        for record in queue:
-            seen.add(record.id)
-            if process(record):
-                succeeded += 1
-            else:
-                failed += 1
-
-        queue = [f for f in collect_queued(exclude=seen) if f.id not in seen]
-        if queue:
-            log.info("draining_late_arrivals", count=len(queue))
+    for record in queue:
+        if process(record):
+            succeeded += 1
+        else:
+            failed += 1
 
     log.info("queue_drained", succeeded=succeeded, failed=failed)
 

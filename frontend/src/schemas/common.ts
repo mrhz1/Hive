@@ -5,11 +5,18 @@ export const ACTIONS = ['view', 'create', 'update', 'delete'] as const
 
 export type Model = (typeof MODELS)[number]
 export type Action = (typeof ACTIONS)[number]
-export type Permission = `${Model}:${Action}`
 
-export const ALL_PERMISSIONS: Permission[] = MODELS.flatMap((model) =>
-  ACTIONS.map((action) => `${model}:${action}` as Permission)
-)
+export const FILES_ACTIONS = ['read', 'upload', 'download', 'delete'] as const
+export type FilesAction = (typeof FILES_ACTIONS)[number]
+
+export type Permission = `${Model}:${Action}` | `files:${FilesAction}`
+
+export const ALL_PERMISSIONS: Permission[] = [
+  ...MODELS.flatMap((model) =>
+    ACTIONS.map((action) => `${model}:${action}` as Permission)
+  ),
+  ...FILES_ACTIONS.map((action) => `files:${action}` as Permission),
+]
 
 export const permissionSchema = z.custom<Permission>(
   (value) => typeof value === 'string' && ALL_PERMISSIONS.includes(value as Permission),

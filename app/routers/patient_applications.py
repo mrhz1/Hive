@@ -10,6 +10,7 @@ from app.crud import patient_applications as crud
 from app.crud import patients as patients_crud
 from app.db import get_cursor
 from app.storage import delete_file as remove_from_disk
+from app.submission import finalise_submission
 from app.schemas import (
     PatientApplication,
     PatientApplicationCreate,
@@ -78,6 +79,14 @@ def update_application(
 ):
     before = crud.get_application_or_404(cursor, application_id)
     after = crud.update_application(cursor, application_id, payload, actor_id=actor.id)
+
+    if after.status == "submitted" and before.status != "submitted":
+        background.add_task(
+            finalise_submission,
+            application_id=application_id,
+            request_id=request.headers.get("X-Request-ID"),
+        )
+
     background.add_task(
         record_audit,
         action="UPDATE",

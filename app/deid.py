@@ -2,13 +2,16 @@
 import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import structlog
 
 from app import deid_queue
+from app.crud import file_metadata as metadata_crud
 from app.crud import patient_application_files as crud
+from app.crud import patient_applications as applications_crud
 from app.db import hive_cursor
 from app.logging_setup import get_logger
 from app.schemas import PatientApplicationFileUpdate
@@ -156,6 +159,34 @@ def _run_pipeline(source: Path, output_dir: Path) -> Path:
     return produced
 
 
+def _patient_id_for(cursor, application_id: str) -> str:
+    application = applications_crud.get_application(cursor, application_id)
+    return getattr(application, "patient_id", "") or ""
+
+
+def _record_deid_metadata(record, produced: Path) -> None:
+    """Note what came out of de-identification, on the file's metadata row."""
+    try:
+        with hive_cursor() as cursor:
+            patient_id = _patient_id_for(cursor, record.application_id)
+            metadata_crud.merge_metadata_for_file(
+                cursor,
+                record.id,
+                {
+                    "deidentified_file_name": produced.name,
+                    "deidentified_at": datetime.now(timezone.utc).isoformat(
+                        timespec="seconds"
+                    ),
+                    "patient_id": patient_id,
+                    "deidentified_file_type": produced.suffix.lstrip(".").lower(),
+                },
+            )
+    except Exception as exc:  # pragma: no cover - annotation is not critical
+        log.warning(
+            "deid_metadata_write_failed", file_id=record.id, error=str(exc)
+        )
+
+
 def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None:
     """De-identifies one stored file and records the result."""
     if request_id:
@@ -196,6 +227,7 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
             deidentified_file_name=produced.name,
             de_identified_file_path=str(produced),
         )
+        _record_deid_metadata(record, produced)
         log.info("deid_succeeded", file_id=file_id, output=str(produced))
 
     except DeidError as exc:

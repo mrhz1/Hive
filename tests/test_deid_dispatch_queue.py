@@ -205,3 +205,90 @@ def test_cml_busy_wording_is_recognised(body):
 )
 def test_terminal_run_status(status, terminal):
     assert is_terminal_run_status(status) is terminal
+
+
+def test_five_files_produce_exactly_five_runs(table, monkeypatch):
+    """The reported bug."""
+    for n in range(5):
+        table[f"f{n}"] = Row(f"f{n}", n)
+
+    runs = []
+    live = {"run": None}
+
+    def start(environment=None):
+        file_id = environment["DEID_FILE_ID"]
+        assert live["run"] is None, f"run started while {live['run']} was active"
+        run_id = f"run-{file_id}"
+        live["run"] = run_id
+        runs.append(run_id)
+        table[file_id].deid_status = "done"
+        return run_id
+
+    polls = {"n": 0}
+
+    def run_status(run_id):
+        polls["n"] += 1
+        # Still running for a couple of polls after the row went done.
+        if polls["n"] % 3 != 0:
+            return "ENGINE_RUNNING"
+        live["run"] = None
+        return "ENGINE_SUCCEEDED"
+
+    monkeypatch.setattr(deid_queue, "start_deid_job_run", start)
+    monkeypatch.setattr(deid_queue, "get_job_run_status", run_status)
+
+    while deid_queue.drain_once():
+        pass
+
+    assert len(runs) == 5, f"expected one run per file, got {len(runs)}: {runs}"
+    assert runs == [f"run-f{n}" for n in range(5)]
+
+
+def test_a_done_row_does_not_end_the_wait_while_the_run_is_alive(
+    table, monkeypatch
+):
+    table["a"] = Row("a", 1)
+    table["b"] = Row("b", 2)
+
+    polls = {"n": 0}
+
+    def start(environment=None):
+        file_id = environment["DEID_FILE_ID"]
+        table[file_id].deid_status = "done"  # done immediately
+        return f"run-{file_id}"
+
+    def run_status(run_id):
+        polls["n"] += 1
+        return "ENGINE_RUNNING" if polls["n"] < 4 else "ENGINE_SUCCEEDED"
+
+    monkeypatch.setattr(deid_queue, "start_deid_job_run", start)
+    monkeypatch.setattr(deid_queue, "get_job_run_status", run_status)
+
+    deid_queue.drain_once()
+
+    assert polls["n"] >= 4, "stopped waiting as soon as the row said done"
+
+
+def test_a_silent_control_plane_eventually_lets_the_row_decide(
+    table, monkeypatch
+):
+    """An outage must not strand the queue forever -- but it takes a run of unreadable polls, not one, so a blip cannot cause an overlap."""
+    table["a"] = Row("a", 1)
+    monkeypatch.setattr(deid_queue, "UNREADABLE_POLLS_BEFORE_ROW", 3)
+
+    polls = {"n": 0}
+
+    def start(environment=None):
+        table["a"].deid_status = "done"
+        return "run-a"
+
+    def run_status(run_id):
+        polls["n"] += 1
+        return ""  # control plane unreachable
+
+    monkeypatch.setattr(deid_queue, "start_deid_job_run", start)
+    monkeypatch.setattr(deid_queue, "get_job_run_status", run_status)
+
+    deid_queue.drain_once()
+
+    assert polls["n"] == 3, "gave up too early or waited past the threshold"
