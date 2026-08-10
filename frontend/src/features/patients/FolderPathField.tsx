@@ -4,14 +4,6 @@ import { Button } from '@/components/ui/Button'
 import { folderPathFromFiles } from '@/lib/folderPath'
 import { formatFileSize } from '@/schemas/applicationFile'
 
-/**
- * A path column filled in by choosing a folder rather than by typing.
- *
- * The value is still the plain STRING the API stores -- this only
- * replaces the keyboard with a picker, so the field keeps its validation
- * and its server-side error mapping. The resolved path stays visible
- * because it is what gets written to the record.
- */
 export function FolderPathField({
   label,
   value,
@@ -38,8 +30,6 @@ export function FolderPathField({
     const input = inputRef.current
     if (!input) return
 
-    // `webkitdirectory` is the only way a browser can offer a folder
-    // chooser. It is not in React's DOM typings, hence setAttribute.
     if (directory) {
       input.setAttribute('webkitdirectory', '')
       input.setAttribute('directory', '')

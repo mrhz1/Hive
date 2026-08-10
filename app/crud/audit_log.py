@@ -1,8 +1,4 @@
-"""Audit log CRUD (append + read only -- audit rows are never mutated).
-
-old_values/new_values are JSON serialised to STRING because ORC/Hive has
-no native JSON type.
-"""
+"""Audit log CRUD (append + read only -- audit rows are never mutated)."""
 import json
 import uuid
 from typing import List, Optional
@@ -28,8 +24,6 @@ COLUMNS = (
 
 _COLS = ", ".join(f"`{c}`" for c in COLUMNS)
 
-# created_at is written as SQL text, not bound (see db.NOW_SQL), so it
-# takes no placeholder and no parameter.
 _VALUES = ", ".join(NOW_SQL if c == "created_at" else "%s" for c in COLUMNS)
 
 
@@ -82,8 +76,6 @@ def create_audit_log(cursor, payload: AuditLogCreate) -> AuditLog:
         entity_type=payload.entity_type,
         entity_id=payload.entity_id,
     )
-    # Read back rather than reconstructed: created_at is the Hive server's
-    # clock now, so this process has no way to know what was stored.
     return get_audit_log(cursor, audit_id)
 
 
@@ -112,8 +104,6 @@ def list_audit_logs(
     sql = f"SELECT {_COLS} FROM `audit_logs`"
     if where:
         sql += " WHERE " + " AND ".join(where)
-    # limit is an int from a validated query param, not caller-controlled
-    # text, so interpolating it is safe -- Hive rejects %s in LIMIT.
     sql += f" ORDER BY `created_at` DESC LIMIT {int(limit)}"
 
     execute(cursor, sql, tuple(params))

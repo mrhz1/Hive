@@ -20,15 +20,6 @@ export type User = z.infer<typeof userSchema>
 
 export const userListSchema = z.array(userSchema)
 
-/**
- * Form schema shared by create and update -- one form component serves
- * both routes, so it validates one shape.
- *
- * `role_id` is required: every user must have a role, so the empty string
- * a native <select> starts on is rejected like any other missing field.
- * The API itself still accepts a null role (older records may have one),
- * but this dashboard will not create or leave one that way.
- */
 export const userFormSchema = z.object({
   username: z
     .string()

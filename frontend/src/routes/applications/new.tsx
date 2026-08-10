@@ -9,8 +9,6 @@ function NewApplication() {
 }
 
 export const Route = createFileRoute('/applications/new')({
-  // Step 1 creates a patient, so the wizard needs that grant too -- the
-  // stricter of the two is what the page is gated on.
   component: () => (
     <RequirePermission permission="application:create">
       <RequirePermission permission="patient:create">

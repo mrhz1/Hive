@@ -22,8 +22,6 @@ function LogsList() {
   const [entityType, setEntityType] = useState('')
   const [entityId, setEntityId] = useState('')
 
-  // Filters go into the query key, so each combination is cached
-  // separately and switching back to a previous filter is instant.
   const filters = {
     ...(entityType ? { entity_type: entityType } : {}),
     ...(entityId ? { entity_id: entityId } : {}),

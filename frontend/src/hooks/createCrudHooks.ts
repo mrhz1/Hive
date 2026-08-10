@@ -22,15 +22,6 @@ export function errorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
-/**
- * Builds the query + mutation hooks for one resource.
- *
- * Every resource needs the same five operations with the same cache and
- * toast behaviour, so they are written once here. Mutations invalidate
- * the resource's whole key prefix on success, which is what keeps a
- * cached list correct after a create/update/delete without shortening
- * staleTime for everyone.
- */
 export function createCrudHooks<TEntity, TForm>(config: {
   api: ResourceApi<TEntity, TForm>
   keys: ResourceKeys

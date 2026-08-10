@@ -12,6 +12,7 @@ import { cn } from '@/lib/cn'
 import { patientName, type Patient } from '@/schemas/patient'
 import type { PatientApplication } from '@/schemas/patientApplication'
 import { ApplicationSummary } from './ApplicationSummary'
+import { ExistingPatientPicker } from './ExistingPatientPicker'
 import { FileReviewPanel } from './FileReviewPanel'
 
 const STEPS = [
@@ -60,14 +61,58 @@ function StepRail({
   )
 }
 
-/**
- * Create or continue an application.
- *
- * Step 1 is the patient form itself: saving it creates (or updates) the
- * patient *and* the application row alongside it, so the two never drift
- * apart. Step 2 needs that application row to hang documents off, which
- * is why the later steps stay locked until step 1 succeeds.
- */
+type PatientSource = 'existing' | 'new'
+
+const SOURCES = [
+  {
+    value: 'new' as const,
+    label: 'New patient',
+    hint: 'Not seen here before -- fill in their details',
+  },
+  {
+    value: 'existing' as const,
+    label: 'Existing patient',
+    hint: 'Already on file -- search and pick them',
+  },
+]
+
+/** Step 1's fork: is this application for somebody already on file? */
+function PatientSourceChoice({
+  value,
+  onChange,
+}: {
+  value: PatientSource
+  onChange: (value: PatientSource) => void
+}) {
+  return (
+    <fieldset className="grid gap-3 sm:grid-cols-2">
+      <legend className="sr-only">Is this for an existing patient?</legend>
+      {SOURCES.map((source) => {
+        const isSelected = source.value === value
+        return (
+          <button
+            key={source.value}
+            type="button"
+            aria-pressed={isSelected}
+            onClick={() => onChange(source.value)}
+            className={cn(
+              'rounded-xl border p-4 text-left transition-colors',
+              isSelected
+                ? 'border-[rgb(var(--primary))] bg-[rgb(var(--primary))]/5 ring-1 ring-[rgb(var(--primary))]'
+                : 'border-[rgb(var(--border))] bg-[rgb(var(--surface))] hover:bg-[rgb(var(--surface-muted))]'
+            )}
+          >
+            <span className="block text-sm font-semibold">{source.label}</span>
+            <span className="mt-1 block text-xs text-[rgb(var(--foreground-muted))]">
+              {source.hint}
+            </span>
+          </button>
+        )
+      })}
+    </fieldset>
+  )
+}
+
 export function ApplicationWizard({
   application,
   initialPatient,
@@ -79,9 +124,8 @@ export function ApplicationWizard({
   const createApplication = useCreateApplication()
   const updateApplication = useUpdateApplication()
 
-  // Resuming an existing application starts past step 1, because its
-  // patient already exists.
   const [patient, setPatient] = useState<Patient | undefined>(initialPatient)
+  const [source, setSource] = useState<PatientSource>('new')
   const [current, setCurrent] = useState<StepNumber>(1)
   const [furthest, setFurthest] = useState<StepNumber>(initialPatient ? 3 : 1)
   const [record, setRecord] = useState<PatientApplication | undefined>(application)
@@ -91,14 +135,6 @@ export function ApplicationWizard({
     if (step > furthest) setFurthest(step)
   }
 
-  /**
-   * Step 1's save. The patient write already happened inside PatientForm;
-   * this is the application row that goes with it.
-   *
-   * A failure here is reported but does not block the wizard: the patient
-   * is saved either way, and pretending otherwise would leave the user
-   * re-entering a record that already exists.
-   */
   async function onPatientSaved(saved: Patient) {
     setPatient(saved)
 
@@ -121,6 +157,10 @@ export function ApplicationWizard({
     }
 
     goTo(2)
+  }
+
+  async function onPatientChosen(chosen: Patient) {
+    await onPatientSaved(chosen)
   }
 
   /** Step 3's submit: the application leaves draft and goes for review. */
@@ -162,18 +202,28 @@ export function ApplicationWizard({
       <StepRail current={current} furthest={furthest} onSelect={goTo} />
 
       {current === 1 ? (
-        <PatientForm
-          {...(patient ? { patient } : {})}
-          cancelTo="/applications"
-          submitLabel={patient ? 'Save and continue' : 'Create and continue'}
-          onSaved={onPatientSaved}
-        />
+        <div className="space-y-4">
+          {/* Only offered while the patient is still undecided. Once one
+              is attached, changing it would silently move an application
+              -- and any documents already on it -- to someone else. */}
+          {patient ? null : (
+            <PatientSourceChoice value={source} onChange={setSource} />
+          )}
+
+          {source === 'existing' && !patient ? (
+            <ExistingPatientPicker onSelect={onPatientChosen} isBusy={isSaving} />
+          ) : (
+            <PatientForm
+              {...(patient ? { patient } : {})}
+              cancelTo="/applications"
+              submitLabel={patient ? 'Save and continue' : 'Create and continue'}
+              onSaved={onPatientSaved}
+            />
+          )}
+        </div>
       ) : null}
 
       {current === 2 ? (
-        // Gated on the application, not the patient: documents hang off
-        // the application row, so there is nothing to attach them to
-        // until step 1 has created it.
         record ? (
           <>
             <FileReviewPanel applicationId={record.id} />

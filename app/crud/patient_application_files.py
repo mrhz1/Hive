@@ -1,13 +1,4 @@
-"""Application document CRUD, against `patient_application_files`.
-
-Documents belong to an application, not to a patient directly -- a
-patient's files are reached through their applications. There is no
-per-file review verdict here: approval is recorded once, on the
-application row.
-
-HiveQL only: %s paramstyle, backtick identifiers, STRING types, no
-RETURNING/ON CONFLICT/sequences.
-"""
+"""Application document CRUD, against `patient_application_files`."""
 import uuid
 from typing import List, Optional
 
@@ -18,12 +9,6 @@ from app.schemas import PatientApplicationFile, PatientApplicationFileUpdate
 
 log = get_logger(__name__)
 
-# Column order is the single source of truth for SELECT/INSERT and for
-# mapping a row back onto the model -- adding a column means adding it
-# here (and to sql/schema.sql) and nowhere else.
-#
-# Note the two spellings: `deidentified_file_name` against
-# `de_identified_file_path`. That is what the Cloudera metastore has.
 COLUMNS = (
     "id",
     "application_id",
@@ -64,16 +49,9 @@ def create_file(
     description: Optional[str] = None,
     file_id: Optional[str] = None,
 ) -> PatientApplicationFile:
-    """Records an uploaded document.
-
-    Freshly uploaded files are 'pending' and not yet de-identified:
-    nothing has been redacted, and claiming otherwise would be a privacy
-    lie.
-    """
+    """Records an uploaded document."""
     new_id = file_id or str(uuid.uuid4())
 
-    # created_at is written as SQL text, not bound (see db.NOW_SQL), so it
-    # takes no placeholder and no parameter.
     placeholders = ", ".join(
         NOW_SQL if c == "created_at" else "%s" for c in COLUMNS
     )
@@ -91,8 +69,6 @@ def create_file(
             mime_type,
             file_size,
             "pending",
-            # A freshly uploaded file has not been through the OCR job,
-            # so it is not de-identified until that job says otherwise.
             False,  # is_deidentified
             # created_at is inlined above, not bound here.
             description,
@@ -173,8 +149,7 @@ def delete_file(cursor, file_id: str) -> PatientApplicationFile:
 def delete_files_for_application(
     cursor, application_id: str
 ) -> List[PatientApplicationFile]:
-    """Used when an application is removed, so its documents do not linger
-    as unreachable rows and orphaned bytes."""
+    """Used when an application is removed, so its documents do not linger as unreachable rows and orphaned bytes."""
     existing = list_files(cursor, application_id)
     if existing:
         execute(

@@ -1,23 +1,9 @@
-"""Data that crosses the stage boundary.
-
-The pipeline runs in two processes with two different virtualenvs (see
-deid/pipeline.py for why), so everything the OCR stage hands to the NLP
-stage has to survive a trip through JSON. That makes this module the
-contract between them, and it deliberately imports nothing but the
-standard library -- it has to be importable under *both* environments.
-
-Coordinates are image pixels at the render DPI. `scale` (image pixels per
-PDF point) travels with each page so the second stage can convert back to
-PDF geometry without re-rasterising anything.
-"""
+"""Data that crosses the stage boundary."""
 import json
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-# Bumped when the on-disk shape changes incompatibly. The NLP stage
-# refuses a version it does not know rather than silently misreading
-# geometry -- a misread box is an un-redacted identifier.
 SCHEMA_VERSION = 1
 
 
@@ -41,8 +27,6 @@ class OcrSpan:
         return {
             "text": self.text,
             "confidence": round(self.confidence, 4),
-            # Sub-pixel precision is meaningless for a redaction box and
-            # rounding keeps the handoff file substantially smaller.
             "x0": round(self.x0, 2),
             "y0": round(self.y0, 2),
             "x1": round(self.x1, 2),
@@ -85,12 +69,7 @@ class PageSpans:
 
 @dataclass
 class OcrDocument:
-    """Everything the OCR stage learned about one PDF.
-
-    Carries `status`/`error` because a file that failed to OCR still has
-    to be reported: the stages run as batches, and one unreadable PDF
-    must not take the run down with it.
-    """
+    """Everything the OCR stage learned about one PDF."""
 
     source_path: str
     dpi: int
@@ -135,19 +114,11 @@ class OcrDocument:
         )
 
     def write(self, path: str) -> None:
-        """Write the handoff file.
-
-        This file holds the *raw* OCR text, so it is a PHI-bearing
-        artifact for as long as it exists: it is created 0600 and the
-        orchestrator deletes the directory holding it. Never point
-        --work-dir at a shared or long-lived location.
-        """
+        """Write the handoff file."""
         directory = os.path.dirname(os.path.abspath(path))
         if directory:
             os.makedirs(directory, mode=0o700, exist_ok=True)
 
-        # Open through os.open so the mode is applied at creation rather
-        # than after a moment where the file is world-readable.
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(self.to_dict(), fh)
@@ -180,8 +151,7 @@ class RedactionBox:
 
 @dataclass
 class PageText:
-    """A page's OCR spans flattened into one string, plus the index that
-    walks character offsets back to the span they came from."""
+    """A page's OCR spans flattened into one string, plus the index that walks character offsets back to the span they came from."""
 
     text: str
     # (char_start, char_end, span) per OCR span, in text order.
@@ -189,12 +159,7 @@ class PageText:
 
 
 def read_manifest(path: str) -> List[Dict[str, Any]]:
-    """Stage inputs travel in a file, not in argv.
-
-    A run can carry hundreds of PDFs and each job has four paths attached;
-    passing that on the command line would hit ARG_MAX and mean quoting
-    user-supplied filenames into a shell-adjacent string.
-    """
+    """Stage inputs travel in a file, not in argv."""
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
     if not isinstance(data, list):

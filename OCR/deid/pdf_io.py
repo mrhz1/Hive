@@ -1,17 +1,4 @@
-"""PDF rasterisation and redaction via PyMuPDF.
-
-Two things matter here for correctness:
-
-1. Coordinate systems. OCR boxes are in *image pixels* at the render DPI;
-   PDF geometry is in points (1/72 inch). Everything is converted back
-   through the same scale factor used to render.
-
-2. Real redaction. add_redact_annot + apply_redactions removes the
-   underlying content rather than painting over it. Drawing a black
-   rectangle would leave any text layer selectable and copyable beneath
-   it -- a classic redaction failure. PDF_REDACT_IMAGE_PIXELS also blanks
-   the pixels of scanned page images inside the box.
-"""
+"""PDF rasterisation and redaction via PyMuPDF."""
 import logging
 from dataclasses import dataclass
 from typing import List
@@ -61,11 +48,7 @@ def render_pages(doc, dpi: int):
 
 def apply_redactions(doc, page_number: int, boxes: List[RedactionBox], scale: float,
                      fill: str = "black") -> int:
-    """Apply redaction annotations to one page. Returns boxes applied.
-
-    Coordinates arrive in image pixels and are divided by `scale` to get
-    back to PDF points.
-    """
+    """Apply redaction annotations to one page."""
     import fitz
 
     if not boxes:
@@ -85,8 +68,6 @@ def apply_redactions(doc, page_number: int, boxes: List[RedactionBox], scale: fl
         rect = fitz.Rect(
             box.x0 / scale, box.y0 / scale, box.x1 / scale, box.y1 / scale
         )
-        # Clamp into the page; an out-of-bounds annot is silently dropped
-        # by PyMuPDF, which would mean an un-redacted entity.
         rect = rect & page_rect
         if rect.is_empty:
             log.warning(
@@ -99,8 +80,6 @@ def apply_redactions(doc, page_number: int, boxes: List[RedactionBox], scale: fl
         applied += 1
 
     if applied:
-        # images=PDF_REDACT_IMAGE_PIXELS blanks pixels inside the box for
-        # scanned pages; without it the annot would only remove text.
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_PIXELS)
 
     return applied

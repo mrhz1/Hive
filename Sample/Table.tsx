@@ -56,9 +56,6 @@ const TableCell = React.forwardRef<HTMLTableCellElement, TableCellProps>(
 );
 TableCell.displayName = "TableCell";
 
-/**
- * TablePagination: The footer container for table navigation
- */
 const TablePagination = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
     <div
@@ -73,9 +70,6 @@ const TablePagination = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HT
 );
 TablePagination.displayName = "TablePagination";
 
-/**
- * TablePaginationInfo: Displays "Rows per page" and "Total"
- */
 const TablePaginationInfo = ({
   total,
   pageSize,

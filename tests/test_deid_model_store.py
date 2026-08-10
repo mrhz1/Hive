@@ -1,14 +1,4 @@
-"""The offline model store.
-
-Cloudera AI blocks github and huggingface, so every weight is copied to
-OCR/models/ and loaded by path. These tests cover the resolution rules
-and, more importantly, the refusal: a model that is not staged must fail
-immediately with the path it looked in, not fall back to a hub id and
-fail on a blocked connection several hundred megabytes later.
-
-They run under the API venv with neither ML stack installed, which is
-also where the orchestrator's preflight runs.
-"""
+"""The offline model store."""
 import sys
 from pathlib import Path
 
@@ -42,9 +32,7 @@ def test_finds_a_model_by_its_exact_name(store):
 
 
 def test_a_directory_without_the_marker_file_does_not_count(store):
-    """An empty folder is what a half-finished copy leaves behind, and
-    treating it as present is how that becomes a crash inside paddle
-    instead of a preflight failure."""
+    """An empty folder is what a half-finished copy leaves behind, and treating it as present is how that becomes a crash inside paddle instead of a preflight failure."""
     (store / "paddle" / "PP-OCRv6_medium_det").mkdir(parents=True)
     assert model_store.find("paddle", "PP-OCRv6_medium_det") is None
 
@@ -76,9 +64,7 @@ def test_off_canonical_transformers_layouts_still_resolve(store, relative):
 
 
 def test_spacy_wrapping_directory_resolves_to_the_inner_model(store):
-    """`pip show en_core_web_sm` gives a package directory whose *inner*
-    versioned directory holds config.cfg. Copying the outer one is the
-    obvious thing to do, so it has to work."""
+    """`pip show en_core_web_sm` gives a package directory whose *inner* versioned directory holds config.cfg."""
     expected = _make(store, "spacy/en_core_web_sm/en_core_web_sm-3.8.0", "config.cfg")
     assert model_store.find("spacy", "en_core_web_sm") == expected
 
@@ -95,15 +81,11 @@ def test_offline_resolve_raises_and_names_where_it_looked(store):
 
     message = str(excinfo.value)
     assert str(store / "spacy" / "en_core_web_sm") in message
-    # The message has to be actionable in a job log, where it is all
-    # anyone gets.
     assert "stage_models.py" in message
 
 
 def test_online_resolve_falls_back_to_the_hub_id(store, monkeypatch):
-    """DEID_OFFLINE=0 is how a laptop with egress works before anything
-    has been staged -- the loaders take a name or a path in the same
-    argument, so nothing branches."""
+    """DEID_OFFLINE=0 is how a laptop with egress works before anything has been staged -- the loaders take a name or a path in the same argument, so nothing branches."""
     monkeypatch.setenv("DEID_OFFLINE", "0")
     assert model_store.resolve("spacy", "en_core_web_sm") == "en_core_web_sm"
 

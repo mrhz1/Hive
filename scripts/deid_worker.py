@@ -1,40 +1,4 @@
-"""Cloudera AI job entrypoint: drain the de-identification queue.
-
-The API can de-identify a file in a background task (DEID_BACKEND=inline),
-which is fine at low volume but keeps minutes of CPU inside the web
-process and requires the OCR virtualenvs to sit next to the API. This
-script is the same work, scheduled instead:
-
-    python scripts/deid_worker.py                # queued, then pending
-    python scripts/deid_worker.py --limit 20     # cap one run
-    python scripts/deid_worker.py --file-id abc  # exactly one file
-    DEID_FILE_ID=abc python scripts/deid_worker.py
-    DEID_RETRY_STALE_MINUTES=60 python scripts/deid_worker.py
-
-It calls app.deid.run_deidentification -- the exact function the API
-calls inline -- so moving between the two changes scheduling, not
-behaviour.
-
-## Two ways a run is started
-
-**Triggered.** The API sets the row to `queued` and starts a Job run with
-DEID_FILE_ID set (app/cloudera.py). That run does the one file somebody
-is waiting for.
-
-**Scheduled.** A cron'd run with no DEID_FILE_ID drains everything:
-`queued` first (someone asked), then `pending` (uploaded, never
-processed). That is also what recovers a row whose trigger never made it
-to the control plane.
-
-Exit codes: 0 nothing failed, 1 every file failed, 2 partial failure.
-
-Run ONE instance at a time. Hive has no reliable compare-and-set, so two
-overlapping runs can both claim the same row; the guard below narrows the
-window but does not close it. CML enforces this for Job runs by marking a
-concurrent trigger Skipped -- which is why a run re-queries for `queued`
-rows before finishing, rather than assuming its own trigger was the only
-one.
-"""
+"""Cloudera AI job entrypoint: drain the de-identification queue."""
 import argparse
 import os
 import sys
@@ -42,22 +6,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 def _repo_root():
-    """Locate the repo root without assuming how we were started.
-
-    A Cloudera AI Job does not run this file as `python script.py` -- it
-    execs the source inside a session-style kernel, where `__file__` is
-    simply not defined. So try, in order: this file's location (normal
-    `python scripts/deid_worker.py`), an explicit override, the CML
-    project directory, and finally the working directory and its parent.
-    A candidate only counts if `app/deid.py` is actually under it, so a
-    wrong guess fails here rather than as a confusing ImportError.
-    """
+    """Locate the repo root without assuming how we were started."""
     candidates = []
     here = globals().get("__file__")
     if here:
-        # Both layouts: <root>/scripts/deid_worker.py in this repo, and
-        # <root>/deid_worker.py when the worker is deployed flat next to
-        # app/. The app/deid.py check below picks whichever is real.
         own_dir = Path(here).resolve().parent
         candidates.append(("__file__ dir", own_dir))
         candidates.append(("__file__ parent", own_dir.parent))
@@ -73,8 +25,6 @@ def _repo_root():
         if (candidate / "app" / "deid.py").is_file():
             return candidate
 
-    # Say what was actually tried and what was actually there. Getting
-    # this wrong in a Job means reading the run log, not a debugger.
     tried = "\n".join(
         "  {:<12} {}  ({})".format(
             source,
@@ -106,30 +56,16 @@ from app.logging_setup import configure_logging, get_logger  # noqa: E402
 
 log = get_logger("deid_worker")
 
-# 'queued' before 'pending': a file somebody is actively waiting on
-# should not sit behind a backlog of uploads nobody has asked about.
 CLAIMABLE = ("queued", "pending")
 
 
 def _under_ipython_kernel() -> bool:
-    """Whether sys.argv belongs to a Jupyter kernel rather than to us.
-
-    A Cloudera AI Job does not run this as `python deid_worker.py` -- it
-    execs the source inside an IPython kernel, so sys.argv is the
-    kernel's own launcher line:
-
-        ['.../ipykernel_launcher.py', '-f', '/tmp/jupyter/runtime/kernel-*.json']
-
-    Handing that to argparse gets `-f` rejected and exits 2, killing the
-    run before any work starts.
-    """
+    """Whether sys.argv belongs to a Jupyter kernel rather than to us."""
     prog = Path(sys.argv[0]).name if sys.argv else ""
     if prog.startswith("ipykernel_launcher"):
         return True
     if "ipykernel" in sys.modules:
         return True
-    # Belt and braces: the kernel connection file is unmistakable even if
-    # the launcher was renamed.
     return any(
         arg.endswith(".json") and "jupyter" in arg and "kernel-" in arg
         for arg in sys.argv[1:]
@@ -137,12 +73,7 @@ def _under_ipython_kernel() -> bool:
 
 
 def _cli_argv():
-    """Args for argparse: the real ones, or none at all under a kernel.
-
-    Every option below defaults from an environment variable, so dropping
-    argv costs nothing -- a triggered Job run is configured by
-    DEID_FILE_ID, which is how the API passes the file id anyway.
-    """
+    """Args for argparse: the real ones, or none at all under a kernel."""
     if _under_ipython_kernel():
         return []
     return sys.argv[1:]
@@ -194,17 +125,10 @@ def _is_stale(created_at, minutes: int) -> bool:
 
 
 def collect_pending(limit: int, retry_stale_minutes: int):
-    """Files awaiting de-identification, most-wanted first.
-
-    Filtered in Python rather than SQL because the whole table is small
-    and this keeps the query trivial; move it into the WHERE clause if
-    the file count ever grows large enough to matter.
-    """
+    """Files awaiting de-identification, most-wanted first."""
     with hive_cursor() as cursor:
         every = crud.list_files(cursor)
 
-    # Sort within each status band by age, then concatenate the bands, so
-    # the CLAIMABLE ordering (queued before pending) actually survives.
     queue = []
     for status in CLAIMABLE:
         band = [f for f in every if f.deid_status == status]
@@ -227,12 +151,7 @@ def collect_pending(limit: int, retry_stale_minutes: int):
 
 
 def collect_one(file_id: str):
-    """The single file a triggered run was started for.
-
-    Deliberately does not filter on status: the API has already marked it
-    `queued`, and refusing to re-run a `done` or `failed` file here would
-    make the UI's Re-run button silently do nothing.
-    """
+    """The single file a triggered run was started for."""
     with hive_cursor() as cursor:
         record = crud.get_file(cursor, file_id)
 
@@ -243,14 +162,7 @@ def collect_one(file_id: str):
 
 
 def collect_queued(exclude=()):
-    """Rows sitting in 'queued', oldest first, minus ones already done.
-
-    Used to sweep up triggers Cloudera refused to run. CML will not run
-    two runs of the same Job at once -- a trigger that arrives while a
-    run is in progress is marked Skipped and never retried -- so the row
-    stays `queued` with nothing coming for it. Whoever *is* running picks
-    it up here instead.
-    """
+    """Rows sitting in 'queued', oldest first, minus ones already done."""
     with hive_cursor() as cursor:
         every = crud.list_files(cursor)
 
@@ -300,10 +212,6 @@ def main(argv=None) -> int:
             else:
                 failed += 1
 
-        # Re-query rather than stop. A file queued *while* this run was
-        # working had its own Job run skipped by CML, so this run is the
-        # only thing that will ever process it. `seen` stops a row that
-        # keeps failing from looping forever.
         queue = [f for f in collect_queued(exclude=seen) if f.id not in seen]
         if queue:
             log.info("draining_late_arrivals", count=len(queue))
@@ -318,10 +226,6 @@ def main(argv=None) -> int:
 if __name__ == "__main__":
     _rc = main()
     if _under_ipython_kernel():
-        # IPython renders *any* SystemExit as a raised exception, and the
-        # Cloudera engine reports that as a failed run -- including
-        # SystemExit(0). So a clean run must end by falling off the end
-        # here, and only a real failure may raise.
         if _rc:
             raise SystemExit(_rc)
     else:

@@ -30,8 +30,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     <button
       ref={ref}
       type={type}
-      // Disabling while loading is what actually prevents the
-      // double-submit; the spinner only communicates it.
       disabled={disabled || isLoading}
       aria-busy={isLoading}
       className={cn(buttonVariants({ variant, size, fullWidth }), className)}

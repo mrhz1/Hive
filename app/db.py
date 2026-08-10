@@ -1,8 +1,4 @@
-"""Hive connection handling, keyed off the same env vars Cloudera AI
-provides at runtime (HIVE_HOST/PORT/DB/AUTH/USER). No environment
-branching anywhere in the app -- only the values in .env.local vs. the
-Cloudera AI runtime differ.
-"""
+"""Hive connection handling, keyed off the same env vars Cloudera AI provides at runtime (HIVE_HOST/PORT/DB/AUTH/USER)."""
 import os
 import time
 from contextlib import contextmanager
@@ -14,23 +10,12 @@ from impala.dbapi import connect
 from app.errors import DatabaseError
 from app.logging_setup import get_logger
 
-# Anchored to this file, not the working directory. A Cloudera Job run
-# does not necessarily start in the project root, and a bare relative
-# ".env.local" silently loads nothing when it does not -- leaving the
-# Hive vars unset and failing much later as a connection error.
 load_dotenv(Path(__file__).resolve().parent.parent / ".env.local")
 
 log = get_logger(__name__)
 
-# Hive will not accept a bound parameter for a TIMESTAMP column -- neither
-# a plain %s nor CAST(%s AS TIMESTAMP) lands a value. The only form that
-# writes is the function itself, inlined into the statement text. So every
-# timestamp this app stores comes from the Hive server's clock, not the
-# app's, and is never a bound parameter.
 NOW_SQL = "current_timestamp()"
 
-# A nullable timestamp still needs its type stated -- Hive cannot tell what
-# an untyped NULL is meant to be in a VALUES list.
 NULL_TIMESTAMP_SQL = "CAST(NULL AS TIMESTAMP)"
 
 
@@ -50,8 +35,7 @@ def _connect():
 
 @contextmanager
 def hive_cursor():
-    """Standalone cursor. Used by background tasks, which run after the
-    request's own connection has already been closed."""
+    """Standalone cursor."""
     conn = _connect()
     try:
         yield conn.cursor()
@@ -63,11 +47,7 @@ def hive_cursor():
 
 
 def get_cursor():
-    """FastAPI dependency. One connection per request, shared by the
-    permission check and the route handler (FastAPI caches dependency
-    results per request), so a request costs one Hive connection rather
-    than one per query -- connection setup is not cheap here.
-    """
+    """FastAPI dependency."""
     conn = _connect()
     try:
         yield conn.cursor()
@@ -79,12 +59,7 @@ def get_cursor():
 
 
 def execute(cursor, sql: str, params: tuple = ()):
-    """Run a statement with timing + failure logging.
-
-    Hive queries are slow enough that per query duration is worth having in
-    the trace; this is also the single place raw impyla errors get turned
-    into DatabaseError so no route leaks a thrift traceback.
-    """
+    """Run a statement with timing + failure logging."""
     started = time.perf_counter()
     try:
         cursor.execute(sql, params)

@@ -1,10 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
 
-/**
- * The local user switcher: proves that picking a different user actually
- * changes the REMOTE-USER sent to the API, and that the shell re-renders
- * with that user's permissions.
- */
 
 const API = 'http://localhost:8100'
 
@@ -54,8 +49,6 @@ async function mockApi(page: Page, seen: string[]) {
   })
 
   await page.route(`${API}/me*`, (route) => {
-    // /me resolves whoever the header names -- exactly what the real API
-    // does, which is what makes the switch observable.
     const username = route.request().headers()['remote-user'] ?? ''
     seen.push(username)
     route.fulfill(json(BY_USERNAME[username] ?? ADMIN))
@@ -72,8 +65,6 @@ test.describe('user switcher', () => {
     await page.goto('/users')
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
 
-    // Starts as whoever VITE_DEV_USERNAME names; the switcher is available
-    // because that variable is configured.
     await expect(page.getByRole('button', { name: 'Switch user' })).toBeVisible()
     const firstIdentity = seen[0]
     expect(firstIdentity).toBeTruthy()

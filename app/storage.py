@@ -1,54 +1,30 @@
-"""Filesystem storage for application documents.
-
-Hive holds the metadata; the bytes live here. The layout is
-    <FILE_STORAGE_DIR>/<application_id>/<file_id>_<sanitized_name>
-so a file is locatable from its row, collisions are impossible (the id is
-unique), and one application's documents can be removed as a unit.
-
-Keyed by application rather than patient because that is what the row
-now references -- a directory per patient would need a join to resolve,
-and the point of this layout is that it needs none.
-"""
+"""Filesystem storage for application documents."""
 import mimetypes
 import os
 import re
 import unicodedata
+from datetime import datetime
 from pathlib import Path
 
 from app.errors import ValidationError
+from app.ids import new_document_serial
 from app.logging_setup import get_logger
+from app.schemas import METADATA_EXTENSIONS
 
 log = get_logger(__name__)
 
-# Configuration, not an environment check: on Cloudera AI point this at a
-# project or mounted path.
-#
-# A relative value is anchored to the repo, never to the working
-# directory. The API and the de-identification Job run from different
-# cwds on Cloudera, so a bare "storage/patient_files" used to mean two
-# different directories -- the API would write a file the Job then
-# reported as missing from disk.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 STORAGE_ROOT = Path(os.environ.get("FILE_STORAGE_DIR", "storage/patient_files"))
 if not STORAGE_ROOT.is_absolute():
     STORAGE_ROOT = REPO_ROOT / STORAGE_ROOT
 
-# Uploads arrive from a user-chosen folder, so names are arbitrary. Only
-# these characters survive sanitisation.
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 _MAX_NAME = 120
 
 
 def sanitize_filename(name: str) -> str:
-    """Make an arbitrary upload name safe to place on disk.
-
-    Strips any directory component (a folder upload sends paths like
-    'sub/dir/scan.pdf', and '../' must never be honoured), normalises
-    unicode, and collapses everything else to a conservative charset.
-    """
-    # Take the last segment regardless of separator style, so neither
-    # 'a/b.pdf' nor 'a\\b.pdf' can escape the target directory.
+    """Make an arbitrary upload name safe to place on disk."""
     base = re.split(r"[\\/]", name)[-1].strip()
 
     normalised = unicodedata.normalize("NFKD", base)
@@ -83,10 +59,70 @@ def application_dir(application_id: str) -> Path:
     return STORAGE_ROOT / application_id
 
 
+RECEIVED_FORMAT = "%Y%m%dT%H%M%SZ"
+
+_SERIAL_ATTEMPTS = 5
+
+
+def patient_dir(patient_id: str, received_at: datetime) -> Path:
+    """<patient id>-<time received>, one folder per upload batch."""
+    return STORAGE_ROOT / f"{patient_id}-{received_at.strftime(RECEIVED_FORMAT)}"
+
+
+def document_type_for(extension: str) -> str:
+    """'pdf' / 'dicom' / 'word' for the formats we know, else the extension."""
+    known = METADATA_EXTENSIONS.get((extension or "").lower().lstrip("."))
+    if known:
+        return known
+
+    fallback = _UNSAFE.sub("", (extension or "").lower())
+    return fallback or "file"
+
+
+def document_name(
+    patient_id: str, document_type: str, serial: str, extension: str
+) -> str:
+    suffix = f".{extension.lower()}" if extension else ""
+    return f"{patient_id}-{document_type}-{serial}{suffix}"
+
+
+def write_patient_document(
+    patient_id: str,
+    extension: str,
+    data: bytes,
+    received_at: datetime,
+) -> Path:
+    """Store one upload under the patient naming scheme."""
+    directory = patient_dir(patient_id, received_at)
+    directory.mkdir(parents=True, exist_ok=True)
+
+    document_type = document_type_for(extension)
+
+    for _ in range(_SERIAL_ATTEMPTS):
+        serial = new_document_serial()
+        target = directory / document_name(
+            patient_id, document_type, serial, extension
+        )
+        if not target.exists():
+            break
+    else:
+        raise ValidationError("Could not allocate a unique document serial")
+
+    target.write_bytes(data)
+    log.info(
+        "file_stored",
+        patient_id=patient_id,
+        document_type=document_type,
+        path=str(target),
+        bytes=len(data),
+    )
+    return target
+
+
 def write_file(
     application_id: str, file_id: str, sanitized_name: str, data: bytes
 ) -> Path:
-    """Writes the bytes and returns the path recorded in Hive."""
+    """Legacy layout, kept for uploads whose patient cannot be resolved."""
     directory = application_dir(application_id)
     directory.mkdir(parents=True, exist_ok=True)
 
@@ -103,21 +139,7 @@ def write_file(
 
 
 def resolve_stored_path(stored: str) -> Path:
-    """Resolve a path read back from Hive, refusing anything outside the
-    storage root.
-
-    The column is only ever written by write_file(), but a row is data
-    like any other -- if it were ever tampered with, serving it must not
-    turn into arbitrary file read.
-
-    Two shapes exist in the column. Rows written while STORAGE_ROOT was
-    relative hold a relative path, which is anchored to the repo (never
-    to cwd, which differs between the API and the Job). Rows written
-    under an absolute root hold that absolute path. A path that no longer
-    sits under the current root -- FILE_STORAGE_DIR was changed, or
-    storage moved -- is re-anchored by its <application_id>/<name> tail,
-    which cannot escape the root because only those two segments survive.
-    """
+    """Resolve a path read back from Hive, refusing anything outside the storage root."""
     root = STORAGE_ROOT.resolve()
 
     raw = Path(stored)

@@ -3,16 +3,6 @@ import { useEffect } from 'react'
 import { Button } from '@/components/ui/Button'
 import { formatFileSize, type ApplicationFile } from '@/schemas/applicationFile'
 
-/**
- * In-app document viewer.
- *
- * The bytes are fetched through the API client (the endpoint needs an
- * identity header, so the browser cannot simply navigate to it) and
- * handed to an iframe as a blob URL. Rendering here rather than in a
- * popup avoids both the popup blocker and the cross-window blob
- * navigation that Chromium does not reliably honour -- and keeps the
- * user inside the dashboard.
- */
 export function FileViewerModal({
   file,
   blobUrl,

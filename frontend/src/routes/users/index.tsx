@@ -19,9 +19,6 @@ const columns: Array<Column<User>> = [
     cell: (user) => <span className="font-semibold">{user.username}</span>,
     sortValue: (user) => user.username,
   },
-  // First and last name share one column: with Username, Email, Role,
-  // Status and Actions, splitting them pushes the table past the content
-  // width and the pinned Actions column starts covering Status.
   {
     id: 'name',
     header: 'Name',
@@ -43,16 +40,11 @@ const columns: Array<Column<User>> = [
       ) : (
         <Badge tone="warning">No role</Badge>
       ),
-    // Sorts on the underlying name, not the rendered badge; users with
-    // no role fall to the end via the null handling in compare().
     sortValue: (user) => user.role_name,
   },
   {
     id: 'status',
     header: 'Status',
-    // Only qualify the status when it disagrees with is_active -- an
-    // inactive user whose status already reads "inactive" does not need
-    // "inactive (inactive)".
     cell: (user) => (
       <Badge tone={user.is_active ? 'success' : 'danger'}>
         {user.is_active || user.status === 'inactive'
@@ -86,8 +78,6 @@ function UsersList() {
 
   const deleteDialog = useDeleteDialog<User>((user) => remove.mutateAsync(user.id))
 
-  // Filtering is client side because the API returns whole collections;
-  // it costs no extra Hive query.
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
     if (!term) return data
@@ -99,8 +89,6 @@ function UsersList() {
     )
   }, [data, search])
 
-  // Without this the table would render an empty "Actions" column for a
-  // read-only user, since every button inside it is permission-gated.
   const canModify = can('user:update') || can('user:delete')
 
   return (

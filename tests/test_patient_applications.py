@@ -1,10 +1,4 @@
-"""Patient application endpoints, end to end through permissions ->
-router -> CRUD.
-
-Applications carry their own `application:*` grants rather than reusing
-the patient ones: reviewing a submission is a different job from editing
-the clinical record.
-"""
+"""Patient application endpoints, end to end through permissions -> router -> CRUD."""
 from conftest import ADMIN_ID, NOBODY_USER, VIEWER_USER, minimal_patient
 
 
@@ -45,8 +39,7 @@ def test_a_new_application_is_a_draft_stamped_with_its_creator(as_admin):
 
 
 def test_an_application_for_an_unknown_patient_is_a_404(as_admin):
-    """Hive enforces no foreign keys, so nothing but this check stops a
-    row pointing at a patient that does not exist."""
+    """Hive enforces no foreign keys, so nothing but this check stops a row pointing at a patient that does not exist."""
     assert _application(as_admin, "no-such-patient").status_code == 404
 
 
@@ -85,8 +78,7 @@ def test_reviewing_stamps_the_reviewer(as_admin):
 
 
 def test_resaving_does_not_rewrite_who_submitted_it(as_admin):
-    """Only the transition stamps the actor. Otherwise the trail degrades
-    into whoever touched the row last."""
+    """Only the transition stamps the actor."""
     created = _application(as_admin, _patient(as_admin)).json()
     first = as_admin.put(
         f"/applications/{created['id']}", json={"status": "submitted"}
@@ -112,8 +104,7 @@ def test_every_write_records_who_made_it(as_admin):
 
 
 def test_the_caller_cannot_attribute_an_application_to_someone_else(as_admin):
-    """created_by_id is not an input -- it comes from the authenticated
-    caller, so a forged body is ignored rather than honoured."""
+    """created_by_id is not an input -- it comes from the authenticated caller, so a forged body is ignored rather than honoured."""
     created = _application(
         as_admin, _patient(as_admin), created_by_id="somebody-else"
     ).json()

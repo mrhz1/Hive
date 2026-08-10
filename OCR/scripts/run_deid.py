@@ -1,22 +1,4 @@
-"""Job entrypoint: de-identify one PDF, a list of PDFs, or a directory.
-
-Designed to be the Cloudera AI job script. Input can come from argv or
-from env vars (Cloudera jobs commonly pass arguments as environment
-variables), so the same script works either way without branching on
-environment:
-
-    python scripts/run_deid.py --input /path/doc.pdf --output-dir /path/out
-    DEID_INPUT=/path/doc.pdf DEID_OUTPUT_DIR=/path/out python scripts/run_deid.py
-
-**This script needs no dependencies.** It is standard library only and
-coordinates two subprocesses -- the paddle OCR stage and the presidio
-redaction stage -- each in its own virtualenv, because the two stacks
-cannot be installed together (see deid/pipeline.py). Run it with whatever
-python the Cloudera runtime provides; point DEID_OCR_PYTHON and
-DEID_NLP_PYTHON at the two venvs.
-
-Exit codes: 0 all succeeded, 1 every file failed, 2 partial failure.
-"""
+"""Job entrypoint: de-identify one PDF, a list of PDFs, or a directory."""
 import argparse
 import json
 import logging
@@ -33,6 +15,11 @@ from deid.pipeline import (  # noqa: E402
     preflight,
     run_pipeline,
 )
+from deid.documents import (  # noqa: E402
+    EXTENSIONS,
+    is_supported,
+    supported_globs,
+)
 from deid.results import exit_code, summarise  # noqa: E402
 
 
@@ -46,19 +33,27 @@ def configure_logging(level: str) -> None:
 
 
 def collect_inputs(raw_inputs: List[str], recursive: bool) -> List[Path]:
-    pdfs: List[Path] = []
+    """Every supported document under the given paths, in order."""
+    found: List[Path] = []
     for raw in raw_inputs:
         path = Path(raw).expanduser()
         if path.is_dir():
-            pattern = "**/*.pdf" if recursive else "*.pdf"
-            pdfs.extend(sorted(p for p in path.glob(pattern) if p.is_file()))
+            for pattern in supported_globs(recursive):
+                found.extend(sorted(p for p in path.glob(pattern) if p.is_file()))
         elif path.is_file():
-            pdfs.append(path)
+            if is_supported(str(path)):
+                found.append(path)
+            else:
+                logging.warning(
+                    "unsupported format, skipping: %s (handled: %s)",
+                    path,
+                    ", ".join(sorted(EXTENSIONS)),
+                )
         else:
             logging.warning("input not found, skipping: %s", path)
     # Deduplicate while preserving order.
     seen, unique = set(), []
-    for p in pdfs:
+    for p in sorted(found):
         rp = p.resolve()
         if rp not in seen:
             seen.add(rp)
@@ -133,9 +128,6 @@ def main(argv=None) -> int:
         return 0 if not problems else 1
 
     if problems:
-        # Fail here rather than after collecting inputs: a misconfigured
-        # interpreter path is the most common way this job breaks, and
-        # saying so up front beats a subprocess error 40 lines deep.
         for problem in problems:
             log.error("preflight: %s", problem)
         return 1

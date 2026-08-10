@@ -18,12 +18,6 @@ import type { RoleFormValues } from '@/schemas/role'
 import type { UserFormValues } from '@/schemas/user'
 import type { Patient, Role, User } from '@/lib/api/resources'
 
-/**
- * Writes to users and patients produce audit rows in the background, so
- * those mutations also invalidate the logs cache -- otherwise the audit
- * page would keep showing a stale list after a change made elsewhere in
- * the app.
- */
 export const userHooks = createCrudHooks<User, UserFormValues>({
   api: usersApi,
   keys: queryKeys.users,
@@ -38,11 +32,6 @@ export const patientHooks = createCrudHooks<Patient, PatientFormValues>({
   alsoInvalidate: [queryKeys.logs.all],
 })
 
-/**
- * Changing a role changes what users are allowed to do, and user reads
- * embed role_name/permissions from a join -- so role writes invalidate
- * users and the current user's own permissions too.
- */
 export const roleHooks = createCrudHooks<Role, RoleFormValues>({
   api: rolesApi,
   keys: queryKeys.roles,
@@ -50,11 +39,6 @@ export const roleHooks = createCrudHooks<Role, RoleFormValues>({
   alsoInvalidate: [queryKeys.users.all, queryKeys.me],
 })
 
-/**
- * Applications. Not built on createCrudHooks: the list is filterable by
- * patient and the wizard needs the created record back to carry into the
- * next step, neither of which fits that helper's single-list shape.
- */
 export function useApplications(patientId?: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.applications.list(patientId),
@@ -115,13 +99,6 @@ export function useDeleteApplication() {
   })
 }
 
-/**
- * Application documents. Not built on createCrudHooks: uploads are
- * multipart and produce many records from one request, which does not
- * fit the single-entity create/update shape.
- *
- * Scoped by application, not patient -- that is what the row references.
- */
 export function useApplicationFiles(
   applicationId: string | undefined,
   enabled = true
@@ -152,13 +129,6 @@ export function useUploadApplicationFiles(applicationId: string) {
   })
 }
 
-/**
- * Upload where the application id is only known at call time.
- *
- * The application wizard needs this: on create there is no id until the
- * record has been saved, so the files are staged in the form and sent
- * once the application exists.
- */
 export function useUploadFilesForApplication() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -185,20 +155,11 @@ export function useUploadFilesForApplication() {
   })
 }
 
-/**
- * Queues de-identification. The result lands on the row asynchronously,
- * so the list is invalidated to pick up 'processing' immediately; the
- * finished state appears on the next refresh.
- */
 export function useDeidentifyFile(applicationId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (fileId: string) => applicationFilesApi.deidentify(fileId),
     onSuccess: (file) => {
-      // Written straight into the cache rather than only invalidated: a
-      // Hive refetch takes hundreds of milliseconds, and until it lands
-      // the row would still read 'pending' -- which looks like the click
-      // did nothing. The API already returned the updated row.
       queryClient.setQueryData<ApplicationFile[]>(
         queryKeys.applicationFiles.list(applicationId),
         (current) => current?.map((f) => (f.id === file.id ? file : f))
@@ -216,23 +177,12 @@ export function useDeidentifyFile(applicationId: string) {
   })
 }
 
-/**
- * Metadata extracted from one document at upload time.
- *
- * Enabled only when something asks for it -- the panel is closed until a
- * user opens it, and fetching a DICOM header for every row of a table
- * nobody has expanded is wasted work. It never goes stale either: the
- * row is written once and never updated, so a long staleTime is honest
- * rather than a guess.
- */
 export function useFileMetadata(fileId: string | undefined) {
   return useQuery({
     queryKey: queryKeys.applicationFiles.metadata(fileId ?? ''),
     queryFn: () => applicationFilesApi.metadata(fileId as string),
     enabled: Boolean(fileId),
     staleTime: Infinity,
-    // A file whose format is not read still has a row, so a 404 here
-    // means the file predates extraction -- not worth retrying.
     retry: false,
   })
 }

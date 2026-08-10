@@ -12,8 +12,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 def _snapshot(user: User) -> dict:
-    """What goes into the audit log. Excludes the joined role_name /
-    permissions -- those belong to the role, not to this row's state."""
+    """What goes into the audit log."""
     return user.model_dump(exclude={"role_name", "permissions"}, mode="json")
 
 

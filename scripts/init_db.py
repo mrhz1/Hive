@@ -1,10 +1,4 @@
-"""Apply sql/schema.sql and load seed fixtures. Run with: make init
-
-NOTE: INSERT ... VALUES issues one small ORC file per statement and is
-slow -- it's fine for seeding a handful of fixture rows here, but do not
-copy this pattern into application code that writes real volumes of data
-(use INSERT ... SELECT / batch loads instead).
-"""
+"""Apply sql/schema.sql and load seed fixtures."""
 import os
 import sys
 import uuid
@@ -22,8 +16,6 @@ from app.security import PERMISSION_ACTIONS, PERMISSION_MODELS  # noqa: E402
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "sql" / "schema.sql"
 
-# Derived from app.security so the seeded grants cannot drift from the
-# set the API actually enforces.
 ALL_PERMISSIONS = [
     f"{model}:{action}"
     for model in PERMISSION_MODELS
@@ -59,8 +51,6 @@ def apply_schema(cursor) -> None:
 
 
 def seed_roles(cursor) -> None:
-    # Hive rejects a bound parameter for a whole ARRAY column, so array()
-    # gets one placeholder per element; the values stay parameterised.
     for role_id, name, perms in (
         (ADMIN_ROLE_ID, "admin", ALL_PERMISSIONS),
         (VIEWER_ROLE_ID, "viewer", READONLY_PERMISSIONS),
@@ -75,13 +65,7 @@ def seed_roles(cursor) -> None:
 
 
 def seed_users(cursor) -> None:
-    """Seeds the two named accounts plus filler rows.
-
-    Every created_at is current_timestamp() -- the same rule the app
-    follows (app/db.py::NOW_SQL), since that is the only form Hive stores.
-    The seeded rows therefore share a creation time rather than spreading
-    across days as they once did; nothing here depends on that spread.
-    """
+    """Seeds the two named accounts plus filler rows."""
     rows = [
         (ADMIN_USER_ID, "admin", "admin@example.com", "Ada", "Admin",
          "active", True, ADMIN_ROLE_ID),
@@ -112,12 +96,7 @@ def seed_users(cursor) -> None:
 
 
 def seed_patients(cursor) -> None:
-    """Seeds a subset of the patient columns.
-
-    Deliberately not every column: the point is a usable fixture set, and
-    the rest are nullable by design. The DATE columns need an explicit
-    CAST -- Hive will not coerce a bound STRING into a DATE.
-    """
+    """Seeds a subset of the patient columns."""
     base = datetime(2026, 7, 1, 12, 0, 0)
     columns = (
         "id", "instcode", "pname", "pemail", "phone1", "wphone1",
@@ -153,9 +132,6 @@ def seed_patients(cursor) -> None:
             "US",
             (base + timedelta(days=i)).date().isoformat(),
             date(1960 + i, (i % 12) + 1, (i % 28) + 1).isoformat(),
-            # Required by the API: the source document is the reason the
-            # record exists, so a fixture without one is not loadable
-            # through the endpoints it is meant to exercise.
             f"/data/patients/pat{i}.pdf",
         )
         for i in range(1, 11)

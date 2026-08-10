@@ -1,11 +1,4 @@
-"""Request correlation middleware.
-
-Binds a request_id (honouring an inbound X-Request-ID if the caller sent
-one, so ids survive across service hops) into structlog contextvars for
-the lifetime of the request. Every log line emitted while handling that
-request -- including background audit writes spawned from it -- carries
-the same request_id, which is what makes an end to end trace greppable.
-"""
+"""Request correlation middleware."""
 import time
 import uuid
 
@@ -34,8 +27,6 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
         except Exception:
-            # The exception handlers produce the response; log the timing
-            # here so failed requests still get a duration line.
             duration_ms = round((time.perf_counter() - started) * 1000, 2)
             log.exception("request_errored", duration_ms=duration_ms)
             raise

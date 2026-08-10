@@ -12,8 +12,7 @@ router = APIRouter(prefix="/roles", tags=["roles"])
 
 
 def _validate_permissions(permissions: List[str]) -> None:
-    """Reject unknown grants at write time. A typo'd permission would
-    otherwise be stored happily and simply never match anything."""
+    """Reject unknown grants at write time."""
     unknown = sorted(set(permissions) - KNOWN_PERMISSIONS)
     if unknown:
         raise ValidationError(

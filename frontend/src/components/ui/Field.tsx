@@ -10,11 +10,6 @@ import {
 import { cn } from '@/lib/cn'
 import { inputVariants, selectVariants } from './Field.styles'
 
-/**
- * Label + control + error, in one place so no control can forget to
- * announce its own error. The generated id ties label to control, which
- * is also what makes the fields addressable by label in tests.
- */
 export function FormField({
   label,
   error,
@@ -92,10 +87,6 @@ export type SelectFieldProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'id
   hint?: string
   options: ReadonlyArray<{ value: string; label: string }>
   placeholder?: string
-  /**
-   * Renders the placeholder as a disabled option, so it acts as a prompt
-   * for a required field rather than a selectable "none" value.
-   */
   placeholderDisabled?: boolean
 }
 

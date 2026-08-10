@@ -27,3 +27,8 @@ pillow>=10.0.0
 # Upper bound is paddlex's (numpy<2.4); stated here so a resolution
 # failure names numpy rather than a transitive paddle package.
 numpy>=1.24.0,<2.4
+
+# Reads DICOM pixel data so burned-in PHI can be OCR'd like any other
+# image. Header tags are not touched in this stage -- scrubbing happens
+# in stage 2, alongside the redaction that consumes these spans.
+pydicom>=2.4.0

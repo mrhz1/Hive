@@ -90,12 +90,6 @@ def delete_patient(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("patient:delete")),
 ):
-    # Remove everything that hangs off the patient first, so deleting one
-    # never leaves rows pointing at a patient that no longer exists --
-    # Hive enforces no foreign keys, so nothing else would.
-    #
-    # Two levels, because documents now belong to the application rather
-    # than to the patient: patient -> applications -> files -> metadata.
     orphaned = []
     for application in applications_crud.list_applications(cursor, patient_id):
         files = files_crud.delete_files_for_application(cursor, application.id)

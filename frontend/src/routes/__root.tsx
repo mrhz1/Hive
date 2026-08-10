@@ -7,13 +7,6 @@ import { Card } from '@/components/ui/Misc'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { ApiError } from '@/lib/api/client'
 
-/**
- * Gates the whole app on knowing who the caller is.
- *
- * There is no login screen, so identity comes from the API. Until /me
- * resolves the shell cannot decide which menu items or actions to show,
- * and rendering an empty sidebar first would flash the wrong UI.
- */
 function IdentityGate({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading, error, refetch, isFetching } = useCurrentUser()
 
@@ -63,9 +56,6 @@ export const Route = createRootRoute({
       <Outlet />
     </IdentityGate>
   ),
-  // Rendered inside the root component's Outlet, which already supplies
-  // IdentityGate + AppShell -- wrapping again would nest a second shell
-  // and duplicate the sidebar.
   notFoundComponent: NotFoundPage,
   errorComponent: ({ error }) => <AppErrorPage error={error} />,
 })

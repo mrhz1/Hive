@@ -1,12 +1,4 @@
-"""Patient application CRUD.
-
-An application is the workflow wrapper around a patient record: who
-submitted it, who reviewed it, and where it is in the process. The
-clinical facts live on the patient; this holds the provenance.
-
-HiveQL only: %s paramstyle, backtick identifiers, no
-RETURNING/ON CONFLICT/sequences.
-"""
+"""Patient application CRUD."""
 import uuid
 from typing import Any, List, Optional
 
@@ -21,9 +13,6 @@ from app.schemas import (
 
 log = get_logger(__name__)
 
-# Column order is the single source of truth for SELECT/INSERT and for
-# mapping a row back onto the model -- adding a column means adding it
-# here (and to sql/schema.sql) and nowhere else.
 COLUMNS = (
     "id",
     "patient_id",
@@ -39,27 +28,17 @@ COLUMNS = (
     "updated_by_id",
 )
 
-# These are never bound as parameters -- Hive only stores a timestamp
-# written as SQL text (see db.NOW_SQL), so each of them is either the
-# server clock or a typed NULL, and neither consumes a placeholder.
 TIMESTAMP_COLUMNS = frozenset(
     {"submitted_at", "created_at", "updated_at", "reviewed_at"}
 )
 
-# Sentinel for "stamp this column with the server clock". A timestamp
-# column's value is one of NOW or None; there is no third case, because
-# no caller may supply a timestamp of their own.
 NOW = object()
 
 _COLS = ", ".join(f"`{c}`" for c in COLUMNS)
 
 
 def _value_sql(column: str, value: Any) -> tuple:
-    """The SQL text for one column's value, plus the params it binds.
-
-    Timestamps inline their SQL and bind nothing; everything else is a
-    plain placeholder.
-    """
+    """The SQL text for one column's value, plus the params it binds."""
     if column in TIMESTAMP_COLUMNS:
         return (NOW_SQL if value is NOW else NULL_TIMESTAMP_SQL), ()
     return "%s", (value,)
@@ -108,9 +87,6 @@ def create_application(
     fields = {
         "id": application_id,
         "patient_id": payload.patient_id,
-        # Submission is a transition, not a creation: an application
-        # created straight into 'submitted' is submitted by its creator,
-        # but a draft has nobody as submitter yet.
         "submitted_by_id": actor_id if payload.status == "submitted" else None,
         "reviewed_by_id": None,
         "status": payload.status,
@@ -151,14 +127,9 @@ def update_application(
 
     fields = payload.model_dump(exclude_unset=True)
 
-    # Every write records who made it and when, even one that only
-    # changes the description -- that is the point of the column.
     fields["updated_by_id"] = actor_id
     fields["updated_at"] = NOW
 
-    # Status transitions stamp their own actor. Only on the transition:
-    # re-saving an already-submitted application must not rewrite who
-    # submitted it, or the audit trail becomes whoever touched it last.
     status = fields.get("status")
     if status == "submitted" and existing.status != "submitted":
         fields["submitted_by_id"] = actor_id
@@ -199,8 +170,7 @@ def delete_application(cursor, application_id: str) -> PatientApplication:
 def delete_applications_for_patient(
     cursor, patient_id: str
 ) -> List[PatientApplication]:
-    """Used when a patient is removed, so their applications do not linger
-    as rows pointing at a patient that no longer exists."""
+    """Used when a patient is removed, so their applications do not linger as rows pointing at a patient that no longer exists."""
     existing = list_applications(cursor, patient_id)
     if existing:
         execute(

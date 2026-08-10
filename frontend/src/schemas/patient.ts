@@ -1,17 +1,6 @@
 import { z } from 'zod'
 import { idSchema } from './common'
 
-/**
- * Naming follows the source records, and mirrors app/schemas.py::Patient:
- *   p* / unprefixed address+phone -- the provider / institution
- *   pt*                           -- the patient's own contact details
- *   fstname / lstname             -- the patient's name
- *   dt_reg / dt_b / dt_d          -- registration, birth, death
- *
- * Only original_file_path and one of fstname/lstname/ptemail are
- * required; the rest are nullable because these records come from
- * systems that do not always populate them.
- */
 
 /** A nullable STRING column. Absent and empty both mean "unknown". */
 const text = z.string().nullable().optional()
@@ -59,8 +48,6 @@ export const patientSchema = z.object({
   dt_b: dateText,
   dt_d: dateText,
 
-  // source documents recorded on the patient itself, alongside the
-  // per-document rows in `patient_application_files`
   original_file_path: text,
   deidentified_file_path: text,
 })
@@ -71,18 +58,8 @@ export const patientListSchema = z.array(patientSchema)
 
 // ------------------------------------------------------------ the form
 
-/**
- * A controlled input is never null, so every optional field is a plain
- * string in the form and '' is normalised back to null on submit -- see
- * toPatientPayload in lib/api/resources.ts.
- */
 const optionalText = (max = 128) => z.string().max(max, 'Too long')
 
-/**
- * Deliberately permissive: the API stores phone numbers as opaque
- * STRINGs, so over-validating here would reject legitimate international
- * formats the backend accepts.
- */
 const optionalPhone = z
   .string()
   .max(32, 'Too long')
@@ -98,12 +75,6 @@ const optionalDate = z.union([
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD'),
 ])
 
-/**
- * Mirrors app/schemas.py: everything is optional except the source
- * document and at least one identifier. The cross-field rule is applied
- * by `patientFormSchema` below; this object is kept unrefined so its
- * `.shape` still enumerates the fields.
- */
 const patientFormFields = z.object({
   // provider / institution
   instcode: optionalText(64),
@@ -150,15 +121,6 @@ const patientFormFields = z.object({
   deidentified_file_path: optionalText(512),
 })
 
-/**
- * The identity rule: a row nothing can be recognised by is not a record.
- * Any one of the three will do, because the systems these records are
- * ingested from disagree about which they populate.
- *
- * The message is reported against `fstname` so it lands under an input
- * rather than floating above the form -- it is the first of the three a
- * reader meets.
- */
 export const PATIENT_IDENTIFIERS = ['fstname', 'lstname', 'ptemail'] as const
 
 export const patientFormSchema = patientFormFields.superRefine((values, ctx) => {
@@ -224,13 +186,6 @@ export function toPatientFormValues(patient: Patient): PatientFormValues {
   return values
 }
 
-/**
- * Display name for headings, tables and confirmation dialogs.
- *
- * A patient may have no name at all -- only one of fstname/lstname/
- * ptemail is required -- so this falls back through the identifiers the
- * record is guaranteed to have one of, and never returns ''.
- */
 export function patientName(patient: Patient): string {
   const name = [patient.fstname, patient.lstname].filter(Boolean).join(' ').trim()
   return name || patient.ptemail || 'Unnamed patient'

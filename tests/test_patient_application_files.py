@@ -1,22 +1,31 @@
-"""Application document endpoints.
-
-Documents belong to an application, not to a patient directly, so they
-are gated on the `application:*` permissions: reading them is
-application:view and uploading/removing is application:update.
-
-There is no per-file approve/reject. A reviewer's verdict is recorded
-once, on the application row.
-"""
+"""Application document endpoints."""
 import io
+import pathlib
+import re
 
 import pytest
 from conftest import ADMIN_USER, VIEWER_USER, minimal_patient
 
+# <patient id>-<time received>
+FOLDER = re.compile(r"^[A-Z0-9]{6}-\d{8}T\d{6}Z$")
+# <patient id>-<document type>-<16-digit serial>.<ext>
+DOCUMENT = re.compile(r"^[A-Z0-9]{6}-[a-z0-9]+-\d{16}\.[a-z0-9]+$")
+
 
 def _application(client):
     """A patient and an application for them -- files hang off the latter."""
-    patient_id = client.post("/patients", json=minimal_patient()).json()["id"]
-    return client.post("/applications", json={"patient_id": patient_id}).json()["id"]
+    return _patient_and_application(client)[1]
+
+
+def _patient_and_application(client, **patient_overrides):
+    """Both ids, for the tests that care where a document lands on disk."""
+    patient_id = client.post(
+        "/patients", json=minimal_patient(**patient_overrides)
+    ).json()["id"]
+    application_id = client.post(
+        "/applications", json={"patient_id": patient_id}
+    ).json()["id"]
+    return patient_id, application_id
 
 
 def _upload(client, application_id, name="scan.pdf", data=b"%PDF-1.4 fake", **kwargs):
@@ -27,8 +36,8 @@ def _upload(client, application_id, name="scan.pdf", data=b"%PDF-1.4 fake", **kw
     )
 
 
-def test_upload_lands_under_the_application(as_admin, storage_root):
-    application_id = _application(as_admin)
+def test_upload_lands_under_the_patient(as_admin, storage_root):
+    patient_id, application_id = _patient_and_application(as_admin)
 
     response = _upload(as_admin, application_id)
     assert response.status_code == 201, response.text
@@ -44,13 +53,72 @@ def test_upload_lands_under_the_application(as_admin, storage_root):
     assert record["is_deidentified"] is False
     assert record["de_identified_file_path"] is None
 
-    stored = storage_root / application_id
-    assert [p.name for p in stored.iterdir()] == [f"{record['id']}_scan.pdf"]
+    stored = pathlib.Path(record["file_path"])
+    assert stored.is_file()
+    assert FOLDER.match(stored.parent.name), stored.parent.name
+    assert stored.parent.name.startswith(f"{patient_id}-")
+    assert DOCUMENT.match(stored.name), stored.name
+    assert stored.name.startswith(f"{patient_id}-pdf-")
+
+
+def test_document_type_comes_from_the_format(as_admin, storage_root):
+    patient_id, application_id = _patient_and_application(as_admin)
+
+    for name, expected in (
+        ("scan.pdf", "pdf"),
+        ("study.dcm", "dicom"),
+        ("letter.docx", "word"),
+        ("notes.txt", "txt"),
+    ):
+        record = _upload(as_admin, application_id, name=name).json()[0]
+        stored = pathlib.Path(record["file_path"])
+        assert stored.name.startswith(f"{patient_id}-{expected}-"), stored.name
+
+
+def test_serials_do_not_repeat_across_a_batch(as_admin, storage_root):
+    _, application_id = _patient_and_application(as_admin)
+
+    response = as_admin.post(
+        f"/applications/{application_id}/files",
+        files=[
+            ("files", (f"scan{n}.pdf", b"%PDF-1.4 fake", "application/pdf"))
+            for n in range(12)
+        ],
+    )
+
+    names = [pathlib.Path(r["file_path"]).name for r in response.json()]
+    assert len(set(names)) == 12, names
+
+
+def test_one_batch_shares_one_folder(as_admin, storage_root):
+    _, application_id = _patient_and_application(as_admin)
+
+    response = as_admin.post(
+        f"/applications/{application_id}/files",
+        files=[
+            ("files", (f"scan{n}.pdf", b"%PDF-1.4 fake", "application/pdf"))
+            for n in range(5)
+        ],
+    )
+
+    folders = {pathlib.Path(r["file_path"]).parent for r in response.json()}
+    assert len(folders) == 1, "one upload must not be split across folders"
+
+
+def test_upload_name_never_reaches_the_filesystem(as_admin, storage_root):
+    """An upload name is arbitrary and often identifying in itself, so the stored path is built entirely from ids."""
+    _, application_id = _patient_and_application(as_admin)
+
+    record = _upload(as_admin, application_id, name="Jane Doe referral.pdf").json()[0]
+
+    stored = pathlib.Path(record["file_path"])
+    assert "jane" not in str(stored).lower()
+    assert "referral" not in str(stored).lower()
+    assert record["original_file_name"] == "Jane Doe referral.pdf"
 
 
 def test_the_file_row_matches_the_cloudera_columns(as_admin, storage_root):
-    """Including the two spellings the metastore actually has:
-    `deidentified_file_name` against `de_identified_file_path`."""
+    """Including the two spellings the metastore actually has: `deidentified_file_name` against `de_identified_file_path`."""
     application_id = _application(as_admin)
     record = _upload(as_admin, application_id).json()[0]
 
@@ -63,8 +131,7 @@ def test_the_file_row_matches_the_cloudera_columns(as_admin, storage_root):
 
 
 def test_a_folder_upload_sanitises_paths(as_admin, storage_root):
-    """webkitRelativePath sends 'sub/dir/x.pdf'; '../' must never be
-    honoured against the storage root."""
+    """webkitRelativePath sends 'sub/dir/x.pdf'; '../' must never be honoured against the storage root."""
     application_id = _application(as_admin)
 
     response = as_admin.post(
@@ -74,8 +141,11 @@ def test_a_folder_upload_sanitises_paths(as_admin, storage_root):
     record = response.json()[0]
 
     assert record["original_file_name"] == "../../etc/passwd.pdf"
-    assert record["sanitized_file_name"] == "passwd.pdf"
-    assert (storage_root / application_id / f"{record['id']}_passwd.pdf").is_file()
+
+    stored = pathlib.Path(record["file_path"])
+    assert DOCUMENT.match(stored.name), stored.name
+    assert stored.is_file()
+    assert storage_root.resolve() in stored.resolve().parents
 
 
 def test_listing_is_scoped_to_one_application(as_admin, storage_root):
@@ -96,8 +166,7 @@ def test_listing_is_scoped_to_one_application(as_admin, storage_root):
 
 
 def test_files_for_an_unknown_application_are_a_404(as_admin):
-    """404 rather than an empty list, so a wrong id is distinguishable
-    from an application with no documents."""
+    """404 rather than an empty list, so a wrong id is distinguishable from an application with no documents."""
     assert as_admin.get("/applications/nope/files").status_code == 404
     assert _upload(as_admin, "nope").status_code == 404
 
@@ -125,7 +194,7 @@ def test_asking_for_a_redacted_copy_that_does_not_exist(as_admin, storage_root):
 def test_deleting_an_application_removes_its_documents(as_admin, storage_root):
     application_id = _application(as_admin)
     record = _upload(as_admin, application_id).json()[0]
-    on_disk = storage_root / application_id / f"{record['id']}_scan.pdf"
+    on_disk = pathlib.Path(record["file_path"])
     assert on_disk.is_file()
 
     assert as_admin.delete(f"/applications/{application_id}").status_code == 204
@@ -135,14 +204,13 @@ def test_deleting_an_application_removes_its_documents(as_admin, storage_root):
 
 
 def test_deleting_a_patient_removes_documents_two_levels_down(as_admin, storage_root):
-    """patient -> applications -> files. Hive enforces no foreign keys, so
-    nothing but this cascade stops a file outliving its patient."""
+    """patient -> applications -> files."""
     patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
     application_id = as_admin.post(
         "/applications", json={"patient_id": patient_id}
     ).json()["id"]
     record = _upload(as_admin, application_id).json()[0]
-    on_disk = storage_root / application_id / f"{record['id']}_scan.pdf"
+    on_disk = pathlib.Path(record["file_path"])
 
     assert as_admin.delete(f"/patients/{patient_id}").status_code == 204
 
@@ -172,7 +240,7 @@ def test_deleting_a_file_removes_its_metadata_row(as_admin, storage_root, store)
 
 # ------------------------------------------------------ de-identification
 
-def test_deidentify_rejects_a_non_pdf(as_admin, storage_root):
+def test_deidentify_rejects_an_unsupported_format(as_admin, storage_root):
     application_id = _application(as_admin)
     record = as_admin.post(
         f"/applications/{application_id}/files",
@@ -181,12 +249,37 @@ def test_deidentify_rejects_a_non_pdf(as_admin, storage_root):
 
     response = as_admin.post(f"/files/{record['id']}/deidentify")
     assert response.status_code == 422
-    assert "Only PDF" in response.json()["error"]["detail"]
+    assert "cannot be de-identified" in response.json()["error"]["detail"]
+
+
+@pytest.mark.parametrize(
+    "name,mime",
+    [
+        ("scan.pdf", "application/pdf"),
+        ("study.dcm", "application/dicom"),
+        ("letter.docx",
+         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        ("legacy.doc", "application/msword"),
+    ],
+)
+def test_deidentify_accepts_every_supported_format(
+    as_admin, storage_root, monkeypatch, name, mime
+):
+    """PDF was the only format for a long time; DICOM and Word have to be accepted at the API boundary too, or the pipeline never sees them."""
+    monkeypatch.setattr("app.deid.dispatch_deidentification", lambda **kwargs: None)
+    application_id = _application(as_admin)
+    record = as_admin.post(
+        f"/applications/{application_id}/files",
+        files=[("files", (name, b"bytes", mime))],
+    ).json()[0]
+
+    response = as_admin.post(f"/files/{record['id']}/deidentify")
+
+    assert response.status_code == 200, response.text
 
 
 def test_deidentify_marks_the_row_processing(as_admin, storage_root, monkeypatch):
-    """The row is marked before the job starts, so the UI reflects it on
-    the very next read."""
+    """The row is marked before the job starts, so the UI reflects it on the very next read."""
     monkeypatch.setattr(
         "app.routers.patient_application_files.dispatch_deidentification",
         lambda **kw: None,
@@ -203,10 +296,7 @@ def test_deidentify_marks_the_row_processing(as_admin, storage_root, monkeypatch
 def test_deidentify_marks_the_row_queued_on_the_job_backend(
     as_admin, storage_root, monkeypatch
 ):
-    """Under DEID_BACKEND=cml_job nothing is processing yet -- a Job run
-    has only been asked for. Marking 'processing' here would strand the
-    row forever if the run never started, and 'pending' would be
-    indistinguishable from a freshly uploaded file."""
+    """Under DEID_BACKEND=cml_job nothing is processing yet -- a Job run has only been asked for."""
     monkeypatch.setattr(
         "app.routers.patient_application_files.dispatch_deidentification",
         lambda **kw: None,
@@ -224,9 +314,7 @@ def test_deidentify_marks_the_row_queued_on_the_job_backend(
 def test_deidentify_rejects_a_file_already_in_flight(
     as_admin, storage_root, monkeypatch
 ):
-    """A second click must not start a second run. 'pending' is NOT in
-    flight, though -- that is how every file arrives, so a first request
-    has to be allowed through."""
+    """A second click must not start a second run."""
     monkeypatch.setattr(
         "app.routers.patient_application_files.dispatch_deidentification",
         lambda **kw: None,
@@ -301,8 +389,6 @@ def test_pdf_metadata_is_extracted_on_upload(as_admin, storage_root):
     assert body["status"] == "ok"
     assert body["metadata"]["title"] == "Discharge Summary"
     assert body["metadata"]["author"] == "Dr Who"
-    # Everything is a string: these headers are inconsistent across
-    # producers, and a consumer handling three types per field handles none.
     assert body["metadata"]["page_count"] == "1"
 
 
@@ -346,8 +432,7 @@ def test_dicom_metadata_is_extracted_on_upload(as_admin, storage_root):
 def test_an_unreadable_document_records_why_rather_than_failing_the_upload(
     as_admin, storage_root
 ):
-    """The bytes are already on disk by the time extraction runs -- a
-    malformed PDF is a missing panel, not a lost document."""
+    """The bytes are already on disk by the time extraction runs -- a malformed PDF is a missing panel, not a lost document."""
     application_id = _application(as_admin)
     response = _upload(as_admin, application_id, data=b"not really a pdf")
 
@@ -359,8 +444,7 @@ def test_an_unreadable_document_records_why_rather_than_failing_the_upload(
 
 
 def test_a_format_we_do_not_read_is_recorded_unsupported(as_admin, storage_root):
-    """A row still exists, so the UI can tell "nothing to show" apart from
-    "never looked"."""
+    """A row still exists, so the UI can tell "nothing to show" apart from "never looked"."""
     application_id = _application(as_admin)
     record = as_admin.post(
         f"/applications/{application_id}/files",
@@ -373,8 +457,7 @@ def test_a_format_we_do_not_read_is_recorded_unsupported(as_admin, storage_root)
 
 
 def test_metadata_is_stored_as_a_json_string(as_admin, storage_root, store):
-    """ORC has no JSON type -- the column is a STRING, the same convention
-    audit_logs uses."""
+    """ORC has no JSON type -- the column is a STRING, the same convention audit_logs uses."""
     import json
 
     application_id = _application(as_admin)
@@ -407,8 +490,7 @@ def test_empty_uploads_are_skipped_not_fatal(as_admin, storage_root):
 
 
 def test_file_access_uses_the_application_permissions(client, storage_root):
-    """These documents are part of a submission, so anyone who may read an
-    application may read them -- and changing them is application:update."""
+    """These documents are part of a submission, so anyone who may read an application may read them -- and changing them is application:update."""
     admin = {"REMOTE-USER": ADMIN_USER}
     patient_id = client.post(
         "/patients", json=minimal_patient(), headers=admin
@@ -431,8 +513,7 @@ def test_file_access_uses_the_application_permissions(client, storage_root):
 
 @pytest.mark.parametrize("method,path", [("post", "/files/{id}/review")])
 def test_the_per_file_review_endpoint_is_gone(as_admin, storage_root, method, path):
-    """Approval is recorded once, on the application. A per-file verdict
-    would be a second source of truth for the same decision."""
+    """Approval is recorded once, on the application."""
     application_id = _application(as_admin)
     record = _upload(as_admin, application_id).json()[0]
 

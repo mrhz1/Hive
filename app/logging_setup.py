@@ -1,11 +1,4 @@
-"""structlog configuration.
-
-Uses structlog.contextvars so anything bound in the request middleware
-(request_id, actor, method, path) is automatically attached to every log
-line emitted downstream -- CRUD, audit writes, background tasks -- without
-threading a logger through call signatures. That is what makes an end to
-end transaction traceable by grepping a single request_id.
-"""
+"""structlog configuration."""
 import logging
 import sys
 
@@ -22,9 +15,6 @@ def configure_logging(level: int = logging.INFO) -> None:
             structlog.processors.TimeStamper(fmt="iso", utc=True),
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
-            # Console renderer is readable locally. Swap for
-            # structlog.processors.JSONRenderer() if the Cloudera AI log
-            # collector prefers JSON -- purely a config change.
             structlog.dev.ConsoleRenderer(colors=False),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(level),

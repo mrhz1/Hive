@@ -1,16 +1,4 @@
-"""Guards on the two-virtualenv split in OCR/.
-
-PaddleOCR and Presidio cannot be installed together (paddlex pins
-PyYAML==6.0.2, presidio-analyzer>=2.2.363 needs pyyaml>=6.0.3), so the
-pipeline runs as two processes with two venvs. That split is held
-together by nothing but import discipline, and it fails in a
-characteristically nasty way: a stray import makes stage 1 try to load
-presidio, the OCR venv has no presidio, and the job dies at run time on
-the Cloudera node rather than here.
-
-These tests run under the *API* venv, which has neither stack installed.
-That is the point -- the orchestrator is supposed to work exactly there.
-"""
+"""Guards on the two-virtualenv split in OCR/."""
 import ast
 import subprocess
 import sys
@@ -26,8 +14,6 @@ SHARED_MODULES = [
     "deid.spans",
     "deid.results",
     "deid.mapping",
-    # Both stages resolve models through it, and so does the
-    # dependency-free orchestrator's preflight.
     "deid.model_store",
 ]
 
@@ -48,20 +34,13 @@ STAGE_BOUNDARIES = [
                              "deid.stage_nlp")),
 ]
 
-# Third-party names that betray the wrong stack, checked against the
-# import statements themselves rather than a text search -- a mention in
-# a docstring or comment is not a dependency.
 PADDLE_PACKAGES = ("paddle", "paddleocr", "paddlex")
 NLP_PACKAGES = ("presidio_analyzer", "presidio_anonymizer", "transformers",
                 "spacy", "torch")
 
 
 def _imported_names(path: Path):
-    """Every module name imported by `path`, at any nesting level.
-
-    Uses the AST, so a lazily-imported module inside a function still
-    counts -- deferring an import does not make it optional at run time.
-    """
+    """Every module name imported by `path`, at any nesting level."""
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     names = set()
     for node in ast.walk(tree):
@@ -112,13 +91,7 @@ def test_modules_do_not_import_the_wrong_stack(module_path, packages):
 
 
 def test_orchestrator_runs_with_nothing_installed():
-    """--preflight under an interpreter with no ML stack at all.
-
-    This is the real deployment shape: on Cloudera AI the Job runs
-    run_deid.py with the runtime's stock python, and only the two stage
-    subprocesses have dependencies. If the orchestrator ever grows a
-    third-party import, it breaks there and nowhere else.
-    """
+    """--preflight under an interpreter with no ML stack at all."""
     completed = subprocess.run(
         [sys.executable, str(OCR_ROOT / "scripts" / "run_deid.py"), "--preflight"],
         capture_output=True,
@@ -126,18 +99,13 @@ def test_orchestrator_runs_with_nothing_installed():
         cwd=str(OCR_ROOT),
     )
 
-    # Exit code is 0 or 1 depending on whether the venvs happen to be
-    # built on this machine -- both mean it imported and ran. A crash
-    # (ImportError) is what this is looking for.
     assert completed.returncode in (0, 1), completed.stderr
     assert "ModuleNotFoundError" not in completed.stderr, completed.stderr
     assert '"ocr_python"' in completed.stdout, completed.stdout
 
 
 def test_requirements_files_stay_apart():
-    """The two requirement sets must not name each other's stack, and the
-    combined requirements.txt must stay deleted -- installing it is the
-    exact thing that does not work."""
+    """The two requirement sets must not name each other's stack, and the combined requirements.txt must stay deleted -- installing it is the exact thing that does not work."""
     assert not (OCR_ROOT / "requirements.txt").exists(), (
         "OCR/requirements.txt is back; a single combined requirement set "
         "cannot be resolved (paddlex pins PyYAML==6.0.2 against "

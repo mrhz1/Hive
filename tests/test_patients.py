@@ -33,10 +33,7 @@ def test_model_exposes_every_requested_field(as_admin):
 
 
 def test_round_trips_every_field(as_admin):
-    """Every one of the 34 columns survives write -> read unchanged.
-
-    Not a column-order check -- see the KNOWN LIMIT in conftest.
-    """
+    """Every one of the 34 columns survives write -> read unchanged."""
     payload = minimal_patient(
         instcode="INST001", pname="Springfield Clinic",
         pemail="clinic@example.com", phone1="+1 555 100 0001",
@@ -62,8 +59,7 @@ def test_round_trips_every_field(as_admin):
 
 
 def test_provider_and_patient_blocks_stay_distinct(as_admin):
-    """`street` and `ptstreet` are different columns -- a sed-style rename
-    could easily collapse one onto the other."""
+    """`street` and `ptstreet` are different columns -- a sed-style rename could easily collapse one onto the other."""
     created = as_admin.post(
         "/patients",
         json=minimal_patient(
@@ -92,15 +88,12 @@ def test_only_the_document_and_one_identifier_are_required(as_admin):
 
     body = response.json()
     assert body["fstname"] == "Jane"
-    # Everything else is unknown, and unknown is null -- including
-    # lstname, which minimal_patient does not send.
     for field in ("lstname", "instcode", "pemail", "ptphone", "dt_b", "city", "ptcity"):
         assert body[field] is None
 
 
 def test_any_one_identifier_satisfies_the_rule(as_admin):
-    """fstname, lstname or ptemail -- the ingested systems disagree about
-    which of them they populate, so any one has to be enough."""
+    """fstname, lstname or ptemail -- the ingested systems disagree about which of them they populate, so any one has to be enough."""
     for identifier in (
         {"fstname": "Jane"},
         {"lstname": "Doe"},
@@ -122,8 +115,7 @@ def test_a_patient_with_no_identifier_at_all_is_rejected(as_admin):
 
 
 def test_blank_identifiers_do_not_count_as_present(as_admin):
-    """'' normalises to NULL, so a form submitted with the name fields
-    cleared must be rejected rather than stored as a nameless row."""
+    """'' normalises to NULL, so a form submitted with the name fields cleared must be rejected rather than stored as a nameless row."""
     response = as_admin.post(
         "/patients",
         json={"original_file_path": "/data/x.pdf", "fstname": "  ", "lstname": ""},
@@ -145,8 +137,7 @@ def test_missing_source_document_is_a_422_naming_the_field(as_admin):
 
 
 def test_blank_strings_are_stored_as_null(as_admin):
-    """A cleared HTML input submits ''. Storing that would make "unknown"
-    two different values in Hive."""
+    """A cleared HTML input submits ''."""
     created = as_admin.post(
         "/patients",
         json=minimal_patient(instcode="   ", dt_b="", ptemail="", ptcity=""),
@@ -247,9 +238,7 @@ def test_update_touches_only_the_fields_sent(as_admin):
 
 
 def test_update_cannot_clear_the_last_identifier(as_admin):
-    """The rule holds over the row the update leaves behind, not over the
-    patch -- a patch clearing fstname is only invalid because nothing
-    already stored would identify the row afterwards."""
+    """The rule holds over the row the update leaves behind, not over the patch -- a patch clearing fstname is only invalid because nothing already stored would identify the row afterwards."""
     created = as_admin.post("/patients", json=minimal_patient()).json()
 
     response = as_admin.put(f"/patients/{created['id']}", json={"fstname": ""})
@@ -344,8 +333,7 @@ def test_writes_are_audited_as_patient(as_admin, store):
 
 
 def test_the_audit_row_names_who_made_the_change(as_admin, store):
-    """user_id comes from the authenticated caller, never the body -- an
-    audit table that cannot say who acted is not an audit table."""
+    """user_id comes from the authenticated caller, never the body -- an audit table that cannot say who acted is not an audit table."""
     created = as_admin.post("/patients", json=minimal_patient()).json()
     as_admin.put(f"/patients/{created['id']}", json={"ptcity": "Shelbyville"})
 
@@ -354,8 +342,7 @@ def test_the_audit_row_names_who_made_the_change(as_admin, store):
 
 
 def test_the_audit_snapshot_serialises_dates(as_admin, store):
-    """model_dump(mode='json') has to run before the row hits Hive --
-    a date object would not survive the JSON-in-STRING column."""
+    """model_dump(mode='json') has to run before the row hits Hive -- a date object would not survive the JSON-in-STRING column."""
     import json
 
     as_admin.post("/patients", json=minimal_patient(dt_b="1990-01-02"))

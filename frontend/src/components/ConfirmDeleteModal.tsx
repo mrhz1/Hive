@@ -12,10 +12,6 @@ export type ConfirmDeleteModalProps = {
   onConfirm: () => void
 }
 
-/**
- * One delete confirmation for the whole app. Pages supply the label,
- * target and handler; nothing else about deletion is duplicated.
- */
 export function ConfirmDeleteModal({
   open,
   entityLabel,
@@ -26,8 +22,6 @@ export function ConfirmDeleteModal({
 }: ConfirmDeleteModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
 
-  // Esc closes, and focus moves into the panel so the dialog is operable
-  // from the keyboard the moment it opens.
   useEffect(() => {
     if (!open) return
 

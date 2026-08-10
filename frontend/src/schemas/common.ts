@@ -1,11 +1,5 @@
 import { z } from 'zod'
 
-/**
- * Every permission the API recognises, mirroring KNOWN_PERMISSIONS in
- * app/security.py. Kept as a const tuple so `Permission` is a union of
- * literals rather than `string` -- a typo in a permission check then
- * fails at compile time instead of silently never matching.
- */
 export const MODELS = ['user', 'patient', 'role', 'log', 'application'] as const
 export const ACTIONS = ['view', 'create', 'update', 'delete'] as const
 
@@ -37,11 +31,6 @@ export const apiErrorSchema = z.object({
 
 export type ApiErrorBody = z.infer<typeof apiErrorSchema>
 
-/**
- * The API emits naive ISO timestamps (no timezone suffix) because Hive
- * TIMESTAMP has no zone. Parsed leniently so a missing 'Z' does not fail
- * the whole response.
- */
 export const timestampSchema = z.string().min(1)
 
 export const idSchema = z.string().min(1)

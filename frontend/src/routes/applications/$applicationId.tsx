@@ -14,9 +14,6 @@ function ApplicationDetail() {
   const applicationQuery = useApplication(applicationId)
   const application = applicationQuery.data
 
-  // The wizard opens on the patient this application is for, so it is
-  // fetched here rather than inside -- the wizard should not have to know
-  // how a patient is loaded.
   const patientQuery = patientHooks.useDetail(application?.patient_id ?? '', {
     enabled: Boolean(application?.patient_id),
   })

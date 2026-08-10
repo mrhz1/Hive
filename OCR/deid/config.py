@@ -1,15 +1,4 @@
-"""Configuration for the de-identification job.
-
-Everything is driven by env vars with sane defaults, matching the pattern
-used by the Hive/FastAPI side of this repo: no code branches on
-environment, only values change between local and Cloudera AI.
-
-Model identifiers are pinned here rather than scattered through the code
-so a model swap is a one-line change. The names below are also the
-directory names in the local model store -- see deid/model_store.py, which
-turns each one into a path under OCR/models/ because the target
-deployment cannot reach github.com or huggingface.co.
-"""
+"""Configuration for the de-identification job."""
 import os
 from dataclasses import dataclass, field
 from typing import Dict, List
@@ -38,21 +27,12 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
-# PP-OCRv6 tiers: tiny (1.5M) / small / medium (34.5M). medium is the
-# accuracy pick and still small enough for CPU; drop to small/tiny if job
-# wall-time matters more than recall.
 DEFAULT_DET_MODEL = "PP-OCRv6_medium_det"
 DEFAULT_REC_MODEL = "PP-OCRv6_medium_rec"
 
-# spaCy handles tokenization/lemmatization only -- NER comes from the
-# transformers model below.
 DEFAULT_SPACY_MODEL = "en_core_web_sm"
 DEFAULT_TRANSFORMERS_MODEL = "StanfordAIMI/stanford-deidentifier-base"
 
-# stanford-deidentifier-base emits: O, VENDOR, DATE, HCW, HOSPITAL, ID,
-# PATIENT, PHONE (verified against the model's config.json id2label).
-# Note it has NO location/address label -- see recognizers.py, which adds
-# pattern recognizers to cover that gap.
 MODEL_TO_PRESIDIO_ENTITY: Dict[str, str] = {
     "PATIENT": "PERSON",
     "HCW": "PERSON",          # healthcare worker
@@ -63,8 +43,6 @@ MODEL_TO_PRESIDIO_ENTITY: Dict[str, str] = {
     "ID": "ID",
 }
 
-# Entities the job redacts. Includes Presidio's built-in pattern/checksum
-# recognizers, which fire independently of the NER model.
 DEFAULT_ENTITIES: List[str] = [
     "PERSON",
     "ORGANIZATION",
@@ -83,11 +61,6 @@ DEFAULT_ENTITIES: List[str] = [
     "US_BANK_NUMBER",
     "US_ITIN",
     "CRYPTO",
-    # NOTE: no "LOCATION". The transformers NLP engine means spaCy's own
-    # NER never runs, and the Stanford model has no location label, so
-    # nothing would satisfy it -- Presidio just warns at startup.
-    # Geography is covered by STREET_ADDRESS / US_ZIP_CODE below.
-    # Added by deid/recognizers.py to cover the NER model's gaps.
     "US_ZIP_CODE",
     "STREET_ADDRESS",
     "MRN",
@@ -104,20 +77,12 @@ class Config:
     rec_model: str = field(
         default_factory=lambda: os.environ.get("OCR_REC_MODEL", DEFAULT_REC_MODEL)
     )
-    # Recorded for the report only. PaddleOCR ignores a `lang` argument
-    # when explicit model names are set, and PP-OCRv6 medium/small are
-    # single multilingual models (50 languages) -- language is chosen by
-    # picking the model, not by this value.
     ocr_lang: str = field(default_factory=lambda: os.environ.get("OCR_LANG", "en"))
     # "cpu" or "gpu:0". Cloudera AI job nodes here are CPU.
     device: str = field(
         default_factory=lambda: os.environ.get("OCR_DEVICE", "cpu")
     )
-    # Rasterisation DPI. 200 is the accuracy/runtime sweet spot for OCR;
-    # below ~150 recognition degrades badly on small print.
     dpi: int = field(default_factory=lambda: _env_int("OCR_DPI", 200))
-    # Skip OCR results below this confidence -- they are usually noise
-    # and can create spurious redaction boxes.
     min_ocr_confidence: float = field(
         default_factory=lambda: _env_float("OCR_MIN_CONFIDENCE", 0.5)
     )
@@ -130,9 +95,6 @@ class Config:
     use_textline_orientation: bool = field(
         default_factory=lambda: _env_bool("OCR_TEXTLINE_ORIENTATION", False)
     )
-    # oneDNN is off because it crashes the PP-OCRv6 detector on
-    # paddlepaddle 3.3.1 (see ocr_engine.py). It is normally a CPU
-    # speedup, so re-test and re-enable on a newer paddlepaddle.
     enable_mkldnn: bool = field(
         default_factory=lambda: _env_bool("OCR_ENABLE_MKLDNN", False)
     )
@@ -147,17 +109,11 @@ class Config:
             "DEID_TRANSFORMERS_MODEL", DEFAULT_TRANSFORMERS_MODEL
         )
     )
-    # Presidio score threshold. Deliberately low: for de-identification a
-    # false positive (over-redaction) is far cheaper than a false
-    # negative (leaked PHI).
     score_threshold: float = field(
         default_factory=lambda: _env_float("DEID_SCORE_THRESHOLD", 0.35)
     )
     entities: List[str] = field(default_factory=lambda: list(DEFAULT_ENTITIES))
 
-    # --- Redaction ---
-    # Pixels to grow each redaction box, so glyph edges/descenders that
-    # sit outside the OCR polygon still get covered.
     box_padding: float = field(
         default_factory=lambda: _env_float("DEID_BOX_PADDING", 2.0)
     )
@@ -170,8 +126,6 @@ class Config:
     write_report: bool = field(
         default_factory=lambda: _env_bool("DEID_WRITE_REPORT", True)
     )
-    # Include the detected PII values in the report. Off by default --
-    # a report full of the PII you just redacted is itself a PHI leak.
     report_include_values: bool = field(
         default_factory=lambda: _env_bool("DEID_REPORT_INCLUDE_VALUES", False)
     )

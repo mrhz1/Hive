@@ -14,12 +14,6 @@ function Detail({ label, value }: { label: string; value: string | null | undefi
   return <DescriptionItem label={label}>{value}</DescriptionItem>
 }
 
-/**
- * Step 3: what the reviewer is about to submit, read back to them.
- *
- * Deliberately read-only. Everything here was entered in steps 1 and 2;
- * a summary that could also edit would just be those steps again.
- */
 export function ApplicationSummary({
   patient,
   application,

@@ -1,15 +1,6 @@
 import { z } from 'zod'
 import { idSchema, timestampSchema } from './common'
 
-/**
- * Mirrors app/schemas.py::DEID_STATUSES.
- *
- * 'pending' is the state every file is uploaded in -- nobody has asked
- * for it yet. 'queued' means somebody pressed the button and a Cloudera
- * AI Job run has been requested but has not claimed the row. Both count
- * as "in flight" for the UI only from 'queued' onwards, which is why
- * isDeidInFlight exists rather than an inline status comparison.
- */
 export const DEID_STATUSES = [
   'pending',
   'queued',
@@ -24,20 +15,6 @@ export function isDeidInFlight(status: string): boolean {
   return status === 'queued' || status === 'processing'
 }
 
-/**
- * Mirrors app/schemas.py::PatientApplicationFile.
- *
- * Documents belong to an application, not to a patient directly -- a
- * patient's files are reached through their applications.
- *
- * Note the two spellings of the redacted-copy fields:
- * `deidentified_file_name` against `de_identified_file_path`. That is
- * what the Cloudera metastore has, and the API passes it through
- * unchanged rather than translating.
- *
- * There is no review_status here: a reviewer's verdict is recorded once,
- * on the application row.
- */
 export const applicationFileSchema = z.object({
   id: idSchema,
   application_id: idSchema,
@@ -47,8 +24,6 @@ export const applicationFileSchema = z.object({
   file_extension: z.string(),
   mime_type: z.string(),
   file_size: z.number(),
-  // Kept permissive rather than a strict enum: the OCR job owns this
-  // value, and an unknown status should render, not blow up the page.
   deid_status: z.string(),
   is_deidentified: z.boolean(),
   created_at: timestampSchema,
@@ -80,36 +55,22 @@ export function formatFileSize(bytes: number): string {
 
 // -------------------------------------------------------------- metadata
 
-/**
- * Mirrors app/schemas.py::METADATA_STATUSES. Three different answers,
- * kept apart because "this file has no metadata" and "we could not read
- * it" and "we do not parse this format" mean different things to whoever
- * is looking at the document.
- */
 export const METADATA_STATUSES = ['ok', 'unsupported', 'failed'] as const
 export type MetadataStatus = (typeof METADATA_STATUSES)[number]
 
 /** The formats the API extracts metadata from (app/file_metadata.py). */
 const METADATA_EXTENSIONS = new Set(['pdf', 'dcm', 'dicom', 'doc', 'docx'])
 
-/**
- * Whether asking for metadata could return anything useful.
- *
- * Used to disable the button rather than hide it: a greyed-out control
- * says "not for this format", a missing one says nothing at all.
- */
 export function hasExtractableMetadata(extension: string): boolean {
   return METADATA_EXTENSIONS.has(extension.toLowerCase())
 }
 
-/**
- * Mirrors app/schemas.py::FileMetadata.
- *
- * `metadata` is deliberately an open record of strings: a DICOM study
- * and a Word document share almost no fields, and the API normalises
- * every value to a string precisely so the client does not have to
- * handle three types per field.
- */
+const DEIDENTIFIABLE_EXTENSIONS = new Set(['pdf', 'dcm', 'dicom', 'doc', 'docx'])
+
+export function canDeidentify(extension: string): boolean {
+  return DEIDENTIFIABLE_EXTENSIONS.has(extension.toLowerCase())
+}
+
 export const fileMetadataSchema = z.object({
   id: idSchema,
   file_id: idSchema,

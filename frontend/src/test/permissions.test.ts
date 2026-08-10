@@ -87,10 +87,6 @@ describe('patientFormSchema', () => {
     ).toBe(false)
   })
 
-  /**
-   * The systems these records are ingested from disagree about which
-   * identifier they populate, so any one of the three has to be enough.
-   */
   it('accepts a record carrying only one of the three identifiers', () => {
     const base = { ...EMPTY_PATIENT_FORM, original_file_path: '/data/x.pdf' }
 

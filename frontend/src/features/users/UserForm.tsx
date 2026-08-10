@@ -42,11 +42,6 @@ function toFormValues(user: User): UserFormValues {
   }
 }
 
-/**
- * One form for both create and edit. The route decides which by passing
- * `user`; everything else -- validation, layout, submit handling -- is
- * identical, so there is no second implementation to drift.
- */
 export function UserForm({ user }: { user?: User }) {
   const mode = user ? 'edit' : 'create'
   const navigate = useNavigate()
@@ -74,8 +69,6 @@ export function UserForm({ user }: { user?: User }) {
       }
       await navigate({ to: '/users' })
     } catch (error) {
-      // Toast already fired in the mutation; additionally pin the message
-      // to its field when the server identified one.
       applyServerErrors<UserFormValues>(error, setError, FIELD_NAMES)
     }
   })
@@ -137,9 +130,6 @@ export function UserForm({ user }: { user?: User }) {
       <SelectField
         label="Role"
         required
-        // Disabled so "no role" cannot be chosen back: every user must
-        // have one. It still shows while role_id is empty, and the schema
-        // rejects submitting in that state.
         placeholder={rolesLoading ? 'Loading roles…' : 'Select a role...'}
         placeholderDisabled
         options={roleOptions}

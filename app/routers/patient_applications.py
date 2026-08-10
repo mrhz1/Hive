@@ -1,9 +1,4 @@
-"""Patient application endpoints.
-
-Gated on its own `application:*` permissions rather than the patient
-ones: reviewing a submission is a different job from editing the
-clinical record, and roles should be able to grant one without the other.
-"""
+"""Patient application endpoints."""
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
@@ -38,9 +33,6 @@ def create_application(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:create")),
 ):
-    # 404 rather than a dangling row: Hive enforces no foreign keys, so an
-    # application for a patient that does not exist would be accepted and
-    # then be unreadable in the UI.
     patients_crud.get_patient_or_404(cursor, payload.patient_id)
 
     application = crud.create_application(cursor, payload, actor_id=actor.id)
@@ -107,9 +99,6 @@ def delete_application(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:delete")),
 ):
-    # Documents belong to the application, so they go with it -- rows
-    # first, then metadata, then the bytes. An orphaned file on disk is
-    # harmless; a row pointing at nothing is not.
     orphaned = files_crud.delete_files_for_application(cursor, application_id)
     metadata_crud.delete_metadata_for_files(cursor, [f.id for f in orphaned])
 

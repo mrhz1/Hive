@@ -1,6 +1,4 @@
-"""Smoke test: confirm HiveServer2 is reachable via impyla with the same
-env vars used on Cloudera AI. Run with: make check
-"""
+"""Smoke test: confirm HiveServer2 is reachable via impyla with the same env vars used on Cloudera AI."""
 import os
 import sys
 

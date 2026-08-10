@@ -1,12 +1,4 @@
-"""Bridge between OCR geometry and Presidio character offsets.
-
-Presidio works on a flat string; redaction needs pixel rectangles. This
-module builds the page string from OCR spans while remembering where each
-span landed in it, then walks detected entities back to boxes.
-
-Pure geometry and string arithmetic -- no presidio, no paddle -- so it
-stays importable under either virtualenv.
-"""
+"""Bridge between OCR geometry and Presidio character offsets."""
 import logging
 from typing import List, Tuple
 
@@ -22,9 +14,6 @@ __all__ = [
     "redact_text",
 ]
 
-# Spans are text lines, so joining with a newline preserves the line
-# structure the NER model benefits from. Length must be accounted for
-# when computing offsets.
 SEPARATOR = "\n"
 
 
@@ -48,13 +37,7 @@ def build_page_text(spans: List[OcrSpan]) -> PageText:
 def _sub_box(
     span: OcrSpan, local_start: int, local_end: int, whole_span: bool
 ) -> Tuple[float, float]:
-    """Horizontal extent to redact within one OCR span.
-
-    Characters are assumed to be evenly distributed across the span's
-    width. That is an approximation -- proportional fonts are not
-    uniform -- which is why callers pad the result. Set whole_span to
-    ignore the estimate and cover the entire span.
-    """
+    """Horizontal extent to redact within one OCR span."""
     if whole_span:
         return span.x0, span.x1
 
@@ -77,11 +60,7 @@ def map_pii_to_boxes(
     padding: float = 2.0,
     whole_span: bool = False,
 ) -> List[RedactionBox]:
-    """Turn character-offset detections into pixel rectangles.
-
-    A single entity can straddle several OCR spans (a name wrapped across
-    two lines), so every overlapping span contributes a box.
-    """
+    """Turn character-offset detections into pixel rectangles."""
     boxes: List[RedactionBox] = []
 
     for pii in pii_spans:
@@ -108,8 +87,6 @@ def map_pii_to_boxes(
             )
 
         if not matched:
-            # Should not happen -- the text came from these spans -- but a
-            # silent miss here is an un-redacted entity, so make noise.
             log.warning(
                 "PII %s at [%d,%d) matched no OCR span; NOT redacted",
                 pii.entity_type,
@@ -121,8 +98,7 @@ def map_pii_to_boxes(
 
 
 def redact_text(text: str, pii_spans: List[PiiSpan]) -> str:
-    """Produce the de-identified text, replacing each entity with its
-    type tag. Applied right-to-left so earlier offsets stay valid."""
+    """Produce the de-identified text, replacing each entity with its type tag."""
     out = text
     for pii in sorted(pii_spans, key=lambda s: s.start, reverse=True):
         out = out[: pii.start] + f"<{pii.entity_type}>" + out[pii.end :]

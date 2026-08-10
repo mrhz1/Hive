@@ -1,11 +1,4 @@
-"""Per-document / per-page results.
-
-Separate from the stage modules because both the NLP stage (which
-produces them) and the orchestrator (which merges and summarises them
-across two subprocesses) need the shape, and the orchestrator runs under
-an interpreter that has none of the ML stack installed. Standard library
-only, for the same reason as deid/spans.py.
-"""
+"""Per-document / per-page results."""
 from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional
 
@@ -31,8 +24,6 @@ class DocumentResult:
     duration_seconds: float = 0.0
     status: str = "ok"
     error: Optional[str] = None
-    # Which stage failed, when one did. A caller reading the summary
-    # needs to know whether to look at the OCR venv or the NLP venv.
     failed_stage: Optional[str] = None
 
     @property

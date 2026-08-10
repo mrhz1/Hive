@@ -1,13 +1,4 @@
-"""Generate a synthetic clinical-note PDF for testing.
-
-All values are fabricated. Produces a *scanned-style* PDF by default:
-the text is rendered, rasterised, and re-embedded as an image, so there
-is no text layer and OCR is genuinely exercised (which is the case this
-job exists for).
-
-    python scripts/make_sample_pdf.py samples/sample_scanned.pdf
-    python scripts/make_sample_pdf.py samples/sample_digital.pdf --keep-text
-"""
+"""Generate a synthetic clinical-note PDF for testing."""
 import argparse
 import sys
 from pathlib import Path

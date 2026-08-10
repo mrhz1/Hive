@@ -1,28 +1,4 @@
-"""De-identification orchestration.
-
-This is the single place that knows how to de-identify a stored file, and
-it is deliberately independent of *what* triggers it:
-
-  * `DEID_BACKEND=inline`  -- the API calls run_deidentification() in a
-    FastAPI BackgroundTask when the user clicks De-identify. Fine locally
-    and at low volume.
-  * `DEID_BACKEND=cml_job` -- the API only marks the row `queued` and
-    hands off to app/deid_queue.py, whose single dispatcher thread starts
-    one Cloudera Job run at a time. Each run executes
-    scripts/deid_worker.py, which calls exactly the same function. The
-    dispatcher exists because CML refuses a second concurrent run of one
-    Job; serialising here means that refusal never happens.
-
-Switching therefore changes *scheduling*, not logic.
-
-The OCR/Presidio stack is invoked as a subprocess, never imported, so
-~3GB of ML dependencies stay out of the API process. Note that the stack
-is itself split across two virtualenvs -- paddle and presidio cannot be
-installed together -- but that is entirely OCR/scripts/run_deid.py's
-problem: it is standard-library-only and coordinates the two. See
-OCR/deid/pipeline.py. Which is why DEID_PYTHON below defaults to *this*
-interpreter: the orchestrator needs nothing installed.
-"""
+"""De-identification orchestration."""
 import os
 import subprocess
 import sys
@@ -40,20 +16,10 @@ from app.storage import resolve_stored_path
 
 log = get_logger(__name__)
 
-# Absolute, derived from this file, so nothing depends on the process's
-# working directory -- a Cloudera Application does not necessarily start
-# where you think it does, and the old relative defaults broke silently
-# when it did not.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# "inline" runs the pipeline in this process's background task;
-# "cml_job" hands off to the Cloudera AI Job. Configuration, not an
-# environment check -- the code path is chosen by value, not by sniffing
-# for CDSW_* vars.
 DEID_BACKEND = os.environ.get("DEID_BACKEND", "inline").strip().lower()
 
-# The orchestrator is stdlib-only, so the API's own interpreter can run
-# it. Override only if the OCR tree lives under a different python.
 DEID_PYTHON = os.environ.get("DEID_PYTHON", sys.executable)
 DEID_SCRIPT = os.environ.get(
     "DEID_SCRIPT", str(REPO_ROOT / "OCR" / "scripts" / "run_deid.py")
@@ -62,13 +28,28 @@ DEID_SCRIPT = os.environ.get(
 # OCR is slow (tens of seconds per page), so this is generous by design.
 DEID_TIMEOUT_SECONDS = int(os.environ.get("DEID_TIMEOUT_SECONDS", "1800"))
 
-# Must match run_deid.py's --suffix default, which is how the output file
-# is named.
 DEID_SUFFIX = os.environ.get("DEID_OUTPUT_SUFFIX", "_deid")
 
-# Redacted copies go in a subfolder of the original's directory, so a
-# patient's documents and their de-identified versions stay together.
 DEID_SUBFOLDER = "deidentified"
+
+DEID_OUTPUT_EXTENSIONS = {
+    ".pdf": ".pdf",
+    ".dcm": ".dcm",
+    ".dicom": ".dcm",
+    ".doc": ".docx",
+    ".docx": ".docx",
+}
+
+DEIDENTIFIABLE_LABEL = "PDF, DICOM, Word"
+
+
+def is_deidentifiable(extension: str) -> bool:
+    return f".{(extension or '').lower().lstrip('.')}" in DEID_OUTPUT_EXTENSIONS
+
+
+def deid_output_extension(extension: str) -> str:
+    """The extension the pipeline will write for this input."""
+    return DEID_OUTPUT_EXTENSIONS.get((extension or "").lower(), ".pdf")
 
 
 class DeidError(Exception):
@@ -76,15 +57,7 @@ class DeidError(Exception):
 
 
 def _failure_detail(stderr: str, stdout: str) -> str:
-    """The most useful ~500 characters of a failed run's output.
-
-    Prefers the lines the pipeline logged at ERROR over the raw tail. The
-    tail on its own is routinely just the ML stacks' import warnings --
-    paddle emits "No ccache found. Please be aware that recompiling all
-    source files may be required." on every run, including successful
-    ones -- and surfacing that as the failure reason sends whoever reads
-    it after a compiler cache that has nothing to do with anything.
-    """
+    """The most useful ~500 characters of a failed run's output."""
     text = (stderr or stdout or "").strip()
     errors = [
         line
@@ -96,32 +69,14 @@ def _failure_detail(stderr: str, stdout: str) -> str:
 
 
 def queued_status() -> str:
-    """The status a freshly-queued file should be given.
-
-    Inline runs mark `processing` immediately, because the work begins in
-    this process a moment later. The Cloudera Job backend marks `queued`:
-    the run has been *asked for* but no worker has claimed the row yet,
-    and marking `processing` before anything is processing it would leave
-    a permanently stuck row if the run never starts. It cannot use
-    `pending` either -- that is the state every file is uploaded in, so
-    it carries no information about whether anyone asked.
-    """
+    """The status a freshly-queued file should be given."""
     return "queued" if DEID_BACKEND == "cml_job" else "processing"
 
 
 def dispatch_deidentification(
     file_id: str, request_id: Optional[str] = None
 ) -> None:
-    """Start de-identification by whichever route is configured.
-
-    Runs as a background task in both modes: the inline path does minutes
-    of work, and the cml_job path must not sit in the user's request
-    either -- though it now returns almost immediately, because the
-    waiting happens on the dispatcher thread rather than here.
-
-    Never raises, for the same reason run_deidentification does not --
-    there is no request left to return an error to.
-    """
+    """Start de-identification by whichever route is configured."""
     if DEID_BACKEND == "inline":
         run_deidentification(file_id, request_id=request_id)
         return
@@ -136,20 +91,12 @@ def dispatch_deidentification(
             request_id=request_id, background_task="deidentify_dispatch"
         )
 
-    # Hand off to the dispatcher rather than calling Cloudera here. Two
-    # clicks in the same second used to mean two run requests, the second
-    # of which CML refuses ("job run ... already active") -- a Skipped
-    # entry in the run history and, worse, a row marked failed. The
-    # dispatcher keeps exactly one run in flight, so the second file
-    # waits its turn instead of being rejected. The row is already
-    # `queued`; that is the whole handoff.
     deid_queue.request_dispatch()
     log.info("deid_job_enqueued", file_id=file_id)
 
 
 def _set_status(file_id: str, **fields) -> None:
-    """Status writes get their own connection: they must land even when
-    the main work has failed."""
+    """Status writes get their own connection: they must land even when the main work has failed."""
     try:
         with hive_cursor() as cursor:
             crud.update_file(cursor, file_id, PatientApplicationFileUpdate(**fields))
@@ -193,12 +140,6 @@ def _run_pipeline(source: Path, output_dir: Path) -> Path:
         ) from exc
 
     if completed.returncode != 0:
-        # The full output goes to the log, once, before anything is
-        # truncated: the pipeline's stderr is the only account of what
-        # went wrong, and it was previously discarded in favour of its
-        # last 500 characters. Same PHI tradeoff _run_stage makes when it
-        # forwards stage stderr -- on failure the diagnostic is worth it,
-        # routinely it is not.
         log.error(
             "deid_subprocess_failed",
             returncode=completed.returncode,
@@ -208,7 +149,7 @@ def _run_pipeline(source: Path, output_dir: Path) -> Path:
         detail = _failure_detail(completed.stderr, completed.stdout)
         raise DeidError(f"De-identification failed (exit {completed.returncode}): {detail}")
 
-    produced = output_dir / f"{source.stem}{DEID_SUFFIX}.pdf"
+    produced = output_dir / f"{source.stem}{DEID_SUFFIX}{deid_output_extension(source.suffix)}"
     if not produced.is_file():
         raise DeidError(f"De-identification produced no output at {produced}")
 
@@ -216,12 +157,7 @@ def _run_pipeline(source: Path, output_dir: Path) -> Path:
 
 
 def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None:
-    """De-identifies one stored file and records the result.
-
-    Never raises: this runs detached from any request, so a failure is
-    recorded on the row (deid_status='failed') and logged rather than
-    surfacing as an unhandled background exception.
-    """
+    """De-identifies one stored file and records the result."""
     if request_id:
         structlog.contextvars.bind_contextvars(
             request_id=request_id, background_task="deidentify"
@@ -236,17 +172,14 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
 
     log.info("deid_started", file_id=file_id, name=record.sanitized_file_name)
 
-    # Claim the row here rather than relying on the caller. The API marks
-    # it before dispatch, but a Job run started on a schedule picks up
-    # rows nobody marked -- and a file that is genuinely being worked on
-    # for the next several minutes must not still read as 'queued'.
     if record.deid_status != "processing":
         _set_status(file_id, deid_status="processing")
 
     try:
-        if record.file_extension.lower() != "pdf":
+        if not is_deidentifiable(record.file_extension):
             raise DeidError(
-                f"Only PDF files can be de-identified (got '{record.file_extension}')"
+                f"'{record.file_extension}' cannot be de-identified "
+                f"(handled: {DEIDENTIFIABLE_LABEL})"
             )
 
         source = resolve_stored_path(record.file_path)
@@ -266,9 +199,6 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
         log.info("deid_succeeded", file_id=file_id, output=str(produced))
 
     except DeidError as exc:
-        # The reason goes to the log, not onto the row: `description` is
-        # the user's own text and must not be clobbered. Add a dedicated
-        # deid_error column if the reason needs surfacing in the UI.
         log.error("deid_failed", file_id=file_id, error=str(exc))
         _set_status(file_id, deid_status="failed")
 

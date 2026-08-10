@@ -1,8 +1,4 @@
-"""Domain exceptions + the handlers that turn them into HTTP responses.
-
-Routers and CRUD raise these; nothing below the router layer imports
-HTTPException, so the data layer stays transport agnostic.
-"""
+"""Domain exceptions + the handlers that turn them into HTTP responses."""
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -26,8 +22,7 @@ class NotFoundError(AppError):
 
 
 class ConflictError(AppError):
-    """Uniqueness violation. Hive has no UNIQUE constraints, so these are
-    enforced by an explicit pre-check SELECT in the CRUD layer."""
+    """Uniqueness violation."""
 
     status_code = 409
     code = "conflict"
@@ -49,8 +44,7 @@ class PermissionDeniedError(AppError):
 
 
 class DatabaseError(AppError):
-    """Raised when Hive itself fails, so callers get a clean 503 instead of
-    a raw impyla traceback."""
+    """Raised when Hive itself fails, so callers get a clean 503 instead of a raw impyla traceback."""
 
     status_code = 503
     code = "database_error"
