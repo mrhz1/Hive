@@ -4,7 +4,7 @@ import { FormLayout, FullWidth } from '@/components/FormLayout'
 import { TextField } from '@/components/ui/Field'
 import { applyServerErrors, useApiForm } from '@/hooks/useApiForm'
 import { roleHooks } from '@/hooks/useResources'
-import { ACTIONS, MODELS, type Permission } from '@/schemas/common'
+import { PERMISSION_GROUPS, type Permission } from '@/schemas/common'
 import { roleFormSchema, type Role, type RoleFormValues } from '@/schemas/role'
 
 const FIELD_NAMES = ['name', 'permissions'] as const
@@ -30,8 +30,8 @@ function PermissionMatrix({
     )
   }
 
-  const toggleRow = (model: (typeof MODELS)[number]) => {
-    const rowPermissions = ACTIONS.map((a) => `${model}:${a}` as Permission)
+  const toggleRow = (model: string, actions: readonly string[]) => {
+    const rowPermissions = actions.map((a) => `${model}:${a}` as Permission)
     const allSelected = rowPermissions.every(has)
     onChange(
       allSelected
@@ -49,61 +49,66 @@ function PermissionMatrix({
         Grants are checked on every API call; unchecking one takes effect immediately.
       </p>
 
-      <div className="overflow-x-auto rounded-xl border border-[rgb(var(--border))]">
-        <table className="w-full min-w-[28rem] border-collapse text-sm">
-          <thead className="bg-[rgb(var(--background-secondary))]">
-            <tr>
-              <th
-                scope="col"
-                className="px-4 py-3 text-left text-xs font-semibold tracking-wider uppercase"
-              >
-                Resource
-              </th>
-              {ACTIONS.map((action) => (
+      {PERMISSION_GROUPS.map((group) => (
+        <div
+          key={group.models.join()}
+          className="overflow-x-auto rounded-xl border border-[rgb(var(--border))]"
+        >
+          <table className="w-full min-w-[28rem] border-collapse text-sm">
+            <thead className="bg-[rgb(var(--background-secondary))]">
+              <tr>
                 <th
-                  key={action}
                   scope="col"
-                  className="px-4 py-3 text-center text-xs font-semibold tracking-wider uppercase"
+                  className="px-4 py-3 text-left text-xs font-semibold tracking-wider uppercase"
                 >
-                  {action}
+                  Resource
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[rgb(var(--border))]">
-            {MODELS.map((model) => (
-              <tr
-                key={model}
-                className="transition-colors hover:bg-[rgb(var(--background-secondary))]"
-              >
-                <th scope="row" className="px-4 py-3 text-left font-medium">
-                  <button
-                    type="button"
-                    onClick={() => toggleRow(model)}
-                    className="capitalize underline-offset-2 hover:text-teal-600 hover:underline dark:hover:text-teal-400"
+                {group.actions.map((action) => (
+                  <th
+                    key={action}
+                    scope="col"
+                    className="px-4 py-3 text-center text-xs font-semibold tracking-wider uppercase"
                   >
-                    {model}
-                  </button>
-                </th>
-                {ACTIONS.map((action) => {
-                  const permission = `${model}:${action}` as Permission
-                  return (
-                    <td key={action} className="px-4 py-3 text-center">
-                      <input
-                        type="checkbox"
-                        className="size-4 cursor-pointer rounded border-[rgb(var(--border))] accent-teal-600"
-                        checked={has(permission)}
-                        onChange={() => toggle(permission)}
-                        aria-label={permission}
-                      />
-                    </td>
-                  )
-                })}
+                    {action}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-[rgb(var(--border))]">
+              {group.models.map((model) => (
+                <tr
+                  key={model}
+                  className="transition-colors hover:bg-[rgb(var(--background-secondary))]"
+                >
+                  <th scope="row" className="px-4 py-3 text-left font-medium">
+                    <button
+                      type="button"
+                      onClick={() => toggleRow(model, group.actions)}
+                      className="capitalize underline-offset-2 hover:text-teal-600 hover:underline dark:hover:text-teal-400"
+                    >
+                      {model}
+                    </button>
+                  </th>
+                  {group.actions.map((action) => {
+                    const permission = `${model}:${action}` as Permission
+                    return (
+                      <td key={action} className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          className="size-4 cursor-pointer rounded border-[rgb(var(--border))] accent-teal-600"
+                          checked={has(permission)}
+                          onChange={() => toggle(permission)}
+                          aria-label={permission}
+                        />
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
 
       {error ? (
         <div
