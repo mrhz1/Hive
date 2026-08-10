@@ -436,6 +436,32 @@ The same script covers any permission added after launch, which is worth
 remembering: `init_db.py` is for empty databases and silently does
 nothing for one that already has roles in it.
 
+### Columns added after launch
+
+`init_db.py` has the same problem for the schema: it drops and recreates
+every table, which is right for an empty database and destroys a running
+one. `scripts/migrate_columns.py` adds what is missing in place:
+
+```bash
+python scripts/migrate_columns.py --list    # what this database lacks
+python scripts/migrate_columns.py --apply
+```
+
+Currently that is `patient_application_files.review_status` and
+`.review_note` (a reviewer's verdict on a document, kept apart from
+`deid_status` — a perfectly redacted scan can still be illegible) and
+`patient_applications.status_reason` (why an application was rejected or
+deleted).
+
+Existing rows read NULL for a new column, which the API treats as
+`pending`/no reason, so nothing needs backfilling.
+
+> **Column order is load-bearing.** Hive INSERT is positional and the
+> `COLUMNS` tuples in `app/crud/*` are built from `sql/schema.sql`'s
+> order. A new column goes on the **end** of the CREATE TABLE and on the
+> end of the matching tuple, or every existing statement starts writing
+> to the wrong field.
+
 Check the Application log after it starts. You want:
 
 ```

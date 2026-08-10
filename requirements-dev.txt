@@ -54,3 +54,9 @@ python-docx==1.1.2
 # It is still not the ML stack: pymupdf renders and edits PDFs, and the
 # OCR/NER dependencies stay in the Job. Both OCR venvs already carry it.
 pymupdf==1.24.14
+
+# Writes the metadata export (app/routers/patient_application_files.py).
+# A real workbook rather than a CSV: the values include long numeric ids
+# and dates, and Excel silently reformats both when it guesses at a CSV
+# -- a 16-digit serial comes back as 1.78633E+15.
+openpyxl==3.1.5

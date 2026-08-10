@@ -77,7 +77,8 @@ CREATE TABLE `patient_applications` (
   `updated_at` TIMESTAMP,
   `description` STRING,
   `created_by_id` STRING,
-  `updated_by_id` STRING
+  `updated_by_id` STRING,
+  `status_reason` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
@@ -97,7 +98,9 @@ CREATE TABLE `patient_application_files` (
   `created_at` TIMESTAMP,
   `description` STRING,
   `file_path` STRING,
-  `de_identified_file_path` STRING
+  `de_identified_file_path` STRING,
+  `review_status` STRING,
+  `review_note` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 

@@ -6,6 +6,7 @@ export const APPLICATION_STATUSES = [
   'submitted',
   'approved',
   'rejected',
+  'deleted',
 ] as const
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number]
 
@@ -25,6 +26,7 @@ export const patientApplicationSchema = z.object({
   created_at: timestampSchema,
   updated_at: nullableTimestamp,
   reviewed_at: nullableTimestamp,
+  status_reason: nullableText,
 })
 
 export type PatientApplication = z.infer<typeof patientApplicationSchema>
@@ -35,7 +37,18 @@ export function applicationTone(
   status: string
 ): 'neutral' | 'info' | 'success' | 'danger' {
   if (status === 'approved') return 'success'
-  if (status === 'rejected') return 'danger'
+  if (status === 'rejected' || status === 'deleted') return 'danger'
   if (status === 'submitted') return 'info'
   return 'neutral'
+}
+
+const NON_REJECTABLE = ['submitted', 'rejected', 'deleted']
+
+export function canReject(status: string): boolean {
+  return !NON_REJECTABLE.includes(status)
+}
+
+/** A deleted application keeps its row but has nothing left to act on. */
+export function isDeleted(status: string): boolean {
+  return status === 'deleted'
 }

@@ -1,16 +1,28 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { ReasonDialog } from '@/components/ReasonDialog'
 import { Button } from '@/components/ui/Button'
 import { Card, PageHeader } from '@/components/ui/Misc'
 import { PatientForm } from '@/features/patients/PatientForm'
 import {
+  patientHooks,
+  useApplicationFiles,
   useCreateApplication,
+  useRejectApplication,
   useUpdateApplication,
 } from '@/hooks/useResources'
 import { cn } from '@/lib/cn'
-import { patientName, type Patient } from '@/schemas/patient'
-import type { PatientApplication } from '@/schemas/patientApplication'
+import { undecidedCount } from '@/schemas/applicationFile'
+import {
+  patientName,
+  toPatientFormValues,
+  type Patient,
+} from '@/schemas/patient'
+import {
+  canReject,
+  type PatientApplication,
+} from '@/schemas/patientApplication'
 import { ApplicationSummary } from './ApplicationSummary'
 import { ExistingPatientPicker } from './ExistingPatientPicker'
 import { FileReviewPanel } from './FileReviewPanel'
@@ -123,12 +135,15 @@ export function ApplicationWizard({
   const navigate = useNavigate()
   const createApplication = useCreateApplication()
   const updateApplication = useUpdateApplication()
+  const updatePatient = patientHooks.useUpdate()
+  const reject = useRejectApplication()
 
   const [patient, setPatient] = useState<Patient | undefined>(initialPatient)
   const [source, setSource] = useState<PatientSource>('new')
   const [current, setCurrent] = useState<StepNumber>(1)
   const [furthest, setFurthest] = useState<StepNumber>(initialPatient ? 3 : 1)
   const [record, setRecord] = useState<PatientApplication | undefined>(application)
+  const [rejecting, setRejecting] = useState(false)
 
   const goTo = (step: StepNumber) => {
     setCurrent(step)
@@ -163,6 +178,18 @@ export function ApplicationWizard({
     await onPatientSaved(chosen)
   }
 
+  function recordUploadFolder(folder: string) {
+    if (!patient || patient.original_file_path) return
+
+    void updatePatient
+      .mutateAsync({
+        id: patient.id,
+        values: { ...toPatientFormValues(patient), original_file_path: folder },
+      })
+      .then(setPatient)
+      .catch(() => undefined)
+  }
+
   /** Step 3's submit: the application leaves draft and goes for review. */
   async function submitApplication() {
     if (!record) {
@@ -182,6 +209,9 @@ export function ApplicationWizard({
   }
 
   const isSaving = createApplication.isPending || updateApplication.isPending
+
+  const files = useApplicationFiles(record?.id ?? '', Boolean(record))
+  const undecided = undecidedCount(files.data ?? [])
 
   return (
     <div className="space-y-6">
@@ -226,7 +256,10 @@ export function ApplicationWizard({
       {current === 2 ? (
         record ? (
           <>
-            <FileReviewPanel applicationId={record.id} />
+            <FileReviewPanel
+              applicationId={record.id}
+              onUploaded={recordUploadFolder}
+            />
             <div className="flex flex-wrap justify-between gap-3">
               <Button variant="outline" onClick={() => goTo(1)}>
                 Back to patient
@@ -242,6 +275,26 @@ export function ApplicationWizard({
         )
       ) : null}
 
+      {rejecting && record ? (
+        <ReasonDialog
+          title="Reject this application?"
+          description="The reason is kept on the record."
+          confirmLabel="Reject application"
+          placeholder="e.g. consent form missing"
+          isBusy={reject.isPending}
+          onCancel={() => setRejecting(false)}
+          onConfirm={(reason) => {
+            void reject
+              .mutateAsync({ id: record.id, reason })
+              .then((updated) => {
+                setRecord(updated)
+                setRejecting(false)
+              })
+              .catch(() => undefined)
+          }}
+        />
+      ) : null}
+
       {current === 3 ? (
         patient ? (
           <>
@@ -249,11 +302,33 @@ export function ApplicationWizard({
               patient={patient}
               {...(record ? { application: record } : {})}
             />
+
+            {undecided > 0 ? (
+              <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
+                {undecided} document{undecided === 1 ? '' : 's'} still{' '}
+                {undecided === 1 ? 'needs' : 'need'} approving or rejecting in
+                step 2 before this can be submitted.
+              </Card>
+            ) : null}
             <div className="flex flex-wrap justify-between gap-3">
               <Button variant="outline" onClick={() => goTo(2)}>
                 Back to documents
               </Button>
-              <Button isLoading={isSaving} onClick={() => void submitApplication()}>
+              {record && canReject(record.status) ? (
+                <Button variant="danger" onClick={() => setRejecting(true)}>
+                  Reject application
+                </Button>
+              ) : null}
+              <Button
+                isLoading={isSaving}
+                disabled={undecided > 0}
+                title={
+                  undecided > 0
+                    ? `${undecided} document${undecided === 1 ? '' : 's'} still need a decision`
+                    : undefined
+                }
+                onClick={() => void submitApplication()}
+              >
                 {record?.status === 'submitted' ? 'Re-submit' : 'Submit application'}
               </Button>
             </div>

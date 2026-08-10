@@ -13,7 +13,6 @@ import {
   type Patient,
   type PatientFormValues,
 } from '@/schemas/patient'
-import { FolderPathField } from './FolderPathField'
 
 function Section({ title, hint }: { title: string; hint?: ReactNode }) {
   return (
@@ -55,8 +54,6 @@ export function PatientForm({
     register,
     handleSubmit,
     setError,
-    setValue,
-    watch,
     formState: { errors },
   } = form
 
@@ -254,42 +251,6 @@ export function PatientForm({
         error={errors.country?.message}
         {...register('country')}
       />
-
-      <Section
-        title="Source documents"
-        hint="Where this patient's documents live. The path is recorded on the record; the documents themselves are attached to an application, in step 2 of the wizard."
-      />
-      <FullWidth>
-        <FolderPathField
-          label="Original file path"
-          required
-          value={watch('original_file_path')}
-          files={[]}
-          disabled={isSubmitting}
-          error={errors.original_file_path?.message}
-          hint="Choose a folder to include everything inside it."
-          onSelect={(path, files) => {
-            if (path || files.length === 0) {
-              setValue('original_file_path', path, { shouldValidate: true })
-            }
-          }}
-        />
-      </FullWidth>
-      <FullWidth>
-        <FolderPathField
-          label="De-identified file path"
-          value={watch('deidentified_file_path')}
-          files={[]}
-          disabled={isSubmitting}
-          error={errors.deidentified_file_path?.message}
-          hint="Where the redacted copies live. Usually filled in by the de-identification job."
-          onSelect={(path, files) => {
-            if (path || files.length === 0) {
-              setValue('deidentified_file_path', path, { shouldValidate: true })
-            }
-          }}
-        />
-      </FullWidth>
 
       <Section title="Record" />
       <TextField

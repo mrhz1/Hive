@@ -18,6 +18,12 @@ function Muted({ value }: { value: string | null | undefined }) {
 }
 
 const columns: Array<Column<Patient>> = [
+  {
+    id: 'id',
+    header: 'Id',
+    cell: (p) => <span className="font-mono text-xs tabular-nums">{p.id}</span>,
+    sortValue: (p) => p.id,
+  },
   // Combined for the same reason as the users table -- see the note there.
   {
     id: 'name',

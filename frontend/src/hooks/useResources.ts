@@ -88,14 +88,59 @@ export function useUpdateApplication() {
 export function useDeleteApplication() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => applicationsApi.remove(id),
+    mutationFn: (variables: { id: string; reason: string }) =>
+      applicationsApi.remove(variables.id, variables.reason),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.applications.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.applicationFiles.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
-      toast.success('Application deleted')
+      toast.success('Documents removed; the application is marked deleted')
     },
     onError: (error) => {
       toast.error(errorMessage(error, 'Could not delete the application'))
+    },
+  })
+}
+
+export function useRejectApplication() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (variables: { id: string; reason: string }) =>
+      applicationsApi.reject(variables.id, variables.reason),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.applications.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success('Application rejected')
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not reject the application'))
+    },
+  })
+}
+
+export function useReviewApplicationFile(applicationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (variables: {
+      fileId: string
+      reviewStatus: 'approved' | 'rejected'
+      note?: string
+    }) =>
+      applicationFilesApi.review(
+        variables.fileId,
+        variables.reviewStatus,
+        variables.note
+      ),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.applicationFiles.list(applicationId),
+      })
+      toast.success(
+        variables.reviewStatus === 'approved' ? 'File approved' : 'File rejected'
+      )
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not record the review'))
     },
   })
 }

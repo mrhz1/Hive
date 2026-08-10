@@ -30,7 +30,24 @@ export const applicationFileSchema = z.object({
   description: z.string().nullable().optional(),
   file_path: z.string(),
   de_identified_file_path: z.string().nullable().optional(),
+  review_status: z.string().default('pending'),
+  review_note: z.string().nullable().optional(),
 })
+
+export const REVIEW_STATUSES = ['pending', 'approved', 'rejected'] as const
+export type ReviewStatus = (typeof REVIEW_STATUSES)[number]
+
+export function reviewTone(status: string): 'success' | 'danger' | 'neutral' {
+  if (status === 'approved') return 'success'
+  if (status === 'rejected') return 'danger'
+  return 'neutral'
+}
+
+/** Nothing may be submitted while a document is still undecided. */
+export function undecidedCount(files: Array<{ review_status: string }>): number {
+  return files.filter((file) => file.review_status !== 'approved' &&
+    file.review_status !== 'rejected').length
+}
 
 export type ApplicationFile = z.infer<typeof applicationFileSchema>
 

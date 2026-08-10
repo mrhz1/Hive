@@ -113,11 +113,7 @@ const patientFormFields = z.object({
   dt_b: optionalDate,
   dt_d: optionalDate,
 
-  // source documents. The original is the reason the record exists.
-  original_file_path: z
-    .string()
-    .min(1, 'Original file path is required')
-    .max(512, 'Too long'),
+  original_file_path: optionalText(512),
   deidentified_file_path: optionalText(512),
 })
 
