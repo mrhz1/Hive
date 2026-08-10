@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app.crud import patients as patients_crud
 from app.db import get_cursor
 from app.main import app
-from app.security import PERMISSION_ACTIONS, PERMISSION_MODELS
+from app.security import KNOWN_PERMISSIONS, MODEL_ACTIONS
 
 # --------------------------------------------------------------- fixtures
 
@@ -21,12 +21,13 @@ ADMIN_USER = "admin"
 VIEWER_USER = "viewer"
 NOBODY_USER = "nobody"
 
-ALL_PERMISSIONS = [
-    f"{model}:{action}"
-    for model in PERMISSION_MODELS
-    for action in PERMISSION_ACTIONS
+ALL_PERMISSIONS = sorted(KNOWN_PERMISSIONS)
+
+# The read grant for each model, whatever it happens to be called there.
+READONLY_PERMISSIONS = [
+    f"{model}:{'read' if 'read' in actions else 'view'}"
+    for model, actions in MODEL_ACTIONS.items()
 ]
-READONLY_PERMISSIONS = [f"{m}:view" for m in PERMISSION_MODELS]
 
 
 def _seed():
@@ -277,6 +278,7 @@ def client(cursor, monkeypatch):
 
     monkeypatch.setattr("app.audit.hive_cursor", fake_hive_cursor)
     monkeypatch.setattr("app.deid.hive_cursor", fake_hive_cursor)
+    monkeypatch.setattr("app.submission.hive_cursor", fake_hive_cursor)
 
     app.dependency_overrides[get_cursor] = lambda: cursor
     with TestClient(app) as test_client:

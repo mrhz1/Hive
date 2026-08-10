@@ -14,6 +14,7 @@ import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ApplicationsIndexRouteImport } from './routes/applications/index'
 import { Route as ApplicationsApplicationIdRouteImport } from './routes/applications/$applicationId'
 import { Route as ApplicationsNewRouteImport } from './routes/applications/new'
+import { Route as FilesIndexRouteImport } from './routes/files/index'
 import { Route as LogsIndexRouteImport } from './routes/logs/index'
 import { Route as LogsLogIdRouteImport } from './routes/logs/$logId'
 import { Route as PatientsIndexRouteImport } from './routes/patients/index'
@@ -50,6 +51,11 @@ const ApplicationsApplicationIdRoute =
 const ApplicationsNewRoute = ApplicationsNewRouteImport.update({
   id: '/applications/new',
   path: '/applications/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FilesIndexRoute = FilesIndexRouteImport.update({
+  id: '/files/',
+  path: '/files/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LogsIndexRoute = LogsIndexRouteImport.update({
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
   '/applications/': typeof ApplicationsIndexRoute
+  '/files/': typeof FilesIndexRoute
   '/logs/': typeof LogsIndexRoute
   '/patients/': typeof PatientsIndexRoute
   '/roles/': typeof RolesIndexRoute
@@ -136,6 +143,7 @@ export interface FileRoutesByTo {
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
   '/applications': typeof ApplicationsIndexRoute
+  '/files': typeof FilesIndexRoute
   '/logs': typeof LogsIndexRoute
   '/patients': typeof PatientsIndexRoute
   '/roles': typeof RolesIndexRoute
@@ -155,6 +163,7 @@ export interface FileRoutesById {
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
   '/applications/': typeof ApplicationsIndexRoute
+  '/files/': typeof FilesIndexRoute
   '/logs/': typeof LogsIndexRoute
   '/patients/': typeof PatientsIndexRoute
   '/roles/': typeof RolesIndexRoute
@@ -175,6 +184,7 @@ export interface FileRouteTypes {
     | '/roles/new'
     | '/users/new'
     | '/applications/'
+    | '/files/'
     | '/logs/'
     | '/patients/'
     | '/roles/'
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
     | '/roles/new'
     | '/users/new'
     | '/applications'
+    | '/files'
     | '/logs'
     | '/patients'
     | '/roles'
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
     | '/roles/new'
     | '/users/new'
     | '/applications/'
+    | '/files/'
     | '/logs/'
     | '/patients/'
     | '/roles/'
@@ -230,6 +242,7 @@ export interface RootRouteChildren {
   RolesNewRoute: typeof RolesNewRoute
   UsersNewRoute: typeof UsersNewRoute
   ApplicationsIndexRoute: typeof ApplicationsIndexRoute
+  FilesIndexRoute: typeof FilesIndexRoute
   LogsIndexRoute: typeof LogsIndexRoute
   PatientsIndexRoute: typeof PatientsIndexRoute
   RolesIndexRoute: typeof RolesIndexRoute
@@ -274,6 +287,13 @@ declare module '@tanstack/react-router' {
       path: '/applications/new'
       fullPath: '/applications/new'
       preLoaderRoute: typeof ApplicationsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/files/': {
+      id: '/files/'
+      path: '/files'
+      fullPath: '/files/'
+      preLoaderRoute: typeof FilesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/logs/': {
@@ -366,6 +386,7 @@ const rootRouteChildren: RootRouteChildren = {
   RolesNewRoute: RolesNewRoute,
   UsersNewRoute: UsersNewRoute,
   ApplicationsIndexRoute: ApplicationsIndexRoute,
+  FilesIndexRoute: FilesIndexRoute,
   LogsIndexRoute: LogsIndexRoute,
   PatientsIndexRoute: PatientsIndexRoute,
   RolesIndexRoute: RolesIndexRoute,

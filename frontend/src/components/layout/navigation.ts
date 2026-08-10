@@ -1,5 +1,6 @@
 import {
   ClipboardList,
+  FileCheck2,
   FileStack,
   LayoutDashboard,
   Shield,
@@ -32,6 +33,12 @@ export const NAV_ITEMS: NavItem[] = [
     to: '/applications',
     icon: FileStack,
     permission: 'application:view',
+  },
+  {
+    label: 'Files',
+    to: '/files',
+    icon: FileCheck2,
+    permission: 'files:read',
   },
   { label: 'Roles', to: '/roles', icon: Shield, permission: 'role:view' },
   { label: 'Audit log', to: '/logs', icon: ClipboardList, permission: 'log:view' },

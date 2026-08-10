@@ -26,6 +26,10 @@ ERROR_BACKOFF_SECONDS = float(os.environ.get("DEID_DISPATCH_BACKOFF_SECONDS", "6
 
 _TERMINAL_ROW_STATES = ("done", "failed")
 
+UNREADABLE_POLLS_BEFORE_ROW = int(
+    os.environ.get("DEID_DISPATCH_UNREADABLE_POLLS", "6")
+)
+
 _thread = None
 _thread_lock = threading.Lock()
 _wake = threading.Event()
@@ -72,28 +76,41 @@ def _row_status(file_id: str) -> str:
 
 
 def _wait_for_run(run_id: str, file_id: str) -> bool:
-    """Block until the run is over."""
+    """Block until the *run* is over."""
     deadline = time.monotonic() + MAX_RUN_SECONDS
+    unreadable = 0
 
     while time.monotonic() < deadline:
         if _stop.wait(POLL_SECONDS):
             return False
 
-        status = _row_status(file_id)
-        if status in _TERMINAL_ROW_STATES:
-            log.info("deid_run_finished", file_id=file_id, run_id=run_id, row=status)
-            return True
-
         run_status = get_job_run_status(run_id)
+
         if is_terminal_run_status(run_status):
-            log.warning(
-                "deid_run_ended_without_result",
+            log.info(
+                "deid_run_finished",
                 file_id=file_id,
                 run_id=run_id,
                 run_status=run_status,
-                row=status,
+                row=_row_status(file_id),
             )
             return True
+
+        if run_status:
+            unreadable = 0
+            continue
+
+        unreadable += 1
+        if unreadable >= UNREADABLE_POLLS_BEFORE_ROW:
+            row = _row_status(file_id)
+            if row in _TERMINAL_ROW_STATES:
+                log.warning(
+                    "deid_run_status_unavailable_row_final",
+                    file_id=file_id,
+                    run_id=run_id,
+                    row=row,
+                )
+                return True
 
     log.error(
         "deid_run_wait_timeout",

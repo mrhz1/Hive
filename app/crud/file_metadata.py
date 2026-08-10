@@ -98,6 +98,35 @@ def get_metadata_for_file(cursor, file_id: str) -> Optional[FileMetadata]:
     return _row_to_metadata(row) if row else None
 
 
+DEID_KEYS = (
+    "deidentified_file_name",
+    "deidentified_at",
+    "patient_id",
+    "deidentified_file_type",
+)
+
+
+def merge_metadata_for_file(cursor, file_id: str, extra: dict) -> Optional[FileMetadata]:
+    """Fold extra keys into a file's metadata blob."""
+    if not extra:
+        return None
+
+    current = get_metadata_for_file(cursor, file_id)
+    if current is None:
+        log.warning("file_metadata_missing_for_merge", file_id=file_id)
+        return None
+
+    merged = {**current.metadata, **{k: v for k, v in extra.items() if v is not None}}
+
+    execute(
+        cursor,
+        "UPDATE `file_metadata` SET `metadata` = %s WHERE `id` = %s",
+        (_dumps(merged), current.id),
+    )
+    log.info("file_metadata_merged", file_id=file_id, added=sorted(extra))
+    return _get_metadata(cursor, current.id)
+
+
 def delete_metadata_for_files(cursor, file_ids: List[str]) -> None:
     """Removed alongside the files themselves -- Hive has no cascade."""
     if not file_ids:

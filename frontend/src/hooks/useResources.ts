@@ -4,6 +4,7 @@ import { createCrudHooks, errorMessage } from './createCrudHooks'
 import {
   applicationsApi,
   applicationFilesApi,
+  deidentifiedFilesApi,
   patientsApi,
   logsApi,
   rolesApi,
@@ -217,5 +218,66 @@ export function useAuditLog(id: string | undefined, enabled = true) {
     queryKey: queryKeys.logs.detail(id ?? ''),
     queryFn: () => logsApi.get(id as string),
     enabled: Boolean(id) && enabled,
+  })
+}
+
+export function useDeidentifiedFiles(patientId?: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.deidentifiedFiles.list(patientId),
+    queryFn: () => deidentifiedFilesApi.list(patientId),
+    enabled,
+  })
+}
+
+function useLibraryInvalidation() {
+  const queryClient = useQueryClient()
+  return () => {
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.deidentifiedFiles.all,
+    })
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.applicationFiles.all,
+    })
+  }
+}
+
+export function useUploadDeidentifiedFile() {
+  const invalidate = useLibraryInvalidation()
+  return useMutation({
+    mutationFn: (variables: {
+      patientId: string
+      file: File
+      replacesFileId?: string
+    }) =>
+      deidentifiedFilesApi.upload(
+        variables.patientId,
+        variables.file,
+        variables.replacesFileId
+      ),
+    onSuccess: (_data, variables) => {
+      invalidate()
+      toast.success(
+        variables.replacesFileId
+          ? 'De-identified file replaced'
+          : 'De-identified file uploaded'
+      )
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not upload the file'))
+    },
+  })
+}
+
+export function useDeleteDeidentifiedFile() {
+  const invalidate = useLibraryInvalidation()
+  return useMutation({
+    mutationFn: (fileId: string) => deidentifiedFilesApi.remove(fileId),
+    onSuccess: () => {
+      invalidate()
+      toast.success('De-identified copy deleted')
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not delete the file'))
+    },
   })
 }

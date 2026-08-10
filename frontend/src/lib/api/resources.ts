@@ -20,6 +20,10 @@ import {
   patientApplicationSchema,
 } from '@/schemas/patientApplication'
 import {
+  deidentifiedFileListSchema,
+  deidentifiedFileSchema,
+} from '@/schemas/deidentifiedFile'
+import {
   applicationFileListSchema,
   applicationFileSchema,
   fileMetadataSchema,
@@ -219,6 +223,47 @@ export const meApi = {
   get: () => request(userSchema, () => api.get('/me')),
   update: (values: ProfileFormValues) =>
     request(userSchema, () => api.put('/me', values)),
+}
+
+export const deidentifiedFilesApi = {
+  list: (patientId?: string) =>
+    request(deidentifiedFileListSchema, () =>
+      api.get('/files-library', {
+        params: patientId ? { patient_id: patientId } : undefined,
+      })
+    ),
+
+  upload: (patientId: string, file: File, replacesFileId?: string) => {
+    const form = new FormData()
+    form.append('patient_id', patientId)
+    form.append('file', file, file.name)
+    if (replacesFileId) form.append('replaces_file_id', replacesFileId)
+
+    return request(deidentifiedFileSchema, () =>
+      api.post('/files-library', form, {
+        headers: { 'Content-Type': undefined },
+      })
+    )
+  },
+
+  remove: async (fileId: string) => {
+    try {
+      await api.delete(`/files-library/${fileId}`)
+    } catch (error) {
+      throw toApiError(error)
+    }
+  },
+
+  fetchContent: async (fileId: string): Promise<Blob> => {
+    try {
+      const response = await api.get(`/files-library/${fileId}/content`, {
+        responseType: 'blob',
+      })
+      return response.data as Blob
+    } catch (error) {
+      throw toApiError(error)
+    }
+  },
 }
 
 export type { ApplicationFile, AuditLog, Patient, Role, User }
