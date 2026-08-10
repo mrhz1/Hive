@@ -37,10 +37,6 @@ function ApplicationsList() {
   const [search, setSearch] = useState('')
 
   const { data, isLoading, isFetching, error } = useApplications()
-  // The application stores only patient_id, but a list of opaque ids is
-  // unusable -- so the patients are fetched alongside and joined here.
-  // Skipped entirely without patient:view, in which case the column
-  // falls back to the id rather than the page failing.
   const patients = patientHooks.useList({ enabled: can('patient:view') })
   const remove = useDeleteApplication()
 
@@ -54,8 +50,6 @@ function ApplicationsList() {
     return index
   }, [patients.data])
 
-  // Memoised so the columns and the filter can depend on it directly
-  // rather than on the index it closes over.
   const labelFor = useCallback(
     (application: PatientApplication) => {
       const patient = patientsById.get(application.patient_id)
@@ -103,8 +97,6 @@ function ApplicationsList() {
         sortValue: (a) => a.created_at,
       },
     ],
-    // labelFor changes with the patient index, so the columns rebuild
-    // when the patients finish loading and the ids turn into names.
     [labelFor]
   )
 

@@ -25,15 +25,7 @@ log = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Say at boot whether de-identification can actually be dispatched.
-
-    Without this the first symptom of a half-configured cml_job backend
-    is a user clicking De-identify and the row going straight to
-    'failed' -- with the real reason buried in a background task's log.
-    A misconfiguration is not made fatal, though: the rest of the API is
-    perfectly usable, and refusing to start would turn a broken feature
-    into a broken deployment.
-    """
+    """Say at boot whether de-identification can actually be dispatched."""
     if deid.DEID_BACKEND == "cml_job" and not cloudera.is_configured():
         log.error(
             "deid_backend_misconfigured",
@@ -47,9 +39,6 @@ async def lifespan(_app: FastAPI):
     else:
         log.info("deid_backend", backend=deid.DEID_BACKEND)
         if deid.DEID_BACKEND == "cml_job":
-            # Start the dispatcher now rather than on the first click, so
-            # rows left `queued` by a previous process are picked up
-            # instead of waiting for someone to notice and re-click.
             deid_queue.request_dispatch()
 
     yield
@@ -70,21 +59,8 @@ app = FastAPI(
 
 app.add_middleware(RequestContextMiddleware)
 
-# The dashboard is served from a different origin in dev (Vite on 5173).
-# Origins come from config, not a hardcoded environment check -- on
-# Cloudera AI set CORS_ORIGINS to the deployed app origin.
 def _cors_origins() -> list[str]:
-    """Allowed browser origins.
-
-    Set CORS_ORIGINS (comma separated) to pin this exactly -- on Cloudera
-    AI that should be the deployed app origin and nothing else.
-
-    The default covers localhost AND 127.0.0.1 across the ports Vite
-    actually uses: it silently falls back to 5174, 5175, ... when 5173 is
-    already taken, and a mismatch here does not look like a CORS error in
-    the browser -- the request just fails and the app reports the API as
-    unreachable. Allowing the fallback range removes that trap in dev.
-    """
+    """Allowed browser origins."""
     configured = os.environ.get("CORS_ORIGINS")
     if configured:
         return [o.strip() for o in configured.split(",") if o.strip()]
@@ -138,6 +114,5 @@ app.include_router(audit_log.router)
 
 @app.get("/health", tags=["meta"])
 def health():
-    """Liveness only -- deliberately does not touch Hive, so a slow
-    metastore cannot make the app look dead to a health checker."""
+    """Liveness only -- deliberately does not touch Hive, so a slow metastore cannot make the app look dead to a health checker."""
     return {"status": "ok"}

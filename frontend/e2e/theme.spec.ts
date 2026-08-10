@@ -1,10 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
 
-/**
- * Visual check of the design system with the API mocked, so the whole UI
- * can be exercised without Hive running. Writes screenshots to
- * screenshots/ for eyeballing light and dark side by side.
- */
 
 const ALL_PERMISSIONS = [
   'user:view',
@@ -143,8 +138,6 @@ async function mockApi(page: Page) {
     body: JSON.stringify(body),
   })
 
-  // Scoped to the API origin. A bare '**/users**' would also swallow the
-  // dev server's own navigation to /users and serve JSON as the document.
   await page.route(`${API}/me*`, (route) => route.fulfill(json(ADMIN)))
   await page.route(`${API}/users*`, (route) => route.fulfill(json(USERS)))
   await page.route(`${API}/patients*`, (route) => route.fulfill(json(PATIENTS)))

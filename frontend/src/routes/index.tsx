@@ -46,9 +46,6 @@ function Dashboard() {
   const { data: user } = useCurrentUser()
   const { can, permissions } = usePermissions()
 
-  // Each list is fetched only if the user may read it -- firing a request
-  // that is guaranteed to 403 would be noise in the logs and a wasted
-  // Hive query.
   const users = userHooks.useList({ enabled: can('user:view') })
   const patients = patientHooks.useList({ enabled: can('patient:view') })
   const roles = roleHooks.useList({ enabled: can('role:view') })

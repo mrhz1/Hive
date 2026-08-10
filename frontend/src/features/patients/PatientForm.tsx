@@ -15,13 +15,6 @@ import {
 } from '@/schemas/patient'
 import { FolderPathField } from './FolderPathField'
 
-/**
- * A labelled band across the two-column form grid.
- *
- * The record holds three unrelated blocks of contact details -- the
- * patient's own, the provider's, and the stored documents -- and without
- * the headings `street` and `ptstreet` are indistinguishable in the UI.
- */
 function Section({ title, hint }: { title: string; hint?: ReactNode }) {
   return (
     <FullWidth>
@@ -37,14 +30,6 @@ function Section({ title, hint }: { title: string; hint?: ReactNode }) {
   )
 }
 
-/**
- * Same component for create and edit -- see UserForm for the rationale.
- *
- * Also serves as step 1 of the application wizard, which needs the saved
- * record rather than a redirect: passing `onSaved` replaces the navigate
- * to /patients, so the wizard can carry the patient into step 2. The
- * fields, validation and upload behaviour are identical either way.
- */
 export function PatientForm({
   patient,
   onSaved,
@@ -279,17 +264,11 @@ export function PatientForm({
           label="Original file path"
           required
           value={watch('original_file_path')}
-          // Path only. Documents belong to an application, which does not
-          // exist yet at this point in the wizard -- they are uploaded in
-          // step 2, against the application row step 1 creates.
           files={[]}
           disabled={isSubmitting}
           error={errors.original_file_path?.message}
           hint="Choose a folder to include everything inside it."
           onSelect={(path, files) => {
-            // A multi-file pick yields no derivable folder, so an empty
-            // path leaves a previously chosen one alone rather than
-            // clearing a valid value. Clear does send '' with no files.
             if (path || files.length === 0) {
               setValue('original_file_path', path, { shouldValidate: true })
             }
@@ -300,9 +279,6 @@ export function PatientForm({
         <FolderPathField
           label="De-identified file path"
           value={watch('deidentified_file_path')}
-          // Path only: the redacted copies are produced by the OCR job,
-          // so pointing at them must not also re-upload them as new
-          // patient documents.
           files={[]}
           disabled={isSubmitting}
           error={errors.deidentified_file_path?.message}

@@ -3,18 +3,6 @@ import { useRef } from 'react'
 import { Button } from '@/components/ui/Button'
 import { formatFileSize } from '@/schemas/applicationFile'
 
-/**
- * Controlled folder/file selection.
- *
- * `webkitdirectory` is the only way a browser can offer a folder chooser;
- * despite the vendor prefix it is supported across current Chrome, Edge,
- * Firefox and Safari. It is not in React's DOM typings, hence the ref +
- * setAttribute rather than a JSX prop.
- *
- * Selection is shown for confirmation before anything is sent: picking a
- * folder can pull in far more than expected, and there is no undo once
- * the files are stored.
- */
 export function FilePicker({
   files,
   onFilesChange,

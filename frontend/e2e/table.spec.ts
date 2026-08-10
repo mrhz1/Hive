@@ -1,9 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
 
-/**
- * Column sorting and the refetch overlay, driven through the real UI with
- * the API mocked so the timings are controllable.
- */
 
 const API = 'http://localhost:8100'
 
@@ -62,17 +58,11 @@ async function mockApi(page: Page, options: { refetchDelayMs?: number } = {}) {
 
   let reads = 0
   await page.route(`${API}/users*`, async (route) => {
-    // Writes succeed immediately; only the read is slowed, which is what
-    // the overlay covers.
     if (route.request().method() !== 'GET') {
       await route.fulfill(json({ ...USERS[0], id: 'new-user', username: 'created' }, 201))
       return
     }
     reads += 1
-    // The FIRST read must be fast so the list has cached data. Delaying
-    // it instead means the initial fetch is still in flight when the test
-    // returns, React Query reuses it, and the component is in `isLoading`
-    // (first load) rather than `isRefreshing` -- a different state.
     if (reads > 1 && options.refetchDelayMs) {
       await new Promise((resolve) => setTimeout(resolve, options.refetchDelayMs))
     }
@@ -170,24 +160,15 @@ test.describe('refetch overlay', () => {
     await mockApi(page, { refetchDelayMs: 4000 })
 
     await page.goto('/users')
-    // Wait for real rows, not just the table shell -- the list must have
-    // cached data for the refetch to be a *refresh* rather than a load.
     await expect(page.getByRole('cell', { name: 'charlie', exact: true })).toBeVisible()
     await expect(page.getByText('Updating…')).toBeHidden()
 
-    // The reported scenario: create a user, land back on the list while
-    // the invalidated query is still refetching.
     await page.getByRole('button', { name: 'Add User' }).click()
     await expect(page).toHaveURL(/\/users\/new$/)
 
-    // The router swaps the URL before the lazily-loaded route mounts, so
-    // wait for the form itself. Without this the old table is still in
-    // the DOM and getByLabel('Username') resolves to its sort button.
     const submit = page.getByRole('button', { name: 'Create user' })
     await expect(submit).toBeVisible()
 
-    // Scoped to the form: on the list page the sort buttons are labelled
-    // "Sort by Username", which getByLabel would otherwise match.
     const form = page.locator('form')
     await form.getByLabel('Username').fill('created')
     await form.getByLabel('Email').fill('created@example.com')
@@ -199,8 +180,6 @@ test.describe('refetch overlay', () => {
 
     await expect(page).toHaveURL(/\/users$/)
 
-    // Rows stay on screen (from cache) while the overlay reports the
-    // refresh -- the point of the change.
     await expect(page.getByText('Updating…')).toBeVisible()
     await expect(page.locator('tbody tr')).not.toHaveCount(0)
     await expect(page.getByText('Updating…')).toBeHidden({ timeout: 20_000 })

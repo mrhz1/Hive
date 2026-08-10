@@ -1,18 +1,3 @@
-/**
- * Local identity switching.
- *
- * There is no login. On Cloudera AI the platform authenticates the caller
- * and passes the username down in REMOTE-USER, so VITE_DEV_USERNAME is
- * left unset there and nothing below is active -- the switcher does not
- * render and the app sets no identity header of its own.
- *
- * Locally VITE_DEV_USERNAME provides a default identity, and this module
- * lets it be overridden at runtime so RBAC can be tested by switching
- * users without restarting Vite (which bakes env vars at startup).
- *
- * The override is availability-gated on configuration, not on an
- * environment check: no VITE_DEV_USERNAME means no switching, full stop.
- */
 const STORAGE_KEY = 'hive-admin-dev-username'
 
 const configuredUsername = import.meta.env.VITE_DEV_USERNAME
@@ -35,14 +20,6 @@ export function hasIdentityOverride(): boolean {
   return Boolean(window.localStorage.getItem(STORAGE_KEY))
 }
 
-/**
- * Switches identity and reloads.
- *
- * A reload rather than a cache invalidation: every query, and the
- * permission-gated shell around them, was resolved for the previous user.
- * Starting clean is both simpler and a more honest simulation of arriving
- * as a different person.
- */
 export function switchUser(username: string): void {
   window.localStorage.setItem(STORAGE_KEY, username)
   window.location.reload()

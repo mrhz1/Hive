@@ -1,21 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 
-/**
- * Covers the paths a DOM dump cannot reach: real typing (live
- * per-character validation), form submission, sonner toasts, and the
- * cache invalidation that must make a new row appear without a reload.
- *
- * Runs against the live API, so it creates and then deletes its own
- * records rather than depending on seed data it might corrupt.
- */
 
 const unique = () => Date.now().toString().slice(-9)
 
-/**
- * The list is paginated (10 rows), so a freshly created record is often
- * not on the first page. Filter to it with the search box before
- * asserting on its row.
- */
 async function searchFor(page: Page, term: string) {
   await page.getByLabel('Search').fill(term)
 }
@@ -116,8 +103,6 @@ test.describe('user create form', () => {
     // Success toast from sonner.
     await expect(page.getByText('User created')).toBeVisible({ timeout: 30_000 })
 
-    // Redirected to the list, and the invalidated query has refetched --
-    // the row is present without a manual reload.
     await expect(page).toHaveURL(/\/users$/)
     await searchFor(page, username)
     await expect(
@@ -219,8 +204,6 @@ test.describe('edit and delete', () => {
 
     await expect(page.getByText('User deleted')).toBeVisible({ timeout: 30_000 })
 
-    // Scoped to the table and exact: the username is also a substring of
-    // the email, so a bare getByText would still match.
     await expect(
       page.getByRole('table').getByText(username, { exact: true })
     ).toHaveCount(0, { timeout: 30_000 })

@@ -7,8 +7,6 @@ import {
 import { cn } from '@/lib/cn'
 import { cellVariants, rowVariants, tableVariants } from './Table.styles'
 
-/** Card-wrapped table. overflow-x-auto keeps wide tables usable on narrow
- *  screens without changing the look on desktop. */
 export const Table = forwardRef<HTMLTableElement, HTMLAttributes<HTMLTableElement>>(
   function Table({ className, ...props }, ref) {
     return (

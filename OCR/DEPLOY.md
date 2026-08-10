@@ -260,7 +260,30 @@ Still in the Session. This is the single-command test the Job will later
 run on your behalf — do it by hand first, so a failure here is a Session
 you can debug rather than a Job log you have to read backwards.
 
-### 7a. One PDF, straight through the pipeline
+### 7a. One document, straight through the pipeline
+
+Three formats go through here. What happens to each differs enough to be
+worth stating:
+
+| Input | Stages | What is removed |
+|---|---|---|
+| `.pdf` | OCR → NER | page text (real redactions), document metadata + XMP |
+| `.dcm` / `.dicom` | OCR → NER | **burned-in pixels**, identifying tags, all private tags |
+| `.doc` / `.docx` | NER only | body/table/header/footer text, core properties |
+
+A redacted DICOM stays a DICOM and a redacted Word document stays a Word
+document, so each output is a drop-in replacement for its input. `.doc`
+comes back as `.docx` — python-docx cannot write the old binary format.
+
+Word documents skip the OCR stage entirely: their text needs no
+recognising, so paying for a paddle process would buy nothing. That also
+means a Word run does not need `.venv-ocr` at all.
+
+> **Burned-in PHI is the reason DICOM goes through OCR.** Ultrasound and
+> secondary capture routinely print the patient's name into the image
+> itself, and no tag reliably says so — `BurnedInAnnotation` is optional
+> and frequently absent or wrong. Scrubbing tags alone would leave the
+> name visibly on screen.
 
 ```bash
 cd /home/cdsw/OCR
@@ -291,7 +314,7 @@ python3 scripts/run_deid.py --input /home/cdsw/storage/patient_files \
     --recursive --output-dir /home/cdsw/out
 ```
 
-Batch as many PDFs into one invocation as you can. Model load dominates
+Batch as many documents into one invocation as you can. Model load dominates
 the cost of a small run and each stage pays it exactly once per
 invocation, so 50 files in one call is far cheaper than 50 calls.
 
@@ -506,9 +529,10 @@ def deidentify_patient_file(
     if record.deid_status in ("queued", "processing"):
         raise ValidationError("This file is already queued for de-identification")
 
-    if record.file_extension.lower() != "pdf":
+    if not is_deidentifiable(record.file_extension):
         raise ValidationError(
-            f"Only PDF files can be de-identified (got '{record.file_extension}')"
+            f"'{record.file_extension}' files cannot be de-identified "
+            f"(handled: {DEIDENTIFIABLE_LABEL})"
         )
 
     # Marked before dispatch so the UI reflects it on the very next read,
@@ -652,7 +676,7 @@ above it.
 
 In order, because each step depends on the last:
 
-1. **Upload a PDF** to a patient in the dashboard.
+1. **Upload a PDF, DICOM or Word document** to a patient in the dashboard.
 2. **Click De-identify.** The row goes to `queued` immediately.
 3. **A run appears** under **Jobs → deidentify → History** within seconds.
 4. **The row reaches `done`** a minute or two later, the badge shows

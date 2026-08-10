@@ -1,21 +1,10 @@
-"""Extra pattern recognizers.
-
-stanford-deidentifier-base emits only VENDOR/DATE/HCW/HOSPITAL/ID/
-PATIENT/PHONE. It has no location or address label, which is a real
-de-identification gap: HIPAA Safe Harbor requires removing geographic
-subdivisions smaller than a state, plus ages over 89.
-
-These recognizers close that gap with patterns, which also have the
-advantage of firing independently of the NER model's confidence.
-"""
+"""Extra pattern recognizers."""
 from typing import List
 
 from presidio_analyzer import Pattern, PatternRecognizer
 
 
 def _us_zip_recognizer() -> PatternRecognizer:
-    # ZIP or ZIP+4, requiring a word boundary so it does not swallow the
-    # tail of longer digit runs (account numbers, etc).
     return PatternRecognizer(
         supported_entity="US_ZIP_CODE",
         name="UsZipCodeRecognizer",
@@ -23,8 +12,6 @@ def _us_zip_recognizer() -> PatternRecognizer:
             Pattern(name="us_zip_plus4", regex=r"\b\d{5}-\d{4}\b", score=0.6),
             Pattern(name="us_zip", regex=r"\b\d{5}\b", score=0.3),
         ],
-        # Context words raise the score when they appear nearby, which is
-        # what keeps the bare 5-digit pattern from being noise.
         context=["zip", "zipcode", "postal", "address", "city", "state"],
     )
 
@@ -59,8 +46,7 @@ def _street_address_recognizer() -> PatternRecognizer:
 
 
 def _mrn_recognizer() -> PatternRecognizer:
-    """Medical record numbers. Format varies per site, so this leans on
-    context words rather than trying to match every possible layout."""
+    """Medical record numbers."""
     return PatternRecognizer(
         supported_entity="MRN",
         name="MedicalRecordNumberRecognizer",
@@ -78,9 +64,7 @@ def _mrn_recognizer() -> PatternRecognizer:
 
 
 def _age_recognizer() -> PatternRecognizer:
-    """HIPAA Safe Harbor: ages over 89 are identifiers and must go. Ages
-    <= 89 are kept -- redacting every age destroys clinical usefulness for
-    no privacy gain."""
+    """HIPAA Safe Harbor: ages over 89 are identifiers and must go."""
     return PatternRecognizer(
         supported_entity="AGE",
         name="ElderlyAgeRecognizer",

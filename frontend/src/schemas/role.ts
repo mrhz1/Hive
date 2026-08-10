@@ -17,8 +17,6 @@ export const roleFormSchema = z.object({
     .string()
     .min(1, 'Name is required')
     .max(64, 'Name must be 64 characters or fewer'),
-  // The API rejects unknown grants with a 422, so the same closed set is
-  // enforced here to catch it before a round trip.
   permissions: z
     .array(permissionSchema)
     .refine((values) => values.every((v) => ALL_PERMISSIONS.includes(v)), {

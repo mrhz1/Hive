@@ -29,11 +29,6 @@ export type Column<T> = {
   header: string
   /** Rendered per row -- keeps formatting out of the table itself. */
   cell: (row: T) => ReactNode
-  /**
-   * Makes the column sortable. Returns the raw comparable value, because
-   * `cell` returns a ReactNode which cannot be ordered reliably -- a
-   * badge or a link would sort by its markup, not its meaning.
-   */
   sortValue?: (row: T) => SortValue
   /** Right-aligns and tabular-nums the column. */
   isNumeric?: boolean
@@ -73,13 +68,6 @@ function compare(a: SortValue, b: SortValue): number {
   })
 }
 
-/**
- * The single table used by every list page.
- *
- * Sorting and pagination are client side because the API returns whole
- * collections; doing either server side would cost an extra Hive query
- * per interaction for no benefit at these row counts.
- */
 export function DataTable<T>({
   data,
   columns,
@@ -103,8 +91,6 @@ export function DataTable<T>({
     if (!column?.sortValue) return rows
 
     const getValue = column.sortValue
-    // Copy before sorting: the array comes from the query cache and
-    // sorting in place would mutate cached data.
     return [...rows].sort((a, b) => {
       const result = compare(getValue(a), getValue(b))
       return sort.direction === 'asc' ? result : -result
@@ -114,9 +100,6 @@ export function DataTable<T>({
   const total = sortedRows.length
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
-  // A delete on the last page (or a shrinking filter) can leave `page`
-  // beyond the end. Clamping on read rather than correcting it in an
-  // effect avoids a second render pass and keeps this a pure derivation.
   const currentPage = Math.min(page, totalPages)
 
   const pageRows = useMemo(
@@ -126,9 +109,6 @@ export function DataTable<T>({
 
   const columnCount = columns.length + (rowActions ? 1 : 0)
 
-  // Refetching while rows are already on screen (e.g. after a create or
-  // update invalidates the cache). Distinct from `isLoading`, which is
-  // the first load with nothing to show.
   const isRefreshing = isFetching && !isLoading
 
   function toggleSort(columnId: string) {
@@ -213,8 +193,6 @@ export function DataTable<T>({
                 )
               })}
               {rowActions ? (
-                // Pinned to the right edge so Edit/Delete stay reachable
-                // if the table ever scrolls sideways.
                 <TableHead
                   isNumeric
                   className="sticky right-0 z-10 bg-[rgb(var(--background-secondary))]"
@@ -266,9 +244,6 @@ export function DataTable<T>({
                     </TableCell>
                   ))}
                   {rowActions ? (
-                    // flex + nowrap keeps Edit/Delete on one line; inline
-                    // buttons wrap in the narrow actions column and double
-                    // the row height.
                     <TableCell className="sticky right-0 z-10 bg-[rgb(var(--surface))] whitespace-nowrap group-hover/row:bg-[rgb(var(--background-secondary))]">
                       <div className="flex items-center justify-end gap-2">
                         {rowActions(row)}

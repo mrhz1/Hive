@@ -39,11 +39,6 @@ import {
   type UserFormValues,
 } from '@/schemas/user'
 
-/**
- * Parses a response against its schema so a backend shape change surfaces
- * here as a clear error rather than as `undefined` deep inside a
- * component. Every request funnels through this.
- */
 async function request<T>(
   schema: z.ZodType<T>,
   fn: () => Promise<{ data: unknown }>
@@ -85,11 +80,6 @@ export const usersApi = {
   },
 }
 
-/**
- * A cleared input submits '', but the column means "unknown" -- so the
- * empty strings become nulls here rather than being stored as empty
- * values the API would then have to distinguish from a real one.
- */
 function toPatientPayload(values: PatientFormValues) {
   const payload: Record<string, unknown> = {}
   for (const name of PATIENT_FIELD_NAMES) {
@@ -115,11 +105,6 @@ export const patientsApi = {
   },
 }
 
-/**
- * The API stamps every actor column itself from the authenticated
- * caller, so the only things a client may send are the patient it is
- * for, where it is in the workflow, and the reviewer's note.
- */
 export type ApplicationPayload = {
   patient_id?: string
   status?: string
@@ -178,16 +163,11 @@ export const applicationFilesApi = {
   upload: (applicationId: string, files: File[], description?: string) => {
     const form = new FormData()
     for (const file of files) {
-      // webkitRelativePath preserves the folder structure in the name so
-      // the original layout is recoverable; the API sanitises it before
-      // anything touches the filesystem.
       form.append('files', file, file.webkitRelativePath || file.name)
     }
     if (description) form.append('description', description)
 
     return request(applicationFileListSchema, () =>
-      // Let the browser set the multipart boundary; a manual
-      // Content-Type would omit it and the server could not parse it.
       api.post(`/applications/${applicationId}/files`, form, {
         headers: { 'Content-Type': undefined },
       })
@@ -202,30 +182,12 @@ export const applicationFilesApi = {
     }
   },
 
-  /**
-   * Queues OCR + PII redaction. Returns immediately with the row marked
-   * 'processing'; the result appears on a later read, not over a socket.
-   */
   deidentify: (fileId: string) =>
     request(applicationFileSchema, () => api.post(`/files/${fileId}/deidentify`)),
 
-  /**
-   * Metadata extracted at upload time. Fetched on demand rather than
-   * with the file list: it is a per-row detail nobody looks at until
-   * they ask, and a DICOM header is larger than the row describing it.
-   */
   metadata: (fileId: string) =>
     request(fileMetadataSchema, () => api.get(`/files/${fileId}/metadata`)),
 
-  /**
-   * Fetches the bytes as a Blob.
-   *
-   * Deliberately NOT a plain URL for the browser to navigate to: a
-   * `window.open` on the endpoint bypasses axios, so the request carries
-   * no identity and the API answers 401. Going through the client means
-   * the same interceptor -- and whatever authentication Cloudera AI adds
-   * later -- applies to file reads as to every other call.
-   */
   fetchContent: async (fileId: string, deidentified = false): Promise<Blob> => {
     try {
       const response = await api.get(`/files/${fileId}/content`, {
@@ -234,9 +196,6 @@ export const applicationFilesApi = {
       })
       return response.data as Blob
     } catch (error) {
-      // With responseType 'blob' an error body arrives as a Blob too, so
-      // the JSON envelope has to be read back out before it can be
-      // parsed -- otherwise every failure reads "unexpected error".
       if (axios.isAxiosError(error) && error.response?.data instanceof Blob) {
         const text = await error.response.data.text()
         try {

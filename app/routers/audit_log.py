@@ -1,10 +1,4 @@
-"""Audit log endpoints: create, get_all, get by id.
-
-No update/delete routes: an audit trail that can be rewritten is not an
-audit trail. The POST exists so other services can push entries; entries
-for user/patient changes are written automatically in the background by
-app.audit.record_audit.
-"""
+"""Audit log endpoints: create, get_all, get by id."""
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query

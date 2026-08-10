@@ -18,11 +18,6 @@ export type NavItem = {
   permission?: Permission
 }
 
-/**
- * Single source of truth for the sidebar. Each entry declares the
- * permission it needs, so the menu filters itself from the current user's
- * grants rather than every page hardcoding visibility rules.
- */
 export const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', to: '/', icon: LayoutDashboard },
   { label: 'Users', to: '/users', icon: Users, permission: 'user:view' },

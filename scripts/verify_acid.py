@@ -1,6 +1,4 @@
-"""Prove transactional ORC actually works: insert a row, SELECT it, DELETE
-it by id, confirm it's gone. Run with: make verify
-"""
+"""Prove transactional ORC actually works: insert a row, SELECT it, DELETE it by id, confirm it's gone."""
 import os
 import sys
 

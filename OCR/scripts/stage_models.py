@@ -1,34 +1,4 @@
-"""Fill OCR/models/ so the deployment never needs the network.
-
-Run this **on a machine with internet access** -- your laptop, a build
-agent, anywhere github.com and huggingface.co resolve. It downloads every
-weight the pipeline needs and lays them out under `OCR/models/` in the
-shape `deid/model_store.py` expects. Then copy that one directory to the
-Cloudera AI project and the job runs entirely offline.
-
-    # stage 1's models, under the OCR venv
-    .venv-ocr/bin/python scripts/stage_models.py --stage ocr
-
-    # stage 2's, under the NLP venv
-    .venv-nlp/bin/python scripts/stage_models.py --stage nlp
-
-    # or `make models`, which does both
-
-Two virtualenvs means two runs: each stage can only download what it can
-import, and `--stage` is required rather than sniffed because guessing
-would let a half-installed environment report success.
-
-## Why it copies instead of pointing at the caches
-
-paddle, huggingface and spaCy each have their own cache layout in a
-different place under `$HOME`, none of which survives being moved to
-another machine (HF's is a blob store behind symlinks; spaCy's is a pip
-package). The store is a flat, self-contained copy: `tar` it, move it,
-done.
-
-Re-running is cheap and safe -- anything already present is left alone
-unless `--force` is given.
-"""
+"""Fill OCR/models/ so the deployment never needs the network."""
 import argparse
 import logging
 import os
@@ -40,9 +10,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from deid import model_store  # noqa: E402
 
-# This script is the one thing that is *supposed* to reach the network,
-# so it turns the offline default off for its own process before
-# anything imports transformers and latches HF_HUB_OFFLINE.
 os.environ["DEID_OFFLINE"] = "0"
 for _var in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
     os.environ.pop(_var, None)
@@ -54,9 +21,6 @@ logging.basicConfig(
 )
 log = logging.getLogger("stage_models")
 
-# The NER repo carries TF, Flax and ONNX copies of the same weights. We
-# need the PyTorch one and the tokenizer, and nothing else -- this turns
-# a ~1.5GB download into ~440MB.
 TRANSFORMERS_ALLOW = [
     "config.json",
     "pytorch_model.bin",
@@ -83,13 +47,7 @@ def _already_there(kind: str, name: str, force: bool) -> bool:
 
 
 def _copy_tree(source: Path, target: Path) -> None:
-    """Copy into place, resolving symlinks.
-
-    `symlinks=False` is the important part: the HuggingFace cache stores
-    every file as a symlink into a blob directory, and a store full of
-    dangling links is worse than no store at all -- it passes the
-    "directory exists" check and fails at load time on the other machine.
-    """
+    """Copy into place, resolving symlinks."""
     if target.exists():
         shutil.rmtree(target)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -99,13 +57,7 @@ def _copy_tree(source: Path, target: Path) -> None:
 
 
 def stage_paddle(name: str, device: str, force: bool) -> bool:
-    """PaddleOCR downloads into ~/.paddlex/official_models on first
-    construction, so we build the pipeline and then copy what landed.
-
-    There is no public "download this model to here" API -- PaddleX
-    resolves names against its own cache dir -- so provoke-then-copy is
-    the supported shape rather than a workaround.
-    """
+    """PaddleOCR downloads into ~/.paddlex/official_models on first construction, so we build the pipeline and then copy what landed."""
     log.info("paddle: %s", name)
     if _already_there(model_store.PADDLE_DIR, name, force):
         return True
@@ -129,11 +81,7 @@ def stage_paddle(name: str, device: str, force: bool) -> bool:
 
 
 def stage_spacy(name: str, force: bool) -> bool:
-    """spaCy models ship as pip packages hosted on github (blocked on the
-    target), so what gets staged is the *loadable directory* inside the
-    installed package -- the one holding config.cfg. spacy.load() takes a
-    path just as happily as a package name.
-    """
+    """spaCy models ship as pip packages hosted on github (blocked on the target), so what gets staged is the *loadable directory* inside the installed package -- the one holding config.cfg."""
     log.info("spacy: %s", name)
     if _already_there(model_store.SPACY_DIR, name, force):
         return True
@@ -165,13 +113,7 @@ def stage_spacy(name: str, force: bool) -> bool:
 
 
 def stage_transformers(name: str, force: bool) -> bool:
-    """snapshot_download with a local_dir, so the result is a plain
-    directory of real files rather than the symlinked blob cache.
-
-    Retried because this is the ~440MB artifact and the one most likely
-    to be interrupted; huggingface_hub resumes partial blobs, so a retry
-    continues rather than restarting.
-    """
+    """snapshot_download with a local_dir, so the result is a plain directory of real files rather than the symlinked blob cache."""
     log.info("transformers: %s", name)
     if _already_there(model_store.TRANSFORMERS_DIR, name, force):
         return True
@@ -191,8 +133,6 @@ def stage_transformers(name: str, force: bool) -> bool:
                 repo_id=name,
                 local_dir=str(target),
                 allow_patterns=TRANSFORMERS_ALLOW,
-                # Single worker is slower in theory and far more stable in
-                # practice than parallel range requests on a flaky link.
                 max_workers=1,
             )
             break
@@ -202,8 +142,6 @@ def stage_transformers(name: str, force: bool) -> bool:
                 log.error("  FAILED: giving up")
                 return False
 
-    # Prove it loads here rather than discovering on Cloudera that the
-    # tokenizer files were excluded by allow_patterns.
     try:
         from transformers import AutoModelForTokenClassification, AutoTokenizer
 

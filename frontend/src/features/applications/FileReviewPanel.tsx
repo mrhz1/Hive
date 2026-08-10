@@ -15,6 +15,7 @@ import {
 import { ApiError } from '@/lib/api/client'
 import { applicationFilesApi } from '@/lib/api/resources'
 import {
+  canDeidentify,
   deidTone,
   formatFileSize,
   hasExtractableMetadata,
@@ -22,16 +23,6 @@ import {
   type ApplicationFile,
 } from '@/schemas/applicationFile'
 
-/**
- * Step 2 of the application wizard: the documents attached to the
- * application, each with the actions a reviewer needs.
- *
- * Files land here from step 1's folder pick, and more can be added.
- *
- * There is no per-file approve/reject: the verdict is recorded once, on
- * the application itself, so a reviewer accepts or rejects a submission
- * rather than each page of it.
- */
 export function FileReviewPanel({ applicationId }: { applicationId: string }) {
   const filesQuery = useApplicationFiles(applicationId)
   const upload = useUploadApplicationFiles(applicationId)
@@ -44,16 +35,9 @@ export function FileReviewPanel({ applicationId }: { applicationId: string }) {
     isDeidentified: boolean
   } | null>(null)
 
-  // Metadata is fetched on demand, so the panel opening is what triggers
-  // the request -- see useFileMetadata inside the modal.
   const [showingMetadataFor, setShowingMetadataFor] =
     useState<ApplicationFile | null>(null)
 
-  /**
-   * The endpoint requires an identity header, so the browser cannot just
-   * navigate to it -- the bytes come through the API client and are then
-   * shown from a blob URL.
-   */
   async function showFile(file: ApplicationFile, deidentified = false) {
     setOpeningId(file.id)
     try {
@@ -146,10 +130,8 @@ export function FileReviewPanel({ applicationId }: { applicationId: string }) {
               size="sm"
               variant="outline"
               aria-label={`De-identify ${file.original_file_name}`}
-              // Only PDFs can be processed, and a run already underway
-              // must not be started twice.
               disabled={
-                file.file_extension.toLowerCase() !== 'pdf' ||
+                !canDeidentify(file.file_extension) ||
                 isDeidInFlight(file.deid_status)
               }
               isLoading={deidentify.isPending && deidentify.variables === file.id}
@@ -162,9 +144,6 @@ export function FileReviewPanel({ applicationId }: { applicationId: string }) {
               size="sm"
               variant="outline"
               aria-label={`Show metadata for ${file.original_file_name}`}
-              // Disabled rather than hidden for a format we do not read:
-              // a greyed-out control says "not for this file type", a
-              // missing one says nothing at all.
               disabled={!hasExtractableMetadata(file.file_extension)}
               leadingIcon={<FileJson className="size-3.5" aria-hidden="true" />}
               onClick={() => setShowingMetadataFor(file)}

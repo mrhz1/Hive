@@ -1,27 +1,4 @@
-"""Prove the staged models load offline, in this virtualenv.
-
-`run_deid.py --preflight` checks that the model *directories* are there.
-That catches an incomplete copy but not a broken one -- a truncated
-`pytorch_model.bin` or a spaCy model built for a different spaCy version
-passes the directory check and fails several minutes into the first real
-job.
-
-This script does the expensive thing on purpose: it constructs each model
-the way the pipeline will, with the network switched off, so a bad
-transfer is caught at deployment time rather than by a user waiting on a
-document.
-
-    .venv-ocr/bin/python scripts/check_models.py --stage ocr
-    .venv-nlp/bin/python scripts/check_models.py --stage nlp
-
-Two runs, because each virtualenv can only import its own half. Exit 0 if
-everything loads.
-
-Run this on the Cloudera AI node after copying `models/` across -- that is
-the transfer this is meant to validate, and running it only on the
-machine that produced the store proves nothing about the one that
-received it.
-"""
+"""Prove the staged models load offline, in this virtualenv."""
 import argparse
 import logging
 import sys
@@ -31,9 +8,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from deid import model_store  # noqa: E402
 
-# The point is to fail if anything reaches for the network, so the
-# offline switches go on before transformers/paddle are imported --
-# afterwards they are already latched into module constants.
 model_store.apply_offline_env()
 
 from deid.config import load_config  # noqa: E402
@@ -88,9 +62,6 @@ def check_transformers(config) -> bool:
         log.error("  FAILED: %s", exc)
         return False
 
-    # The label set is not cosmetic: deid/config.py maps these exact
-    # names onto Presidio entities, so a model whose id2label differs
-    # silently redacts nothing.
     labels = sorted(set(model.config.id2label.values()))
     log.info("  OK -- labels: %s", ", ".join(labels))
 

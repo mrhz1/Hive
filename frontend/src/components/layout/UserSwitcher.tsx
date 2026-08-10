@@ -11,24 +11,10 @@ import {
   switchUser,
 } from '@/lib/devIdentity'
 
-/**
- * Switches which user the dashboard is acting as, so RBAC can be checked
- * without restarting the dev server.
- *
- * Only rendered when VITE_DEV_USERNAME is configured. On Cloudera AI
- * that is unset, the platform supplies the identity, and this never
- * appears.
- *
- * Impersonation is not a privilege escalation here: the API already
- * trusts the REMOTE-USER header locally, so this exposes nothing that was
- * not already available by editing .env.local.
- */
 export function UserSwitcher() {
   const [open, setOpen] = useState(false)
   const activeUsername = getActiveUsername()
 
-  // Only fetched once opened -- a user without user:view gets a 403,
-  // which is why the manual username field below is always available.
   const { data: users, error } = useQuery({
     queryKey: ['dev-user-switcher'],
     queryFn: usersApi.list,

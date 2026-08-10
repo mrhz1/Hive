@@ -11,11 +11,6 @@ const FIELD_NAMES = ['name', 'permissions'] as const
 
 const EMPTY: RoleFormValues = { name: '', permissions: [] }
 
-/**
- * Permission picker laid out as a model x action grid. A flat list of 16
- * checkboxes is hard to reason about; the grid makes "this role can read
- * everything but write nothing" visible at a glance.
- */
 function PermissionMatrix({
   value,
   onChange,

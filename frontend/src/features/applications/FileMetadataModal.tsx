@@ -9,18 +9,6 @@ import {
   type ApplicationFile,
 } from '@/schemas/applicationFile'
 
-/**
- * The metadata extracted from a document at upload time.
- *
- * Rendered as a plain key/value list rather than raw JSON: the stored
- * value *is* JSON (ORC has no JSON type), but a DICOM header is a
- * hundred flat attributes and a reader scanning for PatientName should
- * not have to parse braces to find it.
- *
- * Fields are shown in the order the extractor produced them, which for
- * DICOM is tag order -- the order the standard defines and the order
- * anyone familiar with these files expects.
- */
 export function FileMetadataModal({
   file,
   onClose,
@@ -81,8 +69,6 @@ export function FileMetadataModal({
               Loading metadata
             </div>
           ) : error ? (
-            // A 404 here means the file predates extraction -- it is not
-            // an error the user can act on, so it reads as an absence.
             <p className="text-sm text-[rgb(var(--foreground-muted))]">
               No metadata was recorded for this file.
             </p>

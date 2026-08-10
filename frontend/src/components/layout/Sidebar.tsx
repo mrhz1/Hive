@@ -38,8 +38,6 @@ export const Sidebar = memo(function Sidebar({
     >
       <div className="grid w-64 space-y-2 p-4">
         {NAV_ITEMS.map(({ label, to, permission }) =>
-          // Items without a permission (dashboard, profile) are always
-          // shown; the rest are filtered by the caller's grants.
           permission ? (
             <Can key={to} permission={permission}>
               {SideBarLink(to, label, onNavigate)}

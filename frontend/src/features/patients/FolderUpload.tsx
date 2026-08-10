@@ -4,13 +4,6 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Misc'
 import { FilePicker } from './FilePicker'
 
-/**
- * Immediate upload panel for the patient files page, where the patient
- * already exists so files can be sent straight away.
- *
- * The patient form uses FilePicker directly instead: there is no
- * patient id to upload against until the record has been saved.
- */
 export function FolderUpload({
   onUpload,
   isUploading,

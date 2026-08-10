@@ -11,8 +11,6 @@ import './styles.css'
 const router = createRouter({
   routeTree,
   defaultPreload: 'intent',
-  // React Query owns caching; the router should not also cache loader
-  // data or the two would disagree about freshness.
   defaultPreloadStaleTime: 0,
   defaultNotFoundComponent: NotFoundPage,
   defaultErrorComponent: ({ error }: { error: Error }) => <AppErrorPage error={error} />,

@@ -1,9 +1,14 @@
-# OCR PDF De-identifier
+# OCR Document De-identifier
 
-Scans PDFs with OCR, detects PII/PHI, and writes a genuinely redacted
-PDF. Pure Python, no Docker, no system binaries — built to run as a
-Cloudera AI job and be triggered by the FastAPI/Hive service with a path
-to process.
+Scans documents with OCR, detects PII/PHI, and writes genuinely redacted
+output. Handles **PDF**, **DICOM** and **Word**: a PDF is rasterised and
+redacted, a DICOM has its burned-in pixels painted out and its tags
+scrubbed, and a Word document has its text replaced and its properties
+cleared. Each output keeps its input's format.
+
+Pure Python, no Docker, no system binaries — built to run as a Cloudera
+AI job and be triggered by the FastAPI/Hive service with a path to
+process.
 
 > **Deploying this?** [`DEPLOY.md`](DEPLOY.md) is the runbook: every
 > command from empty checkout to a Job the dashboard's De-identify button

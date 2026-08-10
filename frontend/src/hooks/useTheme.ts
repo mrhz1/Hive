@@ -11,11 +11,6 @@ function readInitialTheme(): Theme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-/**
- * Tailwind v4 dark mode driven by a `dark` class on <html>, chosen over
- * the media query alone so an explicit user choice survives reloads and
- * can disagree with the OS.
- */
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(readInitialTheme)
 

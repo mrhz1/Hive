@@ -1,15 +1,4 @@
-"""Stage 1 entrypoint. Runs under the OCR virtualenv.
-
-Not called directly in normal use -- scripts/run_deid.py spawns it. Run
-it by hand only to debug the OCR half in isolation:
-
-    .venv-ocr/bin/python scripts/stage_ocr.py \\
-        --manifest work/ocr-manifest.json --result work/ocr-result.json
-
-Logging goes to stderr, never stdout: paddle writes its own banner to
-stdout at import and the orchestrator reads results from --result, so
-stdout here is not a channel anyone should rely on.
-"""
+"""Stage 1 entrypoint."""
 import argparse
 import json
 import logging
@@ -21,9 +10,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from deid import model_store  # noqa: E402
 
-# Before deid.stage_ocr pulls paddle in: paddlex snapshots its flags into
-# module constants at import time, so the download-source switches only
-# take effect if they are set first.
 model_store.apply_offline_env()
 
 from deid.config import load_config  # noqa: E402
@@ -49,8 +35,6 @@ def main(argv=None) -> int:
     jobs = read_manifest(args.manifest)
     outcomes = run_stage(jobs, load_config())
 
-    # 0600: these name patient files. Written last so its existence is
-    # the orchestrator's signal that the stage got far enough to report.
     fd = os.open(args.result, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(outcomes, fh)

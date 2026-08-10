@@ -5,8 +5,6 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [
-    // Must precede the react plugin: it generates routeTree.gen.ts from
-    // src/routes before react transforms anything.
     tanstackRouter({ target: 'react', autoCodeSplitting: true }),
     react(),
     tailwindcss(),
@@ -21,8 +19,6 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    // Unit tests only. e2e/ is Playwright and would fail under vitest,
-    // which cannot supply its fixtures.
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     // routeTree.gen.ts is generated; nothing to test in it.
     coverage: { exclude: ['**/routeTree.gen.ts', '**/*.config.*', 'src/test/**'] },

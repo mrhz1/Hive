@@ -1,6 +1,4 @@
-"""Role CRUD. HiveQL only: %s paramstyle, backtick identifiers, STRING
-types, no RETURNING/ON CONFLICT/sequences.
-"""
+"""Role CRUD."""
 import json
 import uuid
 from typing import List, Optional
@@ -16,8 +14,7 @@ _COLS = "`id`, `name`, `permissions`"
 
 
 def _parse_permissions(raw) -> List[str]:
-    """impyla returns ARRAY<STRING> as bytes holding a JSON array, e.g.
-    b'["user:view","user:create"]' -- not a Python list. Decode it."""
+    """impyla returns ARRAY<STRING> as bytes holding a JSON array, e.g."""
     if raw is None:
         return []
     if isinstance(raw, (bytes, bytearray)):
@@ -39,9 +36,7 @@ def _row_to_role(row) -> Role:
 
 
 def _array_literal(permissions: List[str]) -> tuple:
-    """Hive rejects a bound parameter for a whole ARRAY column, so the
-    array() call is built with one placeholder per element. Values stay
-    parameterised -- only the arity is interpolated."""
+    """Hive rejects a bound parameter for a whole ARRAY column, so the array() call is built with one placeholder per element."""
     if not permissions:
         return "array()", ()
     placeholders = ", ".join(["%s"] * len(permissions))
@@ -66,10 +61,6 @@ def list_roles(cursor) -> List[Role]:
 
 
 def create_role(cursor, payload: RoleCreate) -> Role:
-    # Hive has no UNIQUE constraint, so uniqueness is a pre-check SELECT.
-    # This is read-then-write, not atomic: two concurrent creates of the
-    # same name can both pass. Acceptable here; a real fix needs an
-    # external lock or a dedup pass.
     if get_role_by_name(cursor, payload.name) is not None:
         raise ConflictError(f"Role with name '{payload.name}' already exists")
 

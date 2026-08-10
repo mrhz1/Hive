@@ -2,12 +2,6 @@ import { useCallback, useState, type ReactNode } from 'react'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
 
-/**
- * Header across the top, sidebar beneath it, content to the right.
- *
- * The sidebar collapses to zero width rather than unmounting, so the
- * transition animates.
- */
 export function AppShell({ children }: { children: ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
 
@@ -15,10 +9,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     setIsSidebarOpen((prev) => !prev)
   }, [])
 
-  // Below md the sidebar is a fixed overlay, so leaving it open after a
-  // navigation would cover the page the user just asked for. Handled on
-  // the click rather than in an effect watching the pathname, which would
-  // set state during render.
   const handleNavigate = useCallback(() => {
     if (window.matchMedia('(max-width: 767px)').matches) {
       setIsSidebarOpen(false)

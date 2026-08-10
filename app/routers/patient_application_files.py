@@ -1,18 +1,6 @@
-"""Application document endpoints.
-
-Documents belong to an application, not to a patient directly -- so
-uploading and listing are scoped by application id, and a patient's
-documents are reached through their applications.
-
-Access is gated on the application permissions rather than a new model:
-these files are part of a submission, so anyone who may read an
-application may read its documents, and uploading/removing is an
-application:update. That keeps existing roles working unchanged.
-
-There is no per-file approve/reject here. A reviewer's verdict is
-recorded once, on the application row (PUT /applications/{id}).
-"""
+"""Application document endpoints."""
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
@@ -21,8 +9,14 @@ from fastapi.responses import FileResponse
 from app.crud import file_metadata as metadata_crud
 from app.crud import patient_application_files as crud
 from app.crud import patient_applications as applications_crud
+from app.crud import patients as patients_crud
 from app.db import get_cursor
-from app.deid import dispatch_deidentification, queued_status
+from app.deid import (
+    DEIDENTIFIABLE_LABEL,
+    dispatch_deidentification,
+    is_deidentifiable,
+    queued_status,
+)
 from app.errors import NotFoundError, ValidationError
 from app.file_metadata import extract
 from app.logging_setup import get_logger
@@ -41,25 +35,27 @@ from app.storage import (
     resolve_stored_path,
     sanitize_filename,
     write_file,
+    write_patient_document,
 )
 
 log = get_logger(__name__)
 
 router = APIRouter(tags=["application-files"])
 
-# A folder upload can contain anything; refuse implausible sizes rather
-# than reading them into memory.
 MAX_FILE_BYTES = 50 * 1024 * 1024
 
 
-def _record_metadata(cursor, file_id: str, path, extension: str) -> None:
-    """Extract and store metadata for one just-uploaded file.
+def _known_patient_id(cursor, application) -> Optional[str]:
+    """The patient this application belongs to, if they are on file."""
+    patient_id = getattr(application, "patient_id", None)
+    if not patient_id:
+        return None
 
-    Deliberately swallowing: the bytes are on disk and the file row
-    exists, so a metadata failure is a missing panel in the UI, not a
-    lost document. extract() already records *why* it failed on the row;
-    this catch is for the Hive write itself.
-    """
+    return patient_id if patients_crud.get_patient(cursor, patient_id) else None
+
+
+def _record_metadata(cursor, file_id: str, path, extension: str) -> None:
+    """Extract and store metadata for one just-uploaded file."""
     file_type, metadata, status, error = extract(path, extension)
     try:
         metadata_crud.create_metadata(
@@ -85,8 +81,6 @@ def list_application_files(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    # 404 on an unknown application rather than an empty list, so a wrong
-    # id is distinguishable from an application with no documents.
     applications_crud.get_application_or_404(cursor, application_id)
     return crud.list_files(cursor, application_id)
 
@@ -103,18 +97,14 @@ async def upload_application_files(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:update")),
 ):
-    """Accepts many files at once -- the client sends a whole folder.
-
-    Each file is written to disk first, its row inserted after, and its
-    metadata extracted last. That order is deliberate: a failed write
-    never leaves a row pointing at nothing, and metadata is derived from
-    a file that is already safely stored. The reverse (orphaned bytes
-    with no row) is recoverable; a dangling row is not.
-    """
-    applications_crud.get_application_or_404(cursor, application_id)
+    """Accepts many files at once -- the client sends a whole folder."""
+    application = applications_crud.get_application_or_404(cursor, application_id)
 
     if not files:
         raise ValidationError("No files were uploaded")
+
+    received_at = datetime.now(timezone.utc)
+    patient_id = _known_patient_id(cursor, application)
 
     created: List[PatientApplicationFile] = []
 
@@ -123,8 +113,6 @@ async def upload_application_files(
         data = await upload.read()
 
         if len(data) == 0:
-            # Selecting a folder can yield directory entries and hidden
-            # files; skipping beats failing the whole batch.
             log.info("skipping_empty_upload", name=raw_name)
             continue
 
@@ -133,10 +121,17 @@ async def upload_application_files(
                 f"'{raw_name}' is larger than the {MAX_FILE_BYTES // (1024 * 1024)}MB limit"
             )
 
-        sanitized = sanitize_filename(raw_name)
         extension = file_extension(raw_name)
         record_id = str(uuid.uuid4())
-        stored_path = write_file(application_id, record_id, sanitized, data)
+
+        if patient_id:
+            stored_path = write_patient_document(
+                patient_id, extension, data, received_at
+            )
+            sanitized = stored_path.name
+        else:
+            sanitized = sanitize_filename(raw_name)
+            stored_path = write_file(application_id, record_id, sanitized, data)
 
         record = crud.create_file(
             cursor,
@@ -179,13 +174,7 @@ def get_application_file_metadata(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    """The metadata extracted at upload time.
-
-    404 when there is no row at all, which means the file predates
-    extraction. A file whose format we do not read still *has* a row --
-    status 'unsupported' -- so the UI can tell "nothing to show" apart
-    from "never looked".
-    """
+    """The metadata extracted at upload time."""
     crud.get_file_or_404(cursor, file_id)
 
     record = metadata_crud.get_metadata_for_file(cursor, file_id)
@@ -201,12 +190,7 @@ def download_application_file(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    """Serves the bytes.
-
-    `deidentified=true` returns the redacted copy instead, once the OCR
-    job has produced one. Inline disposition so a PDF opens in the
-    browser's viewer rather than downloading.
-    """
+    """Serves the bytes."""
     record = crud.get_file_or_404(cursor, file_id)
 
     if deidentified:
@@ -237,33 +221,18 @@ def deidentify_application_file(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:update")),
 ):
-    """Queues OCR + PII redaction for one file.
-
-    Returns immediately with the row marked as queued; the work runs
-    elsewhere and the row is updated when it finishes. The client re-reads
-    to see the result -- no socket, by design.
-
-    Where "elsewhere" is depends on DEID_BACKEND: this process's
-    background task, or a Cloudera AI Job run. Both end up in the same
-    run_deidentification(), so the contract here does not change either
-    way -- including which status the row lands in, which the deid module
-    owns because the two backends need different ones.
-    """
+    """Queues OCR + PII redaction for one file."""
     record = crud.get_file_or_404(cursor, file_id)
 
-    # 'pending' is deliberately not in this list: that is the state every
-    # file is uploaded in, so rejecting it would make a document
-    # impossible to de-identify the first time.
     if record.deid_status in ("queued", "processing"):
         raise ValidationError("This file is already queued for de-identification")
 
-    if record.file_extension.lower() != "pdf":
+    if not is_deidentifiable(record.file_extension):
         raise ValidationError(
-            f"Only PDF files can be de-identified (got '{record.file_extension}')"
+            f"'{record.file_extension}' files cannot be de-identified "
+            f"(handled: {DEIDENTIFIABLE_LABEL})"
         )
 
-    # Marked before dispatch so the UI reflects it on the very next read,
-    # rather than looking like nothing happened.
     updated = crud.update_file(
         cursor, file_id, PatientApplicationFileUpdate(deid_status=queued_status())
     )
@@ -295,8 +264,6 @@ def delete_application_file(
     _actor: User = Depends(require_permission("application:update")),
 ):
     record = crud.delete_file(cursor, file_id)
-    # Metadata next, then the bytes. Row first throughout: an orphaned
-    # file on disk is harmless, a row pointing at nothing is not.
     metadata_crud.delete_metadata_for_files(cursor, [file_id])
     remove_from_disk(record.file_path)
     if record.de_identified_file_path:

@@ -1,13 +1,4 @@
-"""Verify a redacted PDF by re-OCRing it and looking for known PII.
-
-This is the check that actually matters: the pipeline reporting "20
-entities redacted" proves it drew 20 boxes, not that the information is
-gone. This re-reads the output the way an attacker would and fails if any
-secret string survives, in the image or in a leftover text layer.
-
-    python scripts/verify_redaction.py out/sample_scanned_deid.pdf \\
-        --expect-absent "Jonathan Michael Reyes" --expect-absent "543-22-9087"
-"""
+"""Verify a redacted PDF by re-OCRing it and looking for known PII."""
 import argparse
 import logging
 import sys
@@ -19,8 +10,6 @@ from deid.config import load_config  # noqa: E402
 from deid.ocr_engine import OcrEngine  # noqa: E402
 from deid.pdf_io import open_pdf, render_pages  # noqa: E402
 
-# The PII planted by make_sample_pdf.py, used when no --expect-absent is
-# given. Kept in one place so the sample and its verification agree.
 SAMPLE_SECRETS = [
     "Jonathan Michael Reyes",
     "04/17/1952",
@@ -35,8 +24,6 @@ SAMPLE_SECRETS = [
     "BCBS-7741820394",
 ]
 
-# Clinical content that must SURVIVE -- a redactor that blacks out the
-# whole page would pass a leak test while being useless.
 SAMPLE_MUST_KEEP = [
     "chest pain",
     "troponins",
@@ -67,8 +54,6 @@ def main() -> int:
     config = load_config()
     doc = open_pdf(args.pdf)
 
-    # 1. Any residual text layer -- the classic redaction failure, where
-    #    a box is drawn over text that is still selectable underneath.
     layer_text = "".join(doc[i].get_text() for i in range(doc.page_count))
 
     # 2. What the pixels actually show now.

@@ -4,11 +4,6 @@ import { idSchema, timestampSchema } from './common'
 export const AUDIT_ACTIONS = ['CREATE', 'UPDATE', 'DELETE'] as const
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]
 
-/**
- * Mirrors app/schemas.py::AuditLog. old_values/new_values are stored in
- * Hive as JSON-in-STRING and parsed back to objects by the API, so they
- * arrive here as arbitrary records.
- */
 export const auditLogSchema = z.object({
   id: idSchema,
   action: z.enum(AUDIT_ACTIONS),

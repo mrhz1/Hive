@@ -1,19 +1,4 @@
-"""Test harness: an in-memory stand-in for HiveServer2.
-
-The CRUD layer speaks raw HiveQL, so the only way to test it end to end
-without a live metastore is to answer that SQL. FakeHiveCursor implements
-exactly the statement shapes app/crud/* emits -- no more -- and returns
-rows as positional tuples in the order the SELECT asked for.
-
-KNOWN LIMIT: rows are stored by column *name*, taken from the INSERT's own
-column list. Real Hive is positional against a fixed table schema, so it
-would reject a mismatch between the INSERT list and the table -- this fake
-cannot. A self-consistent reordering of crud.patients.COLUMNS therefore
-passes here (verified by mutation) even though it is wrong against Hive.
-sql/schema.sql is the guard for that: keep its column order identical to
-COLUMNS. What these tests do cover is that every field survives the
-round trip through the real router, schema and CRUD code.
-"""
+"""Test harness: an in-memory stand-in for HiveServer2."""
 import json
 import re
 from datetime import date, datetime
@@ -32,16 +17,10 @@ ADMIN_ID = "user-admin"
 VIEWER_ID = "user-viewer"
 NOBODY_ID = "user-nobody"
 
-# Requests authenticate as a *username* -- REMOTE-USER carries the name
-# the platform authenticated, and the API resolves it to the row. The ids
-# above are what the rows hold, and what the actor columns get stamped
-# with, so tests need both.
 ADMIN_USER = "admin"
 VIEWER_USER = "viewer"
 NOBODY_USER = "nobody"
 
-# Derived from the app rather than restated, so adding a model or an
-# action cannot leave the fixtures granting a set the API does not know.
 ALL_PERMISSIONS = [
     f"{model}:{action}"
     for model in PERMISSION_MODELS
@@ -234,12 +213,7 @@ class FakeHiveCursor:
 
 
 def _split_values(clause):
-    """Split a VALUES list or SET clause on its top-level commas.
-
-    Not every value is a bare placeholder -- current_timestamp() and
-    CAST(NULL AS TIMESTAMP) carry their own parens -- so a plain
-    clause.split(",") would cut array(%s, %s) in half.
-    """
+    """Split a VALUES list or SET clause on its top-level commas."""
     parts, depth, start = [], 0, 0
     for index, char in enumerate(clause):
         if char == "(":
@@ -254,12 +228,7 @@ def _split_values(clause):
 
 
 def _eval_value(expression, params):
-    """One value expression, resolved to what Hive would store.
-
-    Timestamps are written as SQL text rather than bound (see
-    app/db.py::NOW_SQL), so they consume no parameter: this is where the
-    fake plays the part of the server clock.
-    """
+    """One value expression, resolved to what Hive would store."""
     slots = expression.count("%s")
     if slots == 1:
         return params.pop(0)
@@ -276,12 +245,7 @@ def _eval_value(expression, params):
 
 
 def _wire(value):
-    """Values as the driver would hand them back.
-
-    ARRAY<STRING> arrives as bytes holding a JSON array, not a list --
-    app/crud/roles.py::_parse_permissions exists because of this, so the
-    fake has to reproduce it or that code path is never exercised.
-    """
+    """Values as the driver would hand them back."""
     if isinstance(value, list):
         return json.dumps(value).encode("utf-8")
     if isinstance(value, (datetime, date)):
@@ -304,8 +268,7 @@ def cursor(store):
 
 @pytest.fixture
 def client(cursor, monkeypatch):
-    """TestClient with Hive replaced by the fake, for requests and for the
-    separate connection background audit writes open."""
+    """TestClient with Hive replaced by the fake, for requests and for the separate connection background audit writes open."""
     import contextlib
 
     @contextlib.contextmanager
@@ -336,9 +299,7 @@ def storage_root(tmp_path, monkeypatch):
 
 
 def minimal_patient(**overrides):
-    """Only what the API requires: the source document, plus any one of
-    fstname / lstname / ptemail. Deliberately omits lstname, so the
-    fixture itself exercises the "one identifier is enough" rule."""
+    """Only what the API requires: the source document, plus any one of fstname / lstname / ptemail."""
     return {"fstname": "Jane", "original_file_path": "/data/jane.pdf", **overrides}
 
 

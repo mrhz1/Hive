@@ -34,8 +34,6 @@ function ErrorShell({
   const palette = TONES[tone]
 
   return (
-    // Centres in the remaining viewport rather than in a small card, so
-    // the page reads as a full stop rather than a footnote.
     <div className="flex min-h-[70vh] flex-col items-center justify-center px-4 text-center">
       <div
         className={cn(

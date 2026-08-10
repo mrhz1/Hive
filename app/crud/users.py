@@ -1,6 +1,4 @@
-"""User CRUD, including the roles join that inlines role_name +
-permissions onto every user read.
-"""
+"""User CRUD, including the roles join that inlines role_name + permissions onto every user read."""
 import uuid
 from typing import List, Optional
 
@@ -17,8 +15,6 @@ _BASE_COLS = (
     "`status`, `is_active`, `role_id`, `created_at`"
 )
 
-# LEFT JOIN so a user with no role (or a dangling role_id) still returns
-# rather than vanishing from the result set.
 _SELECT_WITH_ROLE = f"""
 SELECT u.`id`, u.`username`, u.`email`, u.`first_name`, u.`last_name`,
        u.`status`, u.`is_active`, u.`role_id`, u.`created_at`,
@@ -63,13 +59,7 @@ def list_users(cursor) -> List[User]:
 
 
 def _find_by_username(cursor, username: str) -> Optional[User]:
-    """The whole user, role joined in -- not just their id.
-
-    This is how the authenticated principal is resolved (see
-    security.get_current_user): REMOTE-USER names a username, and the
-    permission check that follows needs the role's grants, so fetching
-    only the id would cost a second round trip to Hive for the rest.
-    """
+    """The whole user, role joined in -- not just their id."""
     execute(cursor, _SELECT_WITH_ROLE + " WHERE u.`username` = %s", (username,))
     row = cursor.fetchone()
     return _row_to_user(row) if row else None
@@ -90,9 +80,6 @@ def _assert_role_exists(cursor, role_id: Optional[str]) -> None:
 
 
 def create_user(cursor, payload: UserCreate) -> User:
-    # Hive has no UNIQUE constraint, so uniqueness is enforced by
-    # pre-check SELECTs. Read-then-write is not atomic: concurrent creates
-    # of the same username/email can both pass.
     if _find_by_username(cursor, payload.username):
         raise ConflictError(f"Username '{payload.username}' already exists")
     if _find_by_email(cursor, payload.email):
@@ -100,9 +87,6 @@ def create_user(cursor, payload: UserCreate) -> User:
     _assert_role_exists(cursor, payload.role_id)
 
     user_id = str(uuid.uuid4())
-    # _BASE_COLS ends with created_at, which is written as SQL text rather
-    # than bound (see db.NOW_SQL) -- hence eight placeholders for nine
-    # columns.
     execute(
         cursor,
         f"INSERT INTO `users` ({_BASE_COLS}) "

@@ -1,8 +1,4 @@
-"""The dispatcher must never ask Cloudera for a second run while one is
-active -- that request is what CML refuses with `400 job run for job
-<id> already active`, records as a Skipped entry, and used to leave a
-perfectly good file marked failed.
-"""
+"""The dispatcher must never ask Cloudera for a second run while one is active -- that request is what CML refuses with `400 job run for job <id> already active`, records as a Skipped entry, and used to leave a perfectly good file marked failed."""
 import types
 
 import pytest
@@ -52,8 +48,7 @@ def _null_context():
 
 
 def test_runs_are_serialised_never_overlapping(table, monkeypatch):
-    """Two files clicked at once: the second run is requested only after
-    the first has finished."""
+    """Two files clicked at once: the second run is requested only after the first has finished."""
     table["a"] = Row("a", 1)
     table["b"] = Row("b", 2)
 
@@ -111,8 +106,7 @@ def test_fifo_by_click_time(table, monkeypatch):
 
 
 def test_dispatch_error_leaves_row_queued(table, monkeypatch):
-    """A control-plane problem is not the file's fault: the row stays
-    claimable instead of being marked failed."""
+    """A control-plane problem is not the file's fault: the row stays claimable instead of being marked failed."""
     table["a"] = Row("a", 1)
 
     def start(environment=None):
@@ -139,8 +133,7 @@ def test_busy_response_is_deferred_not_failed(table, monkeypatch):
 
 
 def test_unreadable_run_status_does_not_end_the_wait(table, monkeypatch):
-    """An unreachable control plane must read as still-running, or the
-    dispatcher races ahead and starts the overlapping run."""
+    """An unreachable control plane must read as still-running, or the dispatcher races ahead and starts the overlapping run."""
     table["a"] = Row("a", 1)
     polls = {"n": 0}
 
@@ -170,14 +163,11 @@ def test_run_that_dies_without_writing_the_row_is_not_waited_on_forever(
 
     deid_queue.drain_once()
 
-    # Row untouched -- the dispatcher does not invent a verdict, it just
-    # stops waiting so the next file can go.
     assert table["a"].deid_status == "queued"
 
 
 def test_pending_rows_are_not_dispatched(table, monkeypatch):
-    """`pending` is the state every upload starts in; only an explicit
-    click (`queued`) means somebody asked."""
+    """`pending` is the state every upload starts in; only an explicit click (`queued`) means somebody asked."""
     table["a"] = Row("a", 1, status="pending")
 
     monkeypatch.setattr(

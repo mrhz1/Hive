@@ -1,10 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
 
-/**
- * Runs against the real dev server and a real API. Serial, because the
- * tests create and delete records in a shared Hive database and Hive
- * writes are slow enough that parallel runs would interleave badly.
- */
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,

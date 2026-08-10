@@ -2,14 +2,6 @@ import { Link } from '@tanstack/react-router'
 import type { FormEvent, ReactNode } from 'react'
 import { Button } from './ui/Button'
 
-/**
- * Shared chrome for every create/update page: bordered surface, a
- * two-column field grid, and a footer whose submit button reflects the
- * in-flight state.
- *
- * Create and update render the same form component; only `mode` and the
- * submit handler differ, so the copy is derived rather than duplicated.
- */
 export function FormLayout({
   mode,
   entityLabel,
@@ -27,8 +19,6 @@ export function FormLayout({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   children: ReactNode
   footerNote?: ReactNode
-  /** For hosts where "Create patient" is not what the button does --
-      the application wizard's step 1 saves and moves on. */
   submitLabel?: string
 }) {
   const submitLabel =

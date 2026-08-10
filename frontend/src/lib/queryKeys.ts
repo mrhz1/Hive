@@ -1,10 +1,5 @@
 import type { AuditLogFilters } from '@/schemas/log'
 
-/**
- * Hierarchical query keys. Because every users key starts with ['users'],
- * invalidating ['users'] after a mutation refetches the list and every
- * individual user detail in one call -- no key bookkeeping at call sites.
- */
 export const queryKeys = {
   me: ['me'] as const,
 
@@ -35,8 +30,6 @@ export const queryKeys = {
 
   applications: {
     all: ['applications'] as const,
-    // The list is filterable by patient, so the filter is part of the key
-    // -- an unfiltered list and one patient's list are different queries.
     list: (patientId?: string) =>
       [...queryKeys.applications.all, 'list', patientId ?? null] as const,
     detail: (id: string) => [...queryKeys.applications.all, 'detail', id] as const,
@@ -44,8 +37,6 @@ export const queryKeys = {
 
   applicationFiles: {
     all: ['application-files'] as const,
-    // Scoped by application: uploading for one application must not
-    // invalidate another's list.
     list: (applicationId: string) =>
       [...queryKeys.applicationFiles.all, 'list', applicationId] as const,
     // Per file, fetched on demand when someone opens the metadata panel.
