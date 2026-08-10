@@ -11,15 +11,22 @@ from app.crud import patients as patients_crud
 from app.db import get_cursor
 from app.storage import delete_file as remove_from_disk
 from app.submission import finalise_submission
+from app.errors import ValidationError
+from app.logging_setup import get_logger
 from app.schemas import (
     PatientApplication,
     PatientApplicationCreate,
     PatientApplicationUpdate,
+    StatusReason,
     User,
 )
 from app.security import require_permission
 
+log = get_logger(__name__)
+
 router = APIRouter(prefix="/applications", tags=["applications"])
+
+NON_REJECTABLE = ("submitted", "rejected", "deleted")
 
 
 def _snapshot(application: PatientApplication) -> dict:
@@ -100,23 +107,83 @@ def update_application(
     return after
 
 
+@router.post("/{application_id}/reject", response_model=PatientApplication)
+def reject_application(
+    application_id: str,
+    payload: StatusReason,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("application:update")),
+):
+    """Reject an application, with the reason on the record."""
+    before = crud.get_application_or_404(cursor, application_id)
+
+    if before.status in NON_REJECTABLE:
+        raise ValidationError(
+            f"An application that is '{before.status}' cannot be rejected"
+        )
+
+    reason = (payload.reason or "").strip()
+    if not reason:
+        raise ValidationError("A reason is required when rejecting an application")
+
+    after = crud.update_application(
+        cursor,
+        application_id,
+        PatientApplicationUpdate(status="rejected", status_reason=reason),
+        actor_id=actor.id,
+    )
+
+    background.add_task(
+        record_audit,
+        action="UPDATE",
+        entity_type="patient_application",
+        entity_id=application_id,
+        user_id=actor.id,
+        old_values=_snapshot(before),
+        new_values=_snapshot(after),
+        request_id=request.headers.get("X-Request-ID"),
+    )
+    return after
+
+
 @router.delete("/{application_id}", status_code=204)
 def delete_application(
     application_id: str,
     background: BackgroundTasks,
     request: Request,
+    reason: Optional[str] = None,
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:delete")),
 ):
+    """Remove the documents; keep the application as a record of what happened."""
+    before = crud.get_application_or_404(cursor, application_id)
+
+    detail = (reason or "").strip()
+    if not detail:
+        raise ValidationError("A reason is required when deleting an application")
+
     orphaned = files_crud.delete_files_for_application(cursor, application_id)
     metadata_crud.delete_metadata_for_files(cursor, [f.id for f in orphaned])
-
-    deleted = crud.delete_application(cursor, application_id)
 
     for record in orphaned:
         remove_from_disk(record.file_path)
         if record.de_identified_file_path:
             remove_from_disk(record.de_identified_file_path)
+
+    after = crud.update_application(
+        cursor,
+        application_id,
+        PatientApplicationUpdate(status="deleted", status_reason=detail),
+        actor_id=actor.id,
+    )
+
+    log.info(
+        "application_soft_deleted",
+        application_id=application_id,
+        files_removed=len(orphaned),
+    )
 
     background.add_task(
         record_audit,
@@ -124,7 +191,7 @@ def delete_application(
         entity_type="patient_application",
         entity_id=application_id,
         user_id=actor.id,
-        old_values=_snapshot(deleted),
-        new_values=None,
+        old_values=_snapshot(before),
+        new_values=_snapshot(after),
         request_id=request.headers.get("X-Request-ID"),
     )

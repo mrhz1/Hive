@@ -21,6 +21,7 @@ def test_model_exposes_every_requested_field(as_admin):
         "id", "patient_id", "submitted_by_id", "reviewed_by_id", "status",
         "description", "created_by_id", "updated_by_id",
         "submitted_at", "created_at", "updated_at", "reviewed_at",
+        "status_reason",
     }
 
 
@@ -130,11 +131,116 @@ def test_unknown_application_is_a_404(as_admin):
     assert as_admin.delete("/applications/nope").status_code == 404
 
 
-def test_delete_removes_it(as_admin):
+def test_delete_keeps_the_record_and_says_why(as_admin):
+    """The documents go; the application stays."""
     created = _application(as_admin, _patient(as_admin)).json()
 
-    assert as_admin.delete(f"/applications/{created['id']}").status_code == 204
-    assert as_admin.get("/applications").json() == []
+    response = as_admin.delete(
+        f"/applications/{created['id']}", params={"reason": "duplicate submission"}
+    )
+
+    assert response.status_code == 204
+
+    remaining = as_admin.get("/applications").json()
+    assert len(remaining) == 1
+    assert remaining[0]["id"] == created["id"]
+    assert remaining[0]["status"] == "deleted"
+    assert remaining[0]["status_reason"] == "duplicate submission"
+
+
+def test_delete_requires_a_reason(as_admin):
+    created = _application(as_admin, _patient(as_admin)).json()
+
+    for params in ({}, {"reason": "   "}):
+        response = as_admin.delete(f"/applications/{created['id']}", params=params)
+        assert response.status_code == 422, params
+        assert "reason is required" in response.json()["error"]["detail"]
+
+    assert as_admin.get(f"/applications/{created['id']}").json()["status"] == "draft"
+
+
+def test_deleting_removes_the_documents(as_admin, storage_root):
+    import pathlib
+
+    patient_id = _patient(as_admin)
+    application_id = _application(as_admin, patient_id).json()["id"]
+    record = as_admin.post(
+        f"/applications/{application_id}/files",
+        files=[("files", ("scan.pdf", b"%PDF-1.4 fake", "application/pdf"))],
+    ).json()[0]
+    on_disk = pathlib.Path(record["file_path"])
+    assert on_disk.is_file()
+
+    as_admin.delete(
+        f"/applications/{application_id}", params={"reason": "wrong patient"}
+    )
+
+    assert not on_disk.exists(), "the document survived the delete"
+    assert as_admin.get(f"/files/{record['id']}").status_code == 404
+
+
+# ------------------------------------------------------------- rejection
+
+
+def test_rejecting_records_the_reason(as_admin):
+    created = _application(as_admin, _patient(as_admin)).json()
+
+    response = as_admin.post(
+        f"/applications/{created['id']}/reject", json={"reason": "missing consent"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "rejected"
+    assert response.json()["status_reason"] == "missing consent"
+
+
+def test_rejecting_needs_a_reason(as_admin):
+    created = _application(as_admin, _patient(as_admin)).json()
+
+    response = as_admin.post(f"/applications/{created['id']}/reject", json={})
+
+    assert response.status_code == 422
+    assert "reason is required" in response.json()["error"]["detail"]
+
+
+def test_a_submitted_application_cannot_be_rejected(as_admin):
+    """Explicitly asked for: once submitted it has gone for review, and the verdict is not recorded from here."""
+    created = _application(as_admin, _patient(as_admin)).json()
+    as_admin.put(f"/applications/{created['id']}", json={"status": "submitted"})
+
+    response = as_admin.post(
+        f"/applications/{created['id']}/reject", json={"reason": "no"}
+    )
+
+    assert response.status_code == 422
+    assert "cannot be rejected" in response.json()["error"]["detail"]
+    assert as_admin.get(f"/applications/{created['id']}").json()["status"] == "submitted"
+
+
+def test_an_approved_application_can_still_be_rejected(as_admin):
+    created = _application(as_admin, _patient(as_admin)).json()
+    as_admin.put(f"/applications/{created['id']}", json={"status": "approved"})
+
+    response = as_admin.post(
+        f"/applications/{created['id']}/reject", json={"reason": "reviewed again"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "rejected"
+
+
+def test_rejecting_twice_is_refused(as_admin):
+    created = _application(as_admin, _patient(as_admin)).json()
+    as_admin.post(f"/applications/{created['id']}/reject", json={"reason": "first"})
+
+    response = as_admin.post(
+        f"/applications/{created['id']}/reject", json={"reason": "second"}
+    )
+
+    assert response.status_code == 422
+    assert as_admin.get(f"/applications/{created['id']}").json()[
+        "status_reason"
+    ] == "first"
 
 
 def test_deleting_a_patient_removes_their_applications(as_admin):
@@ -174,7 +280,9 @@ def test_identity_is_required(client):
 def test_writes_are_audited_as_patient_application(as_admin, store):
     created = _application(as_admin, _patient(as_admin)).json()
     as_admin.put(f"/applications/{created['id']}", json={"status": "submitted"})
-    as_admin.delete(f"/applications/{created['id']}")
+    as_admin.delete(
+        f"/applications/{created['id']}", params={"reason": "test cleanup"}
+    )
 
     entries = [
         e for e in store["audit_logs"] if e["entity_type"] == "patient_application"

@@ -1,9 +1,12 @@
-import { Search, X } from 'lucide-react'
+import { Download, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Misc'
 import { Spinner } from '@/components/ui/Spinner'
+import { toast } from 'sonner'
 import { useFileMetadata } from '@/hooks/useResources'
+import { ApiError } from '@/lib/api/client'
+import { applicationFilesApi } from '@/lib/api/resources'
 import { metadataTone } from '@/schemas/applicationFile'
 
 export type MetadataSubject = {
@@ -20,6 +23,7 @@ export function FileMetadataModal({
 }) {
   const { data, isLoading, error } = useFileMetadata(file.id)
   const [query, setQuery] = useState('')
+  const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -40,6 +44,29 @@ export function FileMetadataModal({
         String(value).toLowerCase().includes(needle)
     )
   }, [all, query])
+
+  /** Exports exactly what the filter is showing, not the whole table. */
+  async function exportFiltered() {
+    setIsExporting(true)
+    try {
+      const blob = await applicationFilesApi.exportMetadata(
+        file.id,
+        query.trim() ? entries.map(([name]) => name) : undefined
+      )
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `metadata-${file.original_file_name}.xlsx`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (caught) {
+      toast.error(
+        caught instanceof ApiError ? caught.message : 'Could not export the metadata'
+      )
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   return (
     <div
@@ -91,11 +118,23 @@ export function FileMetadataModal({
                 className="w-full rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--background))] py-2 pr-3 pl-9 text-sm"
               />
             </label>
-            <p className="mt-1.5 text-xs text-[rgb(var(--foreground-muted))]">
-              {query.trim()
-                ? `${entries.length} of ${all.length} fields`
-                : `${all.length} fields`}
-            </p>
+            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-[rgb(var(--foreground-muted))]">
+                {query.trim()
+                  ? `${entries.length} of ${all.length} fields`
+                  : `${all.length} fields`}
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={entries.length === 0}
+                isLoading={isExporting}
+                leadingIcon={<Download className="size-3.5" aria-hidden="true" />}
+                onClick={() => void exportFiltered()}
+              >
+                Export to Excel
+              </Button>
+            </div>
           </div>
         ) : null}
 

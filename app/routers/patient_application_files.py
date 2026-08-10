@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
+from fastapi import Response
 from fastapi.responses import FileResponse
 
 from app.crud import file_metadata as metadata_crud
@@ -22,12 +23,14 @@ from app.file_metadata import extract
 from app.logging_setup import get_logger
 from app.schemas import (
     FileMetadata,
+    FileReview,
     FileMetadataCreate,
     PatientApplicationFile,
     PatientApplicationFileUpdate,
     User,
 )
 from app.security import require_permission
+from app.xlsx import workbook_bytes
 from app.storage import (
     delete_file as remove_from_disk,
     file_extension,
@@ -183,6 +186,44 @@ def get_application_file_metadata(
     return record
 
 
+@router.get("/files/{file_id}/metadata/export")
+def export_application_file_metadata(
+    file_id: str,
+    fields: Optional[str] = None,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("application:view")),
+):
+    """The metadata as an Excel workbook."""
+    crud.get_file_or_404(cursor, file_id)
+
+    record = metadata_crud.get_metadata_for_file(cursor, file_id)
+    if record is None:
+        raise NotFoundError(f"No metadata recorded for file '{file_id}'")
+
+    wanted = [name.strip() for name in (fields or "").split(",") if name.strip()]
+    items = sorted(record.metadata.items())
+    if wanted:
+        keep = set(wanted)
+        items = [(name, value) for name, value in items if name in keep]
+
+    content = workbook_bytes(
+        headers=("Field", "Value"),
+        rows=items,
+        sheet_title="Metadata",
+    )
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    name = f"metadata-{file_id[:8]}-{stamp}.xlsx"
+
+    return Response(
+        content=content,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
 @router.get("/files/{file_id}/content")
 def download_application_file(
     file_id: str,
@@ -255,6 +296,30 @@ def update_application_file(
     _actor: User = Depends(require_permission("application:update")),
 ):
     return crud.update_file(cursor, file_id, payload)
+
+
+@router.post("/files/{file_id}/review", response_model=PatientApplicationFile)
+def review_application_file(
+    file_id: str,
+    payload: FileReview,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("application:update")),
+):
+    """Record a reviewer's verdict on one document."""
+    crud.get_file_or_404(cursor, file_id)
+
+    note = (payload.review_note or "").strip()
+    if payload.review_status == "rejected" and not note:
+        raise ValidationError("A reason is required when rejecting a file")
+
+    return crud.update_file(
+        cursor,
+        file_id,
+        PatientApplicationFileUpdate(
+            review_status=payload.review_status,
+            review_note=note or None,
+        ),
+    )
 
 
 @router.delete("/files/{file_id}", status_code=204)

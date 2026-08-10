@@ -126,9 +126,15 @@ export const applicationsApi = {
     request(patientApplicationSchema, () => api.post('/applications', values)),
   update: (id: string, values: ApplicationPayload) =>
     request(patientApplicationSchema, () => api.put(`/applications/${id}`, values)),
-  remove: async (id: string) => {
+
+  reject: (id: string, reason: string) =>
+    request(patientApplicationSchema, () =>
+      api.post(`/applications/${id}/reject`, { reason })
+    ),
+
+  remove: async (id: string, reason: string) => {
     try {
-      await api.delete(`/applications/${id}`)
+      await api.delete(`/applications/${id}`, { params: { reason } })
     } catch (error) {
       throw toApiError(error)
     }
@@ -189,8 +195,28 @@ export const applicationFilesApi = {
   deidentify: (fileId: string) =>
     request(applicationFileSchema, () => api.post(`/files/${fileId}/deidentify`)),
 
+  review: (fileId: string, reviewStatus: 'approved' | 'rejected', note?: string) =>
+    request(applicationFileSchema, () =>
+      api.post(`/files/${fileId}/review`, {
+        review_status: reviewStatus,
+        review_note: note ?? null,
+      })
+    ),
+
   metadata: (fileId: string) =>
     request(fileMetadataSchema, () => api.get(`/files/${fileId}/metadata`)),
+
+  exportMetadata: async (fileId: string, fields?: string[]): Promise<Blob> => {
+    try {
+      const response = await api.get(`/files/${fileId}/metadata/export`, {
+        responseType: 'blob',
+        params: fields?.length ? { fields: fields.join(',') } : undefined,
+      })
+      return response.data as Blob
+    } catch (error) {
+      throw toApiError(error)
+    }
+  },
 
   fetchContent: async (fileId: string, deidentified = false): Promise<Blob> => {
     try {

@@ -171,12 +171,13 @@ class _PatientFields(BaseModel):
     @field_validator("original_file_path", mode="before")
     @classmethod
     def _strip_path(cls, value: Any) -> Any:
-        return value.strip() if isinstance(value, str) else value
+        """Whitespace is not a path -- store nothing rather than a blank."""
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
 
 
 class PatientCreate(_PatientFields):
-    original_file_path: str = Field(min_length=1)
-
     @model_validator(mode="after")
     def _require_an_identifier(self) -> "PatientCreate":
         if not patient_has_identity(self.model_dump()):
@@ -220,6 +221,18 @@ class PatientApplicationFile(BaseModel):
     description: Optional[str] = None
     file_path: str
     de_identified_file_path: Optional[str] = None
+    review_status: str = "pending"
+    review_note: Optional[str] = None
+
+
+REVIEW_STATUSES = ("pending", "approved", "rejected")
+
+
+class FileReview(BaseModel):
+    """A reviewer's verdict on one document."""
+
+    review_status: str = Field(pattern="^(approved|rejected)$")
+    review_note: Optional[str] = None
 
 
 class PatientApplicationFileUpdate(BaseModel):
@@ -232,6 +245,10 @@ class PatientApplicationFileUpdate(BaseModel):
     is_deidentified: Optional[bool] = None
     deidentified_file_name: Optional[str] = None
     de_identified_file_path: Optional[str] = None
+    review_status: Optional[str] = Field(
+        default=None, pattern="^(pending|approved|rejected)$"
+    )
+    review_note: Optional[str] = None
 
 
 class DeidentifiedFile(BaseModel):
@@ -284,22 +301,29 @@ class FileMetadataCreate(BaseModel):
 
 # ------------------------------------------------- patient applications
 
-APPLICATION_STATUSES = ("draft", "submitted", "approved", "rejected")
+APPLICATION_STATUSES = ("draft", "submitted", "approved", "rejected", "deleted")
+
+_STATUS_PATTERN = "^(draft|submitted|approved|rejected|deleted)$"
 
 
 class PatientApplicationCreate(BaseModel):
     """A new submission for a patient."""
 
     patient_id: str = Field(min_length=1)
-    status: str = Field(default="draft", pattern="^(draft|submitted|approved|rejected)$")
+    status: str = Field(default="draft", pattern=_STATUS_PATTERN)
     description: Optional[str] = None
 
 
 class PatientApplicationUpdate(BaseModel):
-    status: Optional[str] = Field(
-        default=None, pattern="^(draft|submitted|approved|rejected)$"
-    )
+    status: Optional[str] = Field(default=None, pattern=_STATUS_PATTERN)
     description: Optional[str] = None
+    status_reason: Optional[str] = None
+
+
+class StatusReason(BaseModel):
+    """Why an application is being rejected or deleted."""
+
+    reason: Optional[str] = None
 
 
 class PatientApplication(BaseModel):
@@ -315,6 +339,7 @@ class PatientApplication(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     reviewed_at: Optional[datetime] = None
+    status_reason: Optional[str] = None
 
 
 class AuditLogCreate(BaseModel):

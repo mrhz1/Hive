@@ -95,10 +95,13 @@ describe('patientFormSchema', () => {
     )
   })
 
-  it('requires an original file path', () => {
+  it('does not require an original file path', () => {
+    // The form no longer asks for it: a patient is created before
+    // anything has been uploaded for them, and the path is recorded
+    // from where the documents actually land in wizard step 2.
     expect(
       patientFormSchema.safeParse({ ...valid, original_file_path: '' }).success
-    ).toBe(false)
+    ).toBe(true)
   })
 
   it('accepts a record carrying only one of the three identifiers', () => {

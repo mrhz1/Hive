@@ -1,7 +1,8 @@
-import { Eye, FileJson, ShieldCheck } from 'lucide-react'
+import { Check, Eye, FileJson, ShieldCheck, X } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
+import { ReasonDialog } from '@/components/ReasonDialog'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Misc'
 import { FileMetadataModal } from '@/features/applications/FileMetadataModal'
@@ -10,6 +11,7 @@ import { FolderUpload } from '@/features/patients/FolderUpload'
 import {
   useApplicationFiles,
   useDeidentifyFile,
+  useReviewApplicationFile,
   useUploadApplicationFiles,
 } from '@/hooks/useResources'
 import { ApiError } from '@/lib/api/client'
@@ -20,13 +22,28 @@ import {
   formatFileSize,
   hasExtractableMetadata,
   isDeidInFlight,
+  reviewTone,
   type ApplicationFile,
 } from '@/schemas/applicationFile'
 
-export function FileReviewPanel({ applicationId }: { applicationId: string }) {
+/** The folder an upload landed in, from any one of its file paths. */
+function folderOf(filePath: string): string {
+  const cut = filePath.lastIndexOf('/')
+  return cut > 0 ? filePath.slice(0, cut) : filePath
+}
+
+export function FileReviewPanel({
+  applicationId,
+  onUploaded,
+}: {
+  applicationId: string
+  /** Where the batch landed. The wizard records it on the patient. */
+  onUploaded?: (folder: string) => void
+}) {
   const filesQuery = useApplicationFiles(applicationId)
   const upload = useUploadApplicationFiles(applicationId)
   const deidentify = useDeidentifyFile(applicationId)
+  const review = useReviewApplicationFile(applicationId)
 
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [viewing, setViewing] = useState<{
@@ -37,6 +54,7 @@ export function FileReviewPanel({ applicationId }: { applicationId: string }) {
 
   const [showingMetadataFor, setShowingMetadataFor] =
     useState<ApplicationFile | null>(null)
+  const [rejecting, setRejecting] = useState<ApplicationFile | null>(null)
 
   async function showFile(file: ApplicationFile, deidentified = false) {
     setOpeningId(file.id)
@@ -71,6 +89,24 @@ export function FileReviewPanel({ applicationId }: { applicationId: string }) {
       sortValue: (file) => file.original_file_name,
     },
     {
+      id: 'review',
+      header: 'Review',
+      cell: (file) => (
+        <div className="min-w-0">
+          <Badge tone={reviewTone(file.review_status)}>{file.review_status}</Badge>
+          {file.review_note ? (
+            <span
+              className="mt-1 block truncate text-xs text-[rgb(var(--foreground-muted))]"
+              title={file.review_note}
+            >
+              {file.review_note}
+            </span>
+          ) : null}
+        </div>
+      ),
+      sortValue: (file) => file.review_status,
+    },
+    {
       id: 'deid',
       header: 'De-identified',
       cell: (file) => (
@@ -91,9 +127,14 @@ export function FileReviewPanel({ applicationId }: { applicationId: string }) {
     <div className="space-y-6">
       <FolderUpload
         isUploading={upload.isPending}
-        onUpload={(files, description) =>
-          upload.mutateAsync({ files, ...(description ? { description } : {}) })
-        }
+        onUpload={async (files, description) => {
+          const created = await upload.mutateAsync({
+            files,
+            ...(description ? { description } : {}),
+          })
+          const first = created[0]
+          if (first && onUploaded) onUploaded(folderOf(first.file_path))
+        }}
       />
 
       <DataTable
@@ -150,6 +191,32 @@ export function FileReviewPanel({ applicationId }: { applicationId: string }) {
             >
               Show metadata
             </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              aria-label={`Approve ${file.original_file_name}`}
+              disabled={file.review_status === 'approved'}
+              isLoading={
+                review.isPending &&
+                review.variables?.fileId === file.id &&
+                review.variables?.reviewStatus === 'approved'
+              }
+              leadingIcon={<Check className="size-3.5" aria-hidden="true" />}
+              onClick={() =>
+                review.mutate({ fileId: file.id, reviewStatus: 'approved' })
+              }
+            >
+              Approve
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              aria-label={`Reject ${file.original_file_name}`}
+              leadingIcon={<X className="size-3.5" aria-hidden="true" />}
+              onClick={() => setRejecting(file)}
+            >
+              Reject
+            </Button>
           </>
         )}
       />
@@ -158,6 +225,27 @@ export function FileReviewPanel({ applicationId }: { applicationId: string }) {
         <FileMetadataModal
           file={showingMetadataFor}
           onClose={() => setShowingMetadataFor(null)}
+        />
+      ) : null}
+
+      {rejecting ? (
+        <ReasonDialog
+          title={`Reject ${rejecting.original_file_name}?`}
+          description="The reason is shown against the document, so whoever has to fix it knows what was wrong."
+          confirmLabel="Reject file"
+          placeholder="e.g. illegible, needs rescanning"
+          isBusy={review.isPending}
+          onCancel={() => setRejecting(null)}
+          onConfirm={(note) => {
+            void review
+              .mutateAsync({
+                fileId: rejecting.id,
+                reviewStatus: 'rejected',
+                note,
+              })
+              .then(() => setRejecting(null))
+              .catch(() => undefined)
+          }}
         />
       ) : null}
 

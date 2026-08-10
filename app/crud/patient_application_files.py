@@ -24,6 +24,8 @@ COLUMNS = (
     "description",
     "file_path",
     "de_identified_file_path",
+    "review_status",
+    "review_note",
 )
 
 _COLS = ", ".join(f"`{c}`" for c in COLUMNS)
@@ -74,6 +76,8 @@ def create_file(
             description,
             file_path,
             None,  # de_identified_file_path
+            "pending",  # review_status -- nobody has looked at it yet
+            None,  # review_note
         ),
     )
     log.info(

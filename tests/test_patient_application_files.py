@@ -127,6 +127,7 @@ def test_the_file_row_matches_the_cloudera_columns(as_admin, storage_root):
         "deidentified_file_name", "file_extension", "mime_type", "file_size",
         "deid_status", "is_deidentified", "created_at", "description",
         "file_path", "de_identified_file_path",
+        "review_status", "review_note",
     }
 
 
@@ -197,7 +198,12 @@ def test_deleting_an_application_removes_its_documents(as_admin, storage_root):
     on_disk = pathlib.Path(record["file_path"])
     assert on_disk.is_file()
 
-    assert as_admin.delete(f"/applications/{application_id}").status_code == 204
+    assert (
+        as_admin.delete(
+            f"/applications/{application_id}", params={"reason": "no longer needed"}
+        ).status_code
+        == 204
+    )
 
     assert as_admin.get(f"/files/{record['id']}").status_code == 404
     assert not on_disk.exists()
@@ -511,13 +517,85 @@ def test_file_access_uses_the_application_permissions(client, storage_root):
     assert client.post(f"/files/{record['id']}/deidentify").status_code == 403
 
 
-@pytest.mark.parametrize("method,path", [("post", "/files/{id}/review")])
-def test_the_per_file_review_endpoint_is_gone(as_admin, storage_root, method, path):
-    """Approval is recorded once, on the application."""
+
+
+def test_a_file_starts_undecided(as_admin, storage_root):
     application_id = _application(as_admin)
     record = _upload(as_admin, application_id).json()[0]
 
-    response = getattr(as_admin, method)(
-        path.format(id=record["id"]), json={"review_status": "approved"}
+    assert record["review_status"] == "pending"
+    assert record["review_note"] is None
+
+
+def test_approving_a_file(as_admin, storage_root):
+    application_id = _application(as_admin)
+    record = _upload(as_admin, application_id).json()[0]
+
+    response = as_admin.post(
+        f"/files/{record['id']}/review", json={"review_status": "approved"}
     )
-    assert response.status_code == 404
+
+    assert response.status_code == 200
+    assert response.json()["review_status"] == "approved"
+
+
+def test_rejecting_a_file_keeps_the_reason(as_admin, storage_root):
+    application_id = _application(as_admin)
+    record = _upload(as_admin, application_id).json()[0]
+
+    response = as_admin.post(
+        f"/files/{record['id']}/review",
+        json={"review_status": "rejected", "review_note": "illegible, rescan"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["review_status"] == "rejected"
+    assert response.json()["review_note"] == "illegible, rescan"
+
+
+def test_rejecting_without_a_reason_is_refused(as_admin, storage_root):
+    """'Rejected' with no reason gives whoever has to fix it nothing."""
+    application_id = _application(as_admin)
+    record = _upload(as_admin, application_id).json()[0]
+
+    for payload in (
+        {"review_status": "rejected"},
+        {"review_status": "rejected", "review_note": "   "},
+    ):
+        response = as_admin.post(f"/files/{record['id']}/review", json=payload)
+        assert response.status_code == 422, payload
+        assert "reason is required" in response.json()["error"]["detail"]
+
+
+def test_approving_clears_an_earlier_rejection_reason(as_admin, storage_root):
+    application_id = _application(as_admin)
+    record = _upload(as_admin, application_id).json()[0]
+
+    as_admin.post(
+        f"/files/{record['id']}/review",
+        json={"review_status": "rejected", "review_note": "wrong patient"},
+    )
+    approved = as_admin.post(
+        f"/files/{record['id']}/review", json={"review_status": "approved"}
+    ).json()
+
+    assert approved["review_status"] == "approved"
+    assert approved["review_note"] is None, "a stale rejection reason survived"
+
+
+def test_review_needs_application_update(client, storage_root):
+    admin = {"REMOTE-USER": ADMIN_USER}
+    patient_id = client.post(
+        "/patients", json=minimal_patient(), headers=admin
+    ).json()["id"]
+    application_id = client.post(
+        "/applications", json={"patient_id": patient_id}, headers=admin
+    ).json()["id"]
+    record = _upload(client, application_id, headers=admin).json()[0]
+
+    client.headers.update({"REMOTE-USER": VIEWER_USER})
+    response = client.post(
+        f"/files/{record['id']}/review", json={"review_status": "approved"}
+    )
+
+    assert response.status_code == 403

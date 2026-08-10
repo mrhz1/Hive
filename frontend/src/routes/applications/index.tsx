@@ -1,22 +1,24 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useCallback, useMemo, useState } from 'react'
-import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { DataTable, type Column } from '@/components/DataTable'
+import { ReasonDialog } from '@/components/ReasonDialog'
 import { Can, RequirePermission } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/Field'
 import { Badge, PageHeader } from '@/components/ui/Misc'
 import { usePermissions } from '@/hooks/useCurrentUser'
-import { useDeleteDialog } from '@/hooks/useDeleteDialog'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
   patientHooks,
   useApplications,
+  useRejectApplication,
   useDeleteApplication,
 } from '@/hooks/useResources'
 import { patientName, type Patient } from '@/schemas/patient'
 import {
   applicationTone,
+  canReject,
+  isDeleted,
   type PatientApplication,
 } from '@/schemas/patientApplication'
 
@@ -39,10 +41,10 @@ function ApplicationsList() {
   const { data, isLoading, isFetching, error } = useApplications()
   const patients = patientHooks.useList({ enabled: can('patient:view') })
   const remove = useDeleteApplication()
+  const reject = useRejectApplication()
 
-  const deleteDialog = useDeleteDialog<PatientApplication>((application) =>
-    remove.mutateAsync(application.id)
-  )
+  const [deleting, setDeleting] = useState<PatientApplication | null>(null)
+  const [rejecting, setRejecting] = useState<PatientApplication | null>(null)
 
   const patientsById = useMemo(() => {
     const index = new Map<string, Patient>()
@@ -164,29 +166,71 @@ function ApplicationsList() {
                   Open
                 </Button>
               </Can>
-              <Can permission="application:delete">
-                <Button
-                  size="sm"
-                  variant="danger"
-                  aria-label={`Delete application for ${labelFor(application)}`}
-                  onClick={() => deleteDialog.request(application)}
-                >
-                  Delete
-                </Button>
-              </Can>
+              {canReject(application.status) ? (
+                <Can permission="application:update">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label={`Reject application for ${labelFor(application)}`}
+                    onClick={() => setRejecting(application)}
+                  >
+                    Reject
+                  </Button>
+                </Can>
+              ) : null}
+              {isDeleted(application.status) ? null : (
+                <Can permission="application:delete">
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    aria-label={`Delete application for ${labelFor(application)}`}
+                    onClick={() => setDeleting(application)}
+                  >
+                    Delete
+                  </Button>
+                </Can>
+              )}
             </>
           ) : null
         }
       />
 
-      <ConfirmDeleteModal
-        open={deleteDialog.isOpen}
-        entityLabel="Application"
-        targetName={deleteDialog.target ? labelFor(deleteDialog.target) : undefined}
-        isDeleting={deleteDialog.isDeleting}
-        onCancel={deleteDialog.cancel}
-        onConfirm={() => void deleteDialog.confirm()}
-      />
+      {rejecting ? (
+        <ReasonDialog
+          title={`Reject the application for ${labelFor(rejecting)}?`}
+          description="The reason is kept on the record."
+          confirmLabel="Reject application"
+          placeholder="e.g. consent form missing"
+          isBusy={reject.isPending}
+          onCancel={() => setRejecting(null)}
+          onConfirm={(reason) => {
+            void reject
+              .mutateAsync({ id: rejecting.id, reason })
+              .then(() => setRejecting(null))
+              .catch(() => undefined)
+          }}
+        />
+      ) : null}
+
+      {deleting ? (
+        <ReasonDialog
+          title={`Delete the documents for ${labelFor(deleting)}?`}
+          description={
+            'The documents are removed for good. The application itself is ' +
+            'kept and marked deleted, with the reason you give here.'
+          }
+          confirmLabel="Delete documents"
+          placeholder="e.g. duplicate submission"
+          isBusy={remove.isPending}
+          onCancel={() => setDeleting(null)}
+          onConfirm={(reason) => {
+            void remove
+              .mutateAsync({ id: deleting.id, reason })
+              .then(() => setDeleting(null))
+              .catch(() => undefined)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

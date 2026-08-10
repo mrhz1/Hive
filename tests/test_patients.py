@@ -123,17 +123,34 @@ def test_blank_identifiers_do_not_count_as_present(as_admin):
     assert response.status_code == 422
 
 
-def test_missing_source_document_is_a_422_naming_the_field(as_admin):
-    for payload in (
-        {"fstname": "Jane"},
-        {"fstname": "Jane", "original_file_path": ""},
-        # Whitespace is not a path, and must not slip past a length check.
-        {"fstname": "Jane", "original_file_path": "   "},
-    ):
-        response = as_admin.post("/patients", json=payload)
-        assert response.status_code == 422, response.text
-        fields = response.json()["error"]["fields"]
-        assert any(f["loc"][-1] == "original_file_path" for f in fields), fields
+def test_a_patient_can_be_created_before_any_documents_exist(as_admin):
+    """The source path is no longer asked for at creation."""
+    response = as_admin.post("/patients", json={"fstname": "Jane"})
+
+    assert response.status_code == 201, response.text
+    assert response.json()["original_file_path"] is None
+
+
+def test_a_blank_source_path_is_stored_as_nothing(as_admin):
+    """Whitespace is not a path, and must not be kept as if it were."""
+    for value in ("", "   "):
+        response = as_admin.post(
+            "/patients", json={"fstname": "Jane", "original_file_path": value}
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["original_file_path"] is None
+
+
+def test_the_source_path_can_still_be_set_afterwards(as_admin):
+    """Which is what the wizard does once the upload folder is known."""
+    created = as_admin.post("/patients", json={"fstname": "Jane"}).json()
+
+    updated = as_admin.put(
+        f"/patients/{created['id']}",
+        json={"original_file_path": "/storage/A7K2P9-20260810T121500Z"},
+    ).json()
+
+    assert updated["original_file_path"] == "/storage/A7K2P9-20260810T121500Z"
 
 
 def test_blank_strings_are_stored_as_null(as_admin):

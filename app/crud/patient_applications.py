@@ -26,6 +26,7 @@ COLUMNS = (
     "description",
     "created_by_id",
     "updated_by_id",
+    "status_reason",
 )
 
 TIMESTAMP_COLUMNS = frozenset(
@@ -103,6 +104,7 @@ def create_application(
         "created_at": NOW,
         "updated_at": NOW,
         "reviewed_at": None,
+        "status_reason": None,
     }
 
     values, params = [], []
