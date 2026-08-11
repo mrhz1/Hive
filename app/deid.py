@@ -59,7 +59,15 @@ class DeidError(Exception):
 
 
 def _failure_detail(stderr: str, stdout: str) -> str:
-    """The most useful ~500 characters of a failed run's output."""
+    """The most useful ~500 characters of a failed run's output.
+
+    Error lines only, where there are any. That is not just for brevity:
+    the NLP stage's dependencies quote the document into their warnings
+    (`UserWarning: Skipping annotation ... for doc '<the document>'`),
+    so forwarding a failed run's output wholesale puts patient names in
+    the log -- re-leaking exactly what the pipeline removed. See the
+    gotchas in OCR/README.md.
+    """
     text = (stderr or stdout or "").strip()
     errors = [
         line
@@ -142,13 +150,13 @@ def _run_pipeline(source: Path, output_dir: Path) -> Path:
         ) from exc
 
     if completed.returncode != 0:
+        detail = _failure_detail(completed.stderr, completed.stdout)
+        # Filtered and bounded, never the raw streams -- see _failure_detail.
         log.error(
             "deid_subprocess_failed",
             returncode=completed.returncode,
-            stderr=(completed.stderr or "").strip(),
-            stdout=(completed.stdout or "").strip(),
+            detail=detail,
         )
-        detail = _failure_detail(completed.stderr, completed.stdout)
         raise DeidError(f"De-identification failed (exit {completed.returncode}): {detail}")
 
     produced = output_dir / f"{source.stem}{DEID_SUFFIX}{deid_output_extension(source.suffix)}"

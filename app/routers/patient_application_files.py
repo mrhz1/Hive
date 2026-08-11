@@ -19,6 +19,7 @@ from app.deid import (
     queued_status,
 )
 from app.errors import NotFoundError, ValidationError
+from app.access_log import DOWNLOAD, EXPORT, READ, record_access
 from app.filetype import SNIFF_BYTES, resolve_extension
 from app.logging_setup import get_logger
 from app.preview import read_word_document, render_dicom_png
@@ -248,14 +249,19 @@ def get_application_file(
 def get_application_file_metadata(
     file_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:view")),
+    actor: User = Depends(require_permission("application:view")),
 ):
     """The metadata extracted at upload time."""
-    crud.get_file_or_404(cursor, file_id)
+    document = crud.get_file_or_404(cursor, file_id)
 
     record = metadata_crud.get_metadata_for_file(cursor, file_id)
     if record is None:
         raise NotFoundError(f"No metadata recorded for file '{file_id}'")
+
+    # The original's own metadata: names, MRNs, whatever the format held.
+    _record_file_access(
+        cursor, document, actor, READ, deidentified=False, detail="metadata"
+    )
     return record
 
 
@@ -264,10 +270,10 @@ def export_application_file_metadata(
     file_id: str,
     fields: Optional[str] = None,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:view")),
+    actor: User = Depends(require_permission("application:view")),
 ):
     """The metadata as an Excel workbook."""
-    crud.get_file_or_404(cursor, file_id)
+    document = crud.get_file_or_404(cursor, file_id)
 
     record = metadata_crud.get_metadata_for_file(cursor, file_id)
     if record is None:
@@ -288,6 +294,16 @@ def export_application_file_metadata(
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     name = f"metadata-{file_id[:8]}-{stamp}.xlsx"
 
+    _record_file_access(
+        cursor,
+        document,
+        actor,
+        EXPORT,
+        deidentified=False,
+        record_count=len(items),
+        detail=name,
+    )
+
     return Response(
         content=content,
         media_type=(
@@ -302,7 +318,7 @@ def download_application_file(
     file_id: str,
     deidentified: bool = False,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:view")),
+    actor: User = Depends(require_permission("application:view")),
 ):
     """Serves the bytes."""
     record = crud.get_file_or_404(cursor, file_id)
@@ -319,11 +335,49 @@ def download_application_file(
     if not path.is_file():
         raise ValidationError("The stored file is missing from disk")
 
+    _record_file_access(
+        cursor,
+        record,
+        actor,
+        DOWNLOAD,
+        deidentified=deidentified,
+        byte_count=record.file_size,
+        detail=filename,
+    )
+
     return FileResponse(
         path,
         media_type=record.mime_type,
         filename=filename,
         content_disposition_type="inline",
+    )
+
+
+def _patient_of(cursor, application_id: str) -> Optional[str]:
+    """Whose application this is, for the access record.
+
+    One extra SELECT per read. Denormalising `patient_id` onto the file
+    row would remove it, at the cost of a column that can drift.
+    """
+    application = applications_crud.get_application(cursor, application_id)
+    return getattr(application, "patient_id", None)
+
+
+def _record_file_access(
+    cursor, record, actor, action: str, *, deidentified: bool, **extra
+) -> None:
+    """One access event for a file, with what only this layer knows."""
+    record_access(
+        action,
+        actor=actor,
+        resource_type="application_file",
+        resource_id=record.id,
+        patient_id=_patient_of(cursor, record.application_id),
+        application_id=record.application_id,
+        # The same endpoints serve the original and the redacted copy;
+        # only one of those is a disclosure.
+        identified=not deidentified,
+        **extra,
     )
 
 
@@ -366,7 +420,7 @@ def preview_application_file_image(
     frame: int = 0,
     deidentified: bool = False,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:view")),
+    actor: User = Depends(require_permission("application:view")),
 ):
     """One DICOM frame as a PNG, so a browser can show it."""
     record = crud.get_file_or_404(cursor, file_id)
@@ -375,6 +429,9 @@ def preview_application_file_image(
     if extension not in ("dcm", "dicom"):
         raise ValidationError(f"'{extension}' files are not rendered as images")
 
+    _record_file_access(
+        cursor, record, actor, READ, deidentified=deidentified, detail=f"frame {frame}"
+    )
     return _dicom_response(path, frame)
 
 
@@ -383,7 +440,7 @@ def preview_application_file_text(
     file_id: str,
     deidentified: bool = False,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:view")),
+    actor: User = Depends(require_permission("application:view")),
 ):
     """A Word document's text, for a browser that would otherwise download it."""
     record = crud.get_file_or_404(cursor, file_id)
@@ -392,6 +449,7 @@ def preview_application_file_text(
     if extension not in ("doc", "docx"):
         raise ValidationError(f"'{extension}' files are not rendered as text")
 
+    _record_file_access(cursor, record, actor, READ, deidentified=deidentified)
     return read_word_document(path)
 
 

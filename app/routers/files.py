@@ -13,6 +13,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 
+from app.access_log import DOWNLOAD, READ, record_access
 from app.audit import record_audit
 from app.crud import patient_application_files as crud
 from app.crud import patient_applications as applications_crud
@@ -108,7 +109,7 @@ def get_deidentified_file(
 def download_deidentified_file(
     file_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("files:download")),
+    actor: User = Depends(require_permission("files:download")),
 ):
     """The redacted bytes. Never the original -- this library does not expose it."""
     record = crud.get_file_or_404(cursor, file_id)
@@ -119,6 +120,8 @@ def download_deidentified_file(
     if not path.is_file():
         raise ValidationError("The de-identified file is missing from disk")
 
+    _record_library_access(cursor, record, actor, DOWNLOAD)
+
     return FileResponse(
         path,
         media_type=record.mime_type,
@@ -127,9 +130,25 @@ def download_deidentified_file(
     )
 
 
+def _record_library_access(cursor, record, actor, action: str) -> None:
+    """This library only ever serves redacted copies, so identified=False."""
+    application = applications_crud.get_application(cursor, record.application_id)
+    record_access(
+        action,
+        actor=actor,
+        resource_type="deidentified_file",
+        resource_id=record.id,
+        patient_id=getattr(application, "patient_id", None),
+        application_id=record.application_id,
+        identified=False,
+        byte_count=record.file_size,
+        detail=record.deidentified_file_name,
+    )
+
+
 def _redacted_path(cursor, file_id: str):
-    """The redacted copy and how to read it. Never the original -- this
-    library does not expose it, and neither do its previews."""
+    """The record, its redacted copy and how to read it. Never the
+    original -- this library does not expose it, nor do its previews."""
     record = crud.get_file_or_404(cursor, file_id)
     if not record.de_identified_file_path:
         raise ValidationError("This file has not been de-identified yet")
@@ -139,7 +158,7 @@ def _redacted_path(cursor, file_id: str):
         raise ValidationError("The de-identified file is missing from disk")
 
     extension = (record.file_extension or "").lower()
-    return path, ("docx" if extension in ("doc", "docx") else extension)
+    return record, path, ("docx" if extension in ("doc", "docx") else extension)
 
 
 @router.get("/{file_id}/image")
@@ -147,14 +166,17 @@ def preview_deidentified_image(
     file_id: str,
     frame: int = 0,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("files:download")),
+    actor: User = Depends(require_permission("files:download")),
 ):
     """One DICOM frame of the redacted copy, as a PNG."""
-    path, extension = _redacted_path(cursor, file_id)
+    record, path, extension = _redacted_path(cursor, file_id)
     if extension not in ("dcm", "dicom"):
         raise ValidationError(f"'{extension}' files are not rendered as images")
 
     content, frames = render_dicom_png(path, frame)
+    # After the render, so a refused or failed request is not recorded as
+    # a read that happened.
+    _record_library_access(cursor, record, actor, READ)
     return Response(
         content=content,
         media_type="image/png",
@@ -169,14 +191,16 @@ def preview_deidentified_image(
 def preview_deidentified_text(
     file_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("files:download")),
+    actor: User = Depends(require_permission("files:download")),
 ):
     """The redacted Word document's text."""
-    path, extension = _redacted_path(cursor, file_id)
+    record, path, extension = _redacted_path(cursor, file_id)
     if extension not in ("doc", "docx"):
         raise ValidationError(f"'{extension}' files are not rendered as text")
 
-    return read_word_document(path)
+    document = read_word_document(path)
+    _record_library_access(cursor, record, actor, READ)
+    return document
 
 
 async def _read_upload(upload: UploadFile) -> bytes:

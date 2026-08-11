@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { createCrudHooks, errorMessage } from './createCrudHooks'
 import {
+  accessLogsApi,
   applicationsApi,
   applicationFilesApi,
   deidentifiedFilesApi,
@@ -14,6 +15,7 @@ import {
   type ApplicationPayload,
 } from '@/lib/api/resources'
 import { queryKeys } from '@/lib/queryKeys'
+import type { AccessLogFilters } from '@/schemas/accessLog'
 import type { AuditLogFilters } from '@/schemas/log'
 import type { FileMetadataFilters } from '@/schemas/fileMetadata'
 import {
@@ -435,6 +437,16 @@ export function useAuditLogs(filters: AuditLogFilters = {}, enabled = true) {
     queryKey: queryKeys.logs.list(filters),
     queryFn: () => logsApi.list(filters),
     enabled,
+  })
+}
+
+/** Who saw what. Bound the dates: they select Hive partitions. */
+export function useAccessLogs(filters: AccessLogFilters = {}, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.accessLogs.list(filters),
+    queryFn: () => accessLogsApi.list(filters),
+    enabled,
+    placeholderData: (previous) => previous,
   })
 }
 

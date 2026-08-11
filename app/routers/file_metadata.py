@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, Response
 from app.crud import file_metadata as crud
 from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as applications_crud
+from app.access_log import EXPORT, READ, record_access
 from app.db import get_cursor
 from app.logging_setup import get_logger
 from app.schemas import FileMetadataRow, User
@@ -115,7 +116,7 @@ def list_file_metadata(
     file_type: Optional[str] = None,
     patient_id: Optional[str] = None,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:view")),
+    actor: User = Depends(require_permission("application:view")),
 ):
     """Extracted metadata across every document, newest first."""
     rows = _filtered(
@@ -123,6 +124,13 @@ def list_file_metadata(
         patient_id=patient_id,
     )
     log.info("file_metadata_listed", count=len(rows), search=search or "")
+    record_access(
+        READ,
+        actor=actor,
+        resource_type="file_metadata",
+        record_count=len(rows),
+        detail=f"search={search or ''}",
+    )
     return rows
 
 
@@ -154,7 +162,7 @@ def export_file_metadata(
     file_type: Optional[str] = None,
     patient_id: Optional[str] = None,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:view")),
+    actor: User = Depends(require_permission("application:view")),
 ):
     """The filtered table as an Excel workbook.
 
@@ -179,6 +187,15 @@ def export_file_metadata(
     name = f"file-metadata-{stamp}.xlsx"
 
     log.info("file_metadata_exported", count=len(rows), fields=len(keys))
+    # The bulk path: this is what walks out of the door in one click.
+    record_access(
+        EXPORT,
+        actor=actor,
+        resource_type="file_metadata",
+        record_count=len(rows),
+        identified=True,
+        detail=f"search={search or ''} status={status or ''} type={file_type or ''}",
+    )
 
     return Response(
         content=content,

@@ -91,8 +91,18 @@ def list_audit_logs(
     cursor,
     entity_type: Optional[str] = None,
     entity_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    action: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     limit: int = 100,
 ) -> List[AuditLog]:
+    """Filtered change events, newest first.
+
+    `user_id` and the date bounds are what make this answer "what did
+    this person do, and when" -- the question an access review and an
+    incident both start from, and which this could not be asked before.
+    """
     where, params = [], []
     if entity_type:
         where.append("`entity_type` = %s")
@@ -100,6 +110,19 @@ def list_audit_logs(
     if entity_id:
         where.append("`entity_id` = %s")
         params.append(entity_id)
+    if user_id:
+        where.append("`user_id` = %s")
+        params.append(user_id)
+    if action:
+        where.append("`action` = %s")
+        params.append(action)
+    if date_from:
+        where.append("`created_at` >= %s")
+        params.append(date_from)
+    if date_to:
+        # Inclusive of the whole day the caller named.
+        where.append("`created_at` < %s")
+        params.append(f"{date_to} 23:59:59.999")
 
     sql = f"SELECT {_COLS} FROM `audit_logs`"
     if where:

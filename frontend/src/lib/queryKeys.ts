@@ -1,4 +1,5 @@
 import type { FileMetadataFilters } from '@/schemas/fileMetadata'
+import type { AccessLogFilters } from '@/schemas/accessLog'
 import type { AuditLogFilters } from '@/schemas/log'
 
 export const queryKeys = {
@@ -27,6 +28,12 @@ export const queryKeys = {
     list: (filters: AuditLogFilters = {}) =>
       [...queryKeys.logs.all, 'list', filters] as const,
     detail: (id: string) => [...queryKeys.logs.all, 'detail', id] as const,
+  },
+
+  accessLogs: {
+    all: ['access-logs'] as const,
+    list: (filters: AccessLogFilters = {}) =>
+      [...queryKeys.accessLogs.all, 'list', filters] as const,
   },
 
   applications: {

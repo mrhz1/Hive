@@ -454,6 +454,32 @@ class AuditLogCreate(BaseModel):
     new_values: Optional[dict] = None
 
 
+class AccessLog(BaseModel):
+    """One row of the access trail -- who saw what, or was refused it."""
+
+    id: str
+    occurred_at: datetime
+    action: str
+    outcome: str
+    actor_id: Optional[str] = None
+    actor_username: Optional[str] = None
+    actor_role: Optional[str] = None
+    source_ip: Optional[str] = None
+    user_agent: Optional[str] = None
+    request_id: Optional[str] = None
+    method: Optional[str] = None
+    path: Optional[str] = None
+    resource_type: Optional[str] = None
+    resource_id: Optional[str] = None
+    patient_id: Optional[str] = None
+    application_id: Optional[str] = None
+    # Whether identified PHI left, as opposed to a redacted copy.
+    identified: Optional[bool] = None
+    record_count: Optional[int] = None
+    byte_count: Optional[int] = None
+    detail: Optional[str] = None
+
+
 class AuditLog(BaseModel):
     id: str
     action: str

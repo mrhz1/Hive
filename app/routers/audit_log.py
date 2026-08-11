@@ -24,12 +24,24 @@ def create_audit_log(
 def list_audit_logs(
     entity_type: Optional[str] = Query(default=None),
     entity_id: Optional[str] = Query(default=None),
+    user_id: Optional[str] = Query(default=None, description="Who did it."),
+    action: Optional[str] = Query(default=None, description="CREATE / UPDATE / DELETE."),
+    date_from: Optional[str] = Query(default=None, description="YYYY-MM-DD, inclusive."),
+    date_to: Optional[str] = Query(default=None, description="YYYY-MM-DD, inclusive."),
     limit: int = Query(default=100, ge=1, le=1000),
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("log:view")),
 ):
+    """Changes, filtered. See also GET /access-logs for who *read* what."""
     return crud.list_audit_logs(
-        cursor, entity_type=entity_type, entity_id=entity_id, limit=limit
+        cursor,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        user_id=user_id,
+        action=action,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
     )
 
 

@@ -457,6 +457,21 @@ the application, and the one emailed about its uploads) and
 documents came from — per application, because a second application for
 the same patient routinely draws on a different folder).
 
+**`access_logs` is a new table, not a new column**, so `migrate_columns.py`
+does not create it. Create it by hand from `sql/schema.sql` on an existing
+database — it is partitioned by day, and that cannot be retrofitted later
+without rewriting the table:
+
+```sql
+CREATE TABLE `access_logs` (...) PARTITIONED BY (`event_date` STRING)
+STORED AS ORC TBLPROPERTIES ('transactional'='true');
+```
+
+Then revoke `UPDATE` and `DELETE` on both trails from the application's
+principal. The app only ever appends; nothing in the code needs those
+grants, and taking them away is the only thing that makes the trail
+tamper-resistant rather than merely append-by-convention.
+
 Existing rows read NULL for a new column, which the API treats as
 `pending`/no reason, so nothing needs backfilling.
 

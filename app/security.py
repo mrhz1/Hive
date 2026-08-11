@@ -2,6 +2,7 @@
 import structlog
 from fastapi import Depends, Request
 
+from app.access_log import AUTH_FAILURE, DENIED, FAILURE, record_access
 from app.crud.users import _find_by_username
 from app.db import get_cursor
 from app.errors import AuthError, PermissionDeniedError
@@ -29,6 +30,9 @@ def _current_username(request: Request) -> str:
     """The authenticated principal, as the platform handed it over."""
     username = request.headers.get("REMOTE-USER")
     if not username:
+        record_access(
+            AUTH_FAILURE, outcome=FAILURE, detail="missing REMOTE-USER header"
+        )
         raise AuthError("Missing REMOTE-USER header")
     return username
 
@@ -40,8 +44,20 @@ def get_current_user(
     """Resolves the acting user, with role_name + permissions already joined in by crud.users."""
     user = _find_by_username(cursor, username)
     if user is None:
+        record_access(
+            AUTH_FAILURE,
+            outcome=FAILURE,
+            actor_username=username,
+            detail="unknown user",
+        )
         raise AuthError(f"Unknown user '{username}'")
     if not user.is_active:
+        record_access(
+            AUTH_FAILURE,
+            outcome=FAILURE,
+            actor_username=username,
+            detail="inactive user",
+        )
         raise AuthError(f"User '{username}' is inactive")
 
     structlog.contextvars.bind_contextvars(actor_id=user.id, actor_role=user.role_name)
@@ -57,6 +73,16 @@ def require_permission(permission: str):
                 "permission_denied",
                 required=permission,
                 granted=current_user.permissions,
+            )
+            # One denial is somebody clicking the wrong thing; fifteen in
+            # a minute across different resources is enumeration, and
+            # that is only visible if each one is recorded.
+            record_access(
+                DENIED,
+                outcome=DENIED,
+                actor=current_user,
+                resource_type="permission",
+                resource_id=permission,
             )
             raise PermissionDeniedError(
                 f"Permission '{permission}' is required for this operation"

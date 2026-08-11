@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as AccessLogsIndexRouteImport } from './routes/access-logs/index'
 import { Route as ApplicationsIndexRouteImport } from './routes/applications/index'
 import { Route as ApplicationsApplicationIdRouteImport } from './routes/applications/$applicationId'
 import { Route as ApplicationsNewRouteImport } from './routes/applications/new'
@@ -36,6 +37,11 @@ const IndexRoute = IndexRouteImport.update({
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccessLogsIndexRoute = AccessLogsIndexRouteImport.update({
+  id: '/access-logs/',
+  path: '/access-logs/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApplicationsIndexRoute = ApplicationsIndexRouteImport.update({
@@ -129,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/patients/new': typeof PatientsNewRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
+  '/access-logs/': typeof AccessLogsIndexRoute
   '/applications/': typeof ApplicationsIndexRoute
   '/files/': typeof FilesIndexRoute
   '/logs/': typeof LogsIndexRoute
@@ -149,6 +156,7 @@ export interface FileRoutesByTo {
   '/patients/new': typeof PatientsNewRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
+  '/access-logs': typeof AccessLogsIndexRoute
   '/applications': typeof ApplicationsIndexRoute
   '/files': typeof FilesIndexRoute
   '/logs': typeof LogsIndexRoute
@@ -170,6 +178,7 @@ export interface FileRoutesById {
   '/patients/new': typeof PatientsNewRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
+  '/access-logs/': typeof AccessLogsIndexRoute
   '/applications/': typeof ApplicationsIndexRoute
   '/files/': typeof FilesIndexRoute
   '/logs/': typeof LogsIndexRoute
@@ -192,6 +201,7 @@ export interface FileRouteTypes {
     | '/patients/new'
     | '/roles/new'
     | '/users/new'
+    | '/access-logs/'
     | '/applications/'
     | '/files/'
     | '/logs/'
@@ -212,6 +222,7 @@ export interface FileRouteTypes {
     | '/patients/new'
     | '/roles/new'
     | '/users/new'
+    | '/access-logs'
     | '/applications'
     | '/files'
     | '/logs'
@@ -232,6 +243,7 @@ export interface FileRouteTypes {
     | '/patients/new'
     | '/roles/new'
     | '/users/new'
+    | '/access-logs/'
     | '/applications/'
     | '/files/'
     | '/logs/'
@@ -253,6 +265,7 @@ export interface RootRouteChildren {
   PatientsNewRoute: typeof PatientsNewRoute
   RolesNewRoute: typeof RolesNewRoute
   UsersNewRoute: typeof UsersNewRoute
+  AccessLogsIndexRoute: typeof AccessLogsIndexRoute
   ApplicationsIndexRoute: typeof ApplicationsIndexRoute
   FilesIndexRoute: typeof FilesIndexRoute
   LogsIndexRoute: typeof LogsIndexRoute
@@ -279,6 +292,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/access-logs/': {
+      id: '/access-logs/'
+      path: '/access-logs'
+      fullPath: '/access-logs/'
+      preLoaderRoute: typeof AccessLogsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/applications/': {
@@ -405,6 +425,7 @@ const rootRouteChildren: RootRouteChildren = {
   PatientsNewRoute: PatientsNewRoute,
   RolesNewRoute: RolesNewRoute,
   UsersNewRoute: UsersNewRoute,
+  AccessLogsIndexRoute: AccessLogsIndexRoute,
   ApplicationsIndexRoute: ApplicationsIndexRoute,
   FilesIndexRoute: FilesIndexRoute,
   LogsIndexRoute: LogsIndexRoute,
