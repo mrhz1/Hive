@@ -7,7 +7,6 @@ from app.errors import ConflictError, NotFoundError, ValidationError
 from app.ids import new_patient_id
 from app.logging_setup import get_logger
 from app.schemas import (
-    PATIENT_FILE_REQUIRED,
     PATIENT_IDENTIFIERS,
     PATIENT_IDENTITY_REQUIRED,
     Patient,
@@ -167,8 +166,6 @@ def update_patient(cursor, patient_id: str, payload: PatientUpdate) -> Patient:
     merged = {**existing.model_dump(), **fields}
     if not patient_has_identity(merged):
         raise ValidationError(PATIENT_IDENTITY_REQUIRED)
-    if not merged.get("original_file_path"):
-        raise ValidationError(PATIENT_FILE_REQUIRED)
 
     changed = {
         column: value

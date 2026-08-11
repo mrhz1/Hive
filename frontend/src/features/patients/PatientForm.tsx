@@ -2,6 +2,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { type ReactNode } from 'react'
 import { FormLayout, FullWidth } from '@/components/FormLayout'
 import { TextField } from '@/components/ui/Field'
+import { FolderPathField } from '@/features/patients/FolderPathField'
 import { applyServerErrors, useApiForm } from '@/hooks/useApiForm'
 import { patientHooks } from '@/hooks/useResources'
 import {
@@ -34,11 +35,18 @@ export function PatientForm({
   onSaved,
   cancelTo = '/patients',
   submitLabel,
+  showFilePath = true,
 }: {
   patient?: Patient
   onSaved?: (patient: Patient) => void | Promise<void>
   cancelTo?: string
   submitLabel?: string
+  /**
+   * The patient's own default folder, optional. The wizard hides it and
+   * asks for a folder of its own instead -- that one belongs to the
+   * application and is required there.
+   */
+  showFilePath?: boolean
 }) {
   const mode = patient ? 'edit' : 'create'
   const navigate = useNavigate()
@@ -54,6 +62,8 @@ export function PatientForm({
     register,
     handleSubmit,
     setError,
+    setValue,
+    watch,
     formState: { errors },
   } = form
 
@@ -259,6 +269,22 @@ export function PatientForm({
         error={errors.dt_reg?.message}
         {...register('dt_reg')}
       />
+
+      {showFilePath ? (
+        <FullWidth>
+          <FolderPathField
+            label="Source folder"
+            value={watch('original_file_path') ?? ''}
+            files={[]}
+            disabled={isSubmitting}
+            onSelect={(path) =>
+              setValue('original_file_path', path, { shouldDirty: true })
+            }
+            error={errors.original_file_path?.message}
+            hint="Optional. Where this patient's documents usually come from -- an application picks its own folder, which may be a different one."
+          />
+        </FullWidth>
+      ) : null}
     </FormLayout>
   )
 }

@@ -175,14 +175,19 @@ export type ApplicationPayload = {
   description?: string | null
   /** '' from the assignee <select> means "nobody"; the API wants null. */
   assigned_to_id?: string | null
+  original_file_path?: string | null
 }
 
+/** Blank means "not set", which the API spells as null. */
 function toApplicationPayload(values: ApplicationPayload) {
-  if (!('assigned_to_id' in values)) return values
-  return {
-    ...values,
-    assigned_to_id: values.assigned_to_id || null,
+  const payload: ApplicationPayload = { ...values }
+  if ('assigned_to_id' in values) {
+    payload.assigned_to_id = values.assigned_to_id || null
   }
+  if ('original_file_path' in values) {
+    payload.original_file_path = values.original_file_path?.trim() || null
+  }
+  return payload
 }
 
 export const applicationsApi = {

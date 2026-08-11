@@ -111,7 +111,11 @@ PATIENT_IDENTIFIERS = ("fstname", "lstname", "ptemail")
 PATIENT_IDENTITY_REQUIRED = (
     "At least one of fstname, lstname or ptemail is required"
 )
-PATIENT_FILE_REQUIRED = "original_file_path is required"
+
+# A patient's own source folder is optional: it is a default, and the
+# folder that matters belongs to an application (a second application for
+# the same patient routinely draws on a different one).
+APPLICATION_FILE_REQUIRED = "original_file_path is required"
 
 
 def patient_has_identity(values: Mapping[str, Any]) -> bool:
@@ -376,10 +380,12 @@ class PatientApplicationCreate(BaseModel):
     description: Optional[str] = None
     # Who is to work on it. Upload notifications go to this user.
     assigned_to_id: Optional[str] = None
+    # Where this application's documents came from.
+    original_file_path: Optional[str] = None
 
-    @field_validator("assigned_to_id", mode="before")
+    @field_validator("assigned_to_id", "original_file_path", mode="before")
     @classmethod
-    def _blank_assignee_to_null(cls, value: Any) -> Any:
+    def _blank_to_null(cls, value: Any) -> Any:
         """An empty <select> means unassigned, not a user whose id is ''."""
         if isinstance(value, str) and not value.strip():
             return None
@@ -391,10 +397,11 @@ class PatientApplicationUpdate(BaseModel):
     description: Optional[str] = None
     status_reason: Optional[str] = None
     assigned_to_id: Optional[str] = None
+    original_file_path: Optional[str] = None
 
-    @field_validator("assigned_to_id", mode="before")
+    @field_validator("assigned_to_id", "original_file_path", mode="before")
     @classmethod
-    def _blank_assignee_to_null(cls, value: Any) -> Any:
+    def _blank_to_null(cls, value: Any) -> Any:
         if isinstance(value, str) and not value.strip():
             return None
         return value
@@ -421,6 +428,7 @@ class PatientApplication(BaseModel):
     reviewed_at: Optional[datetime] = None
     status_reason: Optional[str] = None
     assigned_to_id: Optional[str] = None
+    original_file_path: Optional[str] = None
 
 
 class AuditLogCreate(BaseModel):

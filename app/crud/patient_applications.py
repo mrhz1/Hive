@@ -28,6 +28,7 @@ COLUMNS = (
     "updated_by_id",
     "status_reason",
     "assigned_to_id",
+    "original_file_path",
 )
 
 TIMESTAMP_COLUMNS = frozenset(
@@ -107,6 +108,7 @@ def create_application(
         "reviewed_at": None,
         "status_reason": None,
         "assigned_to_id": payload.assigned_to_id,
+        "original_file_path": payload.original_file_path,
     }
 
     values, params = [], []

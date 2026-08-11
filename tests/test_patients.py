@@ -277,21 +277,26 @@ def test_update_can_clear_an_identifier_while_another_remains(as_admin):
     assert updated.json()["lstname"] == "Doe"
 
 
-def test_update_cannot_clear_the_source_document(as_admin):
+def test_a_patients_source_folder_is_optional(as_admin):
+    """It is a default, nothing more: the folder that matters belongs to
+    an application, and a second application for the same patient
+    routinely draws on a different one. Requiring it here made the
+    wizard's own 'save and continue' unsatisfiable, because the form it
+    posts does not carry the field."""
     created = as_admin.post("/patients", json=minimal_patient()).json()
 
-    # Blank is refused by the field constraint, null by the merged check.
-    assert (
-        as_admin.put(
-            f"/patients/{created['id']}", json={"original_file_path": ""}
-        ).status_code
-        == 422
-    )
     response = as_admin.put(
         f"/patients/{created['id']}", json={"original_file_path": None}
     )
-    assert response.status_code == 422
-    assert "original_file_path" in response.json()["error"]["detail"]
+
+    assert response.status_code == 200, response.text
+    assert response.json()["original_file_path"] is None
+
+
+def test_a_patient_can_be_created_without_a_source_folder(as_admin):
+    response = as_admin.post("/patients", json={"fstname": "Jane"})
+
+    assert response.status_code == 201, response.text
 
 
 def test_unknown_patient_is_a_404(as_admin):
