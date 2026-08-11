@@ -47,6 +47,22 @@ python-docx==1.1.2
 # extraction degrades back to that same 'failed' row rather than erroring.
 olefile==0.47
 
+# Rendering for the viewer (app/preview.py): a browser downloads a DICOM
+# and a Word document rather than displaying them, so the API turns a
+# DICOM frame into a PNG and a .docx into text.
+#
+# pydicom decodes only uncompressed and RLE pixel data by itself, and
+# most PACS studies are compressed -- these are the same decoders the
+# OCR job needs, for the same reason. See OCR/requirements-ocr.txt.
+#
+# This is still not the ML stack: numpy and pillow are array and image
+# plumbing, not inference, and nothing here OCRs anything.
+numpy>=1.24,<2.4
+pillow>=10.0.0
+pylibjpeg>=2.0
+pylibjpeg-libjpeg>=2.1     # JPEG, JPEG Lossless, JPEG-LS
+pylibjpeg-openjpeg>=2.2    # JPEG 2000, HTJ2K
+
 # Stamps the patient id onto de-identified PDFs when an application is
 # submitted (app/stamp.py).
 #

@@ -107,6 +107,42 @@ export function metadataTone(status: string): 'success' | 'danger' | 'neutral' {
   return 'neutral'
 }
 
+// -------------------------------------------------------------- previews
+
+/**
+ * How a format is shown. A PDF an <iframe> renders on its own; the other
+ * two need the API to turn them into something a browser will display,
+ * and anything else is only ever a download.
+ */
+export type PreviewKind = 'pdf' | 'image' | 'text' | 'download'
+
+const IMAGE_EXTENSIONS = new Set(['dcm', 'dicom'])
+const TEXT_EXTENSIONS = new Set(['doc', 'docx'])
+
+export function previewKind(extension: string): PreviewKind {
+  const value = (extension || '').toLowerCase()
+  if (value === 'pdf') return 'pdf'
+  if (IMAGE_EXTENSIONS.has(value)) return 'image'
+  if (TEXT_EXTENSIONS.has(value)) return 'text'
+  return 'download'
+}
+
+export const wordBlockSchema = z.object({
+  kind: z.string(),
+  style: z.string(),
+  text: z.string(),
+})
+
+export const wordPreviewSchema = z.object({
+  blocks: z.array(wordBlockSchema).default([]),
+  tables: z.array(z.array(z.array(z.string()))).default([]),
+  truncated: z.boolean().default(false),
+})
+
+export type WordPreview = z.infer<typeof wordPreviewSchema>
+
+export type ImagePreview = { url: string; frames: number }
+
 // ----------------------------------------------------------- upload jobs
 
 export const uploadJobFileSchema = z.object({

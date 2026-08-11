@@ -162,15 +162,43 @@ written-in, indistinguishable once stored.
 
 | format | where the facts land |
 |---|---|
-| PDF | info dict, replaced wholesale, facts in `keywords`; XMP dropped |
+| PDF | appended to `keywords`; XMP dropped |
 | DICOM | `PatientIdentityRemoved`, and appended to `DeidentificationMethod` (LO, VM 1-n) |
-| Word | core properties, facts in `comments` |
+| Word | appended to `comments` |
 
-The PDF case is a replace rather than a merge for a reason:
-`OCR/deid/pdf_io.py` redacts page content but never touches the info
-dictionary, so a redacted PDF still carried the original author, title
-and creation date. (The DICOM and Word halves of the pipeline already
-scrub their own.)
+These are **added, not substituted**. The de-identified file keeps its
+own metadata — de-identified in place by the pipeline, so `Author:
+<PERSON>` rather than no author — and overwriting that would throw away
+the fact that a person was named there. See
+[Metadata is de-identified, not deleted](OCR/README.md#metadata-is-de-identified-not-deleted)
+for what the pipeline does to it first.
+
+### Viewing a document
+
+A browser renders a PDF in an `<iframe>` and **downloads** everything
+else, which made "View original" a download button for every DICOM and
+Word file. So the API produces something a browser will show
+(`app/preview.py`):
+
+| endpoint | format | returns |
+|---|---|---|
+| `/files/{id}/image?frame=N` | DICOM | one frame as PNG, plus `X-Frame-Count` |
+| `/files/{id}/text` | `.docx` | the text as structure |
+
+`/files-library/{id}/image` and `/text` mirror both for the redacted
+copy, gated on `files:download` the way that router's other endpoints
+are.
+
+Rendering server-side rather than in the browser is what makes every
+transfer syntax work — the client would otherwise need a WASM DICOM
+codec. Frames are windowed through the VOI LUT when the study carries
+one, and MONOCHROME1 is inverted so it is not shown as a negative.
+
+The Word preview returns **structure, not HTML**: it is somebody's
+uploaded document, and handing the browser markup out of it invites the
+obvious injection. The client renders those strings as text nodes.
+Legacy `.doc` cannot be previewed (python-docx reads only the 2007+
+format) and says so rather than failing blankly.
 
 ### File types
 

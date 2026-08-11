@@ -312,6 +312,23 @@ class FileMetadataRow(FileMetadata):
     patient_id: Optional[str] = None
 
 
+# ------------------------------------------------------------- previews
+
+
+class WordBlock(BaseModel):
+    """One paragraph of a Word document, as text rather than markup."""
+
+    kind: str
+    style: str
+    text: str
+
+
+class WordPreview(BaseModel):
+    blocks: List[WordBlock] = Field(default_factory=list)
+    tables: List[List[List[str]]] = Field(default_factory=list)
+    truncated: bool = False
+
+
 # --------------------------------------------------------- upload jobs
 
 UPLOAD_JOB_STATUSES = ("pending", "running", "done", "partial", "failed")

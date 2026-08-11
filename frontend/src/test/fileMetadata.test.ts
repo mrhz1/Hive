@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   isUploadJobSettled,
+  previewKind,
   uploadJobSummary,
   uploadJobTone,
   uploadJobSchema,
@@ -113,5 +114,28 @@ describe('upload jobs', () => {
     expect(uploadJobSummary(job({ status: 'done', stored: 1, total: 1 }))).toBe(
       '1 file stored.'
     )
+  })
+})
+
+describe('preview kinds', () => {
+  it('lets the browser render a PDF itself', () => {
+    expect(previewKind('pdf')).toBe('pdf')
+    expect(previewKind('PDF')).toBe('pdf')
+  })
+
+  it('routes DICOM to the image viewer, whichever way it is spelt', () => {
+    // The reported bug: these downloaded instead of opening.
+    expect(previewKind('dcm')).toBe('image')
+    expect(previewKind('dicom')).toBe('image')
+  })
+
+  it('routes Word to the text viewer, both generations', () => {
+    expect(previewKind('doc')).toBe('text')
+    expect(previewKind('docx')).toBe('text')
+  })
+
+  it('leaves anything else as a download', () => {
+    expect(previewKind('txt')).toBe('download')
+    expect(previewKind('')).toBe('download')
   })
 })

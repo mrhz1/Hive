@@ -105,27 +105,77 @@ def apply_redactions(handle, kind: str, page_number: int, boxes, scale: float, f
     raise RuntimeError(f"cannot redact a {kind or 'unknown'} document")
 
 
-def scrub_metadata(handle, kind: str) -> List[str]:
-    """Strip identifying metadata from the output."""
-    if kind == PDF:
-        touched = [key for key, value in (handle.metadata or {}).items() if value]
+# The one info key that names a person by definition. 'title',
+# 'subject' and 'keywords' often carry a name too, but just as often
+# carry something worth keeping ('Discharge summary'), so they are
+# redacted on what the analyzer finds rather than replaced outright.
+# 'producer' and 'creator' name software, not people.
+_PDF_PHI_KEYS = ("author",)
+
+
+def _scrub_pdf(handle, redact) -> List[str]:
+    """De-identify the info dictionary, keeping what is not identifying.
+
+    'Producer: Acme Scanner 4.1' is worth keeping; 'Author: Jane Doe' is
+    not. Previously both went, because the whole dictionary was emptied.
+    """
+    from deid.metadata import PLACEHOLDER, deidentify_value
+
+    info = dict(handle.metadata or {})
+    touched: List[str] = []
+
+    if redact is None:
+        # No analyzer: fall back to emptying, which is what this did
+        # before and is still safe.
+        touched = [key for key, value in info.items() if value]
         handle.set_metadata({})
-        try:
-            handle.del_xml_metadata()
-            touched.append("<xmp>")
-        except Exception:  # pragma: no cover - not every PDF has XMP
-            pass
-        return touched
+    else:
+        updated = dict(info)
+        for key, value in info.items():
+            if not value or not str(value).strip():
+                continue
+            replacement = deidentify_value(
+                str(value), redact, known_phi=key in _PDF_PHI_KEYS
+            )
+            if replacement is not None:
+                updated[key] = replacement
+                touched.append(key)
+            elif key in _PDF_PHI_KEYS:
+                updated[key] = PLACEHOLDER
+                touched.append(key)
+        handle.set_metadata(updated)
+
+    try:
+        # XMP duplicates the info dictionary in a format pymupdf cannot
+        # rewrite selectively, so it goes rather than being left to
+        # contradict what was just de-identified.
+        handle.del_xml_metadata()
+        touched.append("<xmp>")
+    except Exception:  # pragma: no cover - not every PDF has XMP
+        pass
+
+    return touched
+
+
+def scrub_metadata(handle, kind: str, redact=None) -> List[str]:
+    """De-identify the output's own metadata.
+
+    `redact` is the analyzer-backed callable the page text goes through;
+    passing it is what turns this from erasure into de-identification.
+    See deid/metadata.py.
+    """
+    if kind == PDF:
+        return _scrub_pdf(handle, redact)
 
     if kind == DICOM:
         from deid.dicom_io import scrub_metadata as scrub
 
-        return scrub(handle)
+        return scrub(handle, redact)
 
     if kind == DOCX:
-        from deid.docx_io import clear_properties
+        from deid.docx_io import deidentify_properties
 
-        return clear_properties(handle)
+        return deidentify_properties(handle, redact)
 
     return []
 

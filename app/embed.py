@@ -10,10 +10,10 @@ written by us, indistinguishable once stored.
 So they go where they belong -- inside the output file, in each format's
 own metadata, where they travel with the document when it leaves here.
 
-For PDF this doubles as a fix: `OCR/deid/pdf_io.py` redacts page content
-but never touches the info dictionary, so a redacted PDF still carried
-the original author, title and creation date. Those are replaced here,
-not merged.
+These facts are *added*. The pipeline has already de-identified the
+document's own metadata in place -- `Author: <PATIENT>` rather than no
+author -- and overwriting that would throw away the fact that a person
+was named there. See OCR/deid/metadata.py.
 
 Nothing in this module raises. A redaction that succeeded must not be
 reported as failed because a metadata write did not land.
@@ -60,6 +60,16 @@ def _as_pairs(values: Dict[str, str]) -> List[str]:
     return [f"{key}={value}" for key, value in values.items() if value]
 
 
+def _appended(existing: Optional[str], addition: str) -> str:
+    """Our facts after whatever was already there, not instead of it."""
+    current = (existing or "").strip()
+    if not current:
+        return addition
+    if addition in current:
+        return current
+    return f"{current}; {addition}"
+
+
 def _embed_pdf(path: Path, values: Dict[str, str]) -> None:
     import fitz
 
@@ -67,19 +77,18 @@ def _embed_pdf(path: Path, values: Dict[str, str]) -> None:
     temporary = path.with_name(path.name + ".embedding")
 
     try:
-        # Replaced wholesale, not merged: the original author and title
-        # belong to the identified document, and this one is not it.
-        document.set_metadata(
-            {
-                "title": values.get("deidentified_file_name", path.name),
-                "author": METHOD,
-                "subject": "De-identified document",
-                "keywords": "; ".join(_as_pairs(values)),
-                "creator": METHOD,
-                "producer": METHOD,
-            }
+        # Added to, not replaced. The pipeline has already de-identified
+        # these fields in place, and a de-identified 'Author: <PATIENT>'
+        # is worth more than no author at all -- it says a person was
+        # named there. Overwriting it would throw that away.
+        existing = dict(document.metadata or {})
+        existing["keywords"] = _appended(
+            existing.get("keywords"), "; ".join(_as_pairs(values))
         )
-        # XMP carries its own copy of all of that, so it goes too.
+        document.set_metadata(existing)
+
+        # XMP holds its own uncoordinated copy of the same fields, which
+        # pymupdf cannot rewrite selectively.
         try:
             document.del_xml_metadata()
         except Exception:  # pragma: no cover - absent on some builds
@@ -121,11 +130,11 @@ def _embed_word(path: Path, values: Dict[str, str]) -> None:
     document = docx.Document(str(path))
     properties = document.core_properties
 
-    properties.title = values.get("deidentified_file_name", path.name)
-    properties.author = METHOD
-    properties.last_modified_by = METHOD
-    properties.category = "De-identified document"
-    properties.comments = "; ".join(_as_pairs(values))
+    # Added to, not replaced -- the pipeline has already de-identified
+    # these in place. See _embed_pdf.
+    properties.comments = _appended(
+        properties.comments, "; ".join(_as_pairs(values))
+    )
 
     document.save(str(path))
 
