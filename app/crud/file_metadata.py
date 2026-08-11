@@ -107,16 +107,14 @@ def get_metadata_for_file(cursor, file_id: str) -> Optional[FileMetadata]:
     return _row_to_metadata(row) if row else None
 
 
-DEID_KEYS = (
-    "deidentified_file_name",
-    "deidentified_at",
-    "patient_id",
-    "deidentified_file_type",
-)
-
-
 def merge_metadata_for_file(cursor, file_id: str, extra: dict) -> Optional[FileMetadata]:
-    """Fold extra keys into a file's metadata blob."""
+    """Fold extra keys into a file's metadata blob.
+
+    Nothing in the application calls this any more: the row holds what a
+    document arrived carrying, and facts this system generates go into
+    the output file instead (app/embed.py). Kept because a corrected
+    extraction is a legitimate reason to amend a row.
+    """
     if not extra:
         return None
 

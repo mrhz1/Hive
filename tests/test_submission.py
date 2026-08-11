@@ -188,6 +188,35 @@ def test_submitting_through_the_api_triggers_it(as_admin, storage_root, deid_dir
     assert (deid_dirs["pdf"] / staged.name).is_file()
 
 
+def test_an_extensionless_dicom_is_filed_with_the_dicoms(
+    as_admin, storage_root, deid_dirs
+):
+    """deid_dir_for('') falls back to the PDF directory, so an
+    extensionless DICOM used to be filed with the PDFs. It is resolved to
+    'dcm' at upload now, which is what routes it here."""
+    from tests.test_filetype import DICOM_BYTES
+
+    patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
+    application_id = as_admin.post(
+        "/applications", json={"patient_id": patient_id}
+    ).json()["id"]
+    record = as_admin.post(
+        f"/applications/{application_id}/files",
+        files=[("files", ("IM000001", DICOM_BYTES, "application/octet-stream"))],
+    ).json()[0]
+
+    staged = _stage_output(record, storage_root, extension="dcm")
+    as_admin.put(
+        f"/files/{record['id']}",
+        json={"deid_status": "done", "de_identified_file_path": str(staged)},
+    )
+
+    as_admin.put(f"/applications/{application_id}", json={"status": "submitted"})
+
+    assert (deid_dirs["dicom"] / staged.name).is_file()
+    assert not (deid_dirs["pdf"] / staged.name).exists()
+
+
 def test_re_saving_an_already_submitted_application_does_not_refile(
     as_admin, storage_root, deid_dirs
 ):

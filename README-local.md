@@ -52,7 +52,7 @@ Interactive docs at `http://localhost:8100/docs` once `make run` is up.
 | `users` | `role_id` FK to roles; reads join in `role_name` + `permissions` |
 | `patient` | singular, matching the Cloudera metastore. `fstname`/`lstname` + provider (`p*`) and patient (`pt*`) contact blocks, `dt_reg`/`dt_b`/`dt_d` DATEs; no role, and no lifecycle columns — record data only |
 | `patient_application_files` | one row per uploaded document, keyed on `application_id` — documents belong to a submission, not to a patient directly. Bytes live under `FILE_STORAGE_DIR`; the row carries the de-identification state. No per-file review verdict: that is recorded once, on the application |
-| `file_metadata` | one row per file, holding metadata extracted at upload time (PDF / DICOM / Word) as JSON-in-STRING. Schemaless on purpose — a DICOM study and a Word document share almost no fields |
+| `file_metadata` | one row per file, holding the metadata the document **arrived carrying** (PDF info dict / DICOM tags / Word core properties), extracted at upload, as JSON-in-STRING. Schemaless on purpose — a DICOM study and a Word document share almost no fields. Facts this system generates afterwards are deliberately **not** here; see [Metadata](#metadata) |
 | `patient_applications` | one submission of a patient + their documents for review; holds who did what and when, and `assigned_to_id` -- the user set to work on it, who is emailed about its uploads |
 | `audit_logs` | append-only; `user_id` names the acting caller; `old_values`/`new_values` are JSON-in-STRING |
 
@@ -133,6 +133,64 @@ taken deliberately: an audit failure cannot fail the request, so it is
 logged loudly instead of raised (see `app/audit.py`). If audit durability
 ever has to be transactional with the change itself, that has to move
 back inline.
+
+### Metadata
+
+Two kinds, kept in two places on purpose.
+
+**What the document arrived carrying** goes in the `file_metadata` table,
+read once at upload by `app/file_metadata.py`:
+
+| format | source | reader |
+|---|---|---|
+| PDF | info dictionary + page count | pypdf |
+| DICOM | every non-sequence top-level tag (pixel data excluded) | pydicom |
+| `.docx` | core properties | python-docx |
+| `.doc` | OLE2 SummaryInformation streams | olefile |
+
+`.doc` needs olefile because python-docx reads only the 2007+ zip format;
+`_extract_word` picks the reader from the OLE2 signature, not the name, so
+a misnamed file still reads. Without olefile installed a legacy `.doc`
+records `failed` with the reason — which is what it did before, so the
+degradation is to the old behaviour rather than to an error.
+
+**What this system works out afterwards** — that a file was
+de-identified, when, by what method, for which patient — is written into
+the **output file's own metadata** by `app/embed.py`, never into the
+table. Mixing the two made a row that was half read-out and half
+written-in, indistinguishable once stored.
+
+| format | where the facts land |
+|---|---|
+| PDF | info dict, replaced wholesale, facts in `keywords`; XMP dropped |
+| DICOM | `PatientIdentityRemoved`, and appended to `DeidentificationMethod` (LO, VM 1-n) |
+| Word | core properties, facts in `comments` |
+
+The PDF case is a replace rather than a merge for a reason:
+`OCR/deid/pdf_io.py` redacts page content but never touches the info
+dictionary, so a redacted PDF still carried the original author, title
+and creation date. (The DICOM and Word halves of the pipeline already
+scrub their own.)
+
+### File types
+
+Everything downstream keys off the extension — whether a file can be
+de-identified, whether its metadata is read, which `DEID_*_DIR` its
+redacted copy is filed under. A name is only a claim, and PACS exports
+routinely have none at all (`IM000001`), so `app/filetype.py` resolves
+the type from the bytes when the name does not already name a format we
+handle:
+
+- DICOM — `DICM` at offset 128 (or 0, for preamble-less writers)
+- PDF — `%PDF-`
+- `.docx` — zip signature with a `word/` entry
+- `.doc` — the OLE2 signature
+
+A name that *does* name a handled format wins, because it carries the
+`.dcm`/`.dicom` and `.doc`/`.docx` distinctions the magic numbers cannot.
+A file that is neither recognised nor named keeps whatever its name
+claimed — an unknown format stays unknown rather than being guessed into
+the wrong pipeline.
 
 ### Email
 
