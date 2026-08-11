@@ -27,6 +27,8 @@ export const patientApplicationSchema = z.object({
   updated_at: nullableTimestamp,
   reviewed_at: nullableTimestamp,
   status_reason: nullableText,
+  /** The user who has to work on it; upload notices go to them. */
+  assigned_to_id: nullableText,
 })
 
 export type PatientApplication = z.infer<typeof patientApplicationSchema>

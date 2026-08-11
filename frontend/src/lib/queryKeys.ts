@@ -1,3 +1,4 @@
+import type { FileMetadataFilters } from '@/schemas/fileMetadata'
 import type { AuditLogFilters } from '@/schemas/log'
 
 export const queryKeys = {
@@ -42,6 +43,15 @@ export const queryKeys = {
     // Per file, fetched on demand when someone opens the metadata panel.
     metadata: (fileId: string) =>
       [...queryKeys.applicationFiles.all, 'metadata', fileId] as const,
+    // One background batch, polled while it runs.
+    uploadJob: (jobId: string) =>
+      [...queryKeys.applicationFiles.all, 'upload-job', jobId] as const,
+  },
+
+  fileMetadata: {
+    all: ['file-metadata'] as const,
+    list: (filters: FileMetadataFilters = {}) =>
+      [...queryKeys.fileMetadata.all, 'list', filters] as const,
   },
 
   deidentifiedFiles: {

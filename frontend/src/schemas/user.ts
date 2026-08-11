@@ -20,6 +20,12 @@ export type User = z.infer<typeof userSchema>
 
 export const userListSchema = z.array(userSchema)
 
+/** 'Ada Lovelace (ada)', falling back to the username on its own. */
+export function userLabel(user: User): string {
+  const name = `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim()
+  return name ? `${name} (${user.username})` : user.username
+}
+
 export const userFormSchema = z.object({
   username: z
     .string()

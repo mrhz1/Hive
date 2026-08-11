@@ -8,6 +8,7 @@ from app.crud import file_metadata as metadata_crud
 from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as crud
 from app.crud import patients as patients_crud
+from app.crud import users as users_crud
 from app.db import get_cursor
 from app.storage import delete_file as remove_from_disk
 from app.submission import finalise_submission
@@ -33,6 +34,14 @@ def _snapshot(application: PatientApplication) -> dict:
     return application.model_dump(mode="json")
 
 
+def _assert_assignee_exists(cursor, user_id: Optional[str]) -> None:
+    """An application assigned to nobody real would silently stop notifying."""
+    if not user_id:
+        return
+    if users_crud.get_user(cursor, user_id) is None:
+        raise ValidationError(f"User '{user_id}' does not exist")
+
+
 @router.post("", response_model=PatientApplication, status_code=201)
 def create_application(
     payload: PatientApplicationCreate,
@@ -42,6 +51,7 @@ def create_application(
     actor: User = Depends(require_permission("application:create")),
 ):
     patients_crud.get_patient_or_404(cursor, payload.patient_id)
+    _assert_assignee_exists(cursor, payload.assigned_to_id)
 
     application = crud.create_application(cursor, payload, actor_id=actor.id)
     background.add_task(
@@ -85,6 +95,10 @@ def update_application(
     actor: User = Depends(require_permission("application:update")),
 ):
     before = crud.get_application_or_404(cursor, application_id)
+
+    if "assigned_to_id" in payload.model_fields_set:
+        _assert_assignee_exists(cursor, payload.assigned_to_id)
+
     after = crud.update_application(cursor, application_id, payload, actor_id=actor.id)
 
     if after.status == "submitted" and before.status != "submitted":

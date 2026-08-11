@@ -27,6 +27,7 @@ COLUMNS = (
     "created_by_id",
     "updated_by_id",
     "status_reason",
+    "assigned_to_id",
 )
 
 TIMESTAMP_COLUMNS = frozenset(
@@ -105,6 +106,7 @@ def create_application(
         "updated_at": NOW,
         "reviewed_at": None,
         "status_reason": None,
+        "assigned_to_id": payload.assigned_to_id,
     }
 
     values, params = [], []
@@ -124,6 +126,7 @@ def create_application(
         application_id=application_id,
         patient_id=payload.patient_id,
         status=payload.status,
+        assigned_to_id=payload.assigned_to_id,
     )
     return get_application_or_404(cursor, application_id)
 

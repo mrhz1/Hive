@@ -449,9 +449,10 @@ python scripts/migrate_columns.py --apply
 
 Currently that is `patient_application_files.review_status` and
 `.review_note` (a reviewer's verdict on a document, kept apart from
-`deid_status` — a perfectly redacted scan can still be illegible) and
+`deid_status` — a perfectly redacted scan can still be illegible),
 `patient_applications.status_reason` (why an application was rejected or
-deleted).
+deleted) and `patient_applications.assigned_to_id` (the user set to work
+on the application, and the one emailed about its uploads).
 
 Existing rows read NULL for a new column, which the API treats as
 `pending`/no reason, so nothing needs backfilling.

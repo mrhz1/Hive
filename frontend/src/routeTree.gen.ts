@@ -17,6 +17,7 @@ import { Route as ApplicationsNewRouteImport } from './routes/applications/new'
 import { Route as FilesIndexRouteImport } from './routes/files/index'
 import { Route as LogsIndexRouteImport } from './routes/logs/index'
 import { Route as LogsLogIdRouteImport } from './routes/logs/$logId'
+import { Route as MetadataIndexRouteImport } from './routes/metadata/index'
 import { Route as PatientsIndexRouteImport } from './routes/patients/index'
 import { Route as PatientsNewRouteImport } from './routes/patients/new'
 import { Route as RolesIndexRouteImport } from './routes/roles/index'
@@ -66,6 +67,11 @@ const LogsIndexRoute = LogsIndexRouteImport.update({
 const LogsLogIdRoute = LogsLogIdRouteImport.update({
   id: '/logs/$logId',
   path: '/logs/$logId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MetadataIndexRoute = MetadataIndexRouteImport.update({
+  id: '/metadata/',
+  path: '/metadata/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PatientsIndexRoute = PatientsIndexRouteImport.update({
@@ -126,6 +132,7 @@ export interface FileRoutesByFullPath {
   '/applications/': typeof ApplicationsIndexRoute
   '/files/': typeof FilesIndexRoute
   '/logs/': typeof LogsIndexRoute
+  '/metadata/': typeof MetadataIndexRoute
   '/patients/': typeof PatientsIndexRoute
   '/roles/': typeof RolesIndexRoute
   '/users/': typeof UsersIndexRoute
@@ -145,6 +152,7 @@ export interface FileRoutesByTo {
   '/applications': typeof ApplicationsIndexRoute
   '/files': typeof FilesIndexRoute
   '/logs': typeof LogsIndexRoute
+  '/metadata': typeof MetadataIndexRoute
   '/patients': typeof PatientsIndexRoute
   '/roles': typeof RolesIndexRoute
   '/users': typeof UsersIndexRoute
@@ -165,6 +173,7 @@ export interface FileRoutesById {
   '/applications/': typeof ApplicationsIndexRoute
   '/files/': typeof FilesIndexRoute
   '/logs/': typeof LogsIndexRoute
+  '/metadata/': typeof MetadataIndexRoute
   '/patients/': typeof PatientsIndexRoute
   '/roles/': typeof RolesIndexRoute
   '/users/': typeof UsersIndexRoute
@@ -186,6 +195,7 @@ export interface FileRouteTypes {
     | '/applications/'
     | '/files/'
     | '/logs/'
+    | '/metadata/'
     | '/patients/'
     | '/roles/'
     | '/users/'
@@ -205,6 +215,7 @@ export interface FileRouteTypes {
     | '/applications'
     | '/files'
     | '/logs'
+    | '/metadata'
     | '/patients'
     | '/roles'
     | '/users'
@@ -224,6 +235,7 @@ export interface FileRouteTypes {
     | '/applications/'
     | '/files/'
     | '/logs/'
+    | '/metadata/'
     | '/patients/'
     | '/roles/'
     | '/users/'
@@ -244,6 +256,7 @@ export interface RootRouteChildren {
   ApplicationsIndexRoute: typeof ApplicationsIndexRoute
   FilesIndexRoute: typeof FilesIndexRoute
   LogsIndexRoute: typeof LogsIndexRoute
+  MetadataIndexRoute: typeof MetadataIndexRoute
   PatientsIndexRoute: typeof PatientsIndexRoute
   RolesIndexRoute: typeof RolesIndexRoute
   UsersIndexRoute: typeof UsersIndexRoute
@@ -308,6 +321,13 @@ declare module '@tanstack/react-router' {
       path: '/logs/$logId'
       fullPath: '/logs/$logId'
       preLoaderRoute: typeof LogsLogIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/metadata/': {
+      id: '/metadata/'
+      path: '/metadata'
+      fullPath: '/metadata/'
+      preLoaderRoute: typeof MetadataIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/patients/': {
@@ -388,6 +408,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApplicationsIndexRoute: ApplicationsIndexRoute,
   FilesIndexRoute: FilesIndexRoute,
   LogsIndexRoute: LogsIndexRoute,
+  MetadataIndexRoute: MetadataIndexRoute,
   PatientsIndexRoute: PatientsIndexRoute,
   RolesIndexRoute: RolesIndexRoute,
   UsersIndexRoute: UsersIndexRoute,

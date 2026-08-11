@@ -7,10 +7,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, Up
 from fastapi import Response
 from fastapi.responses import FileResponse
 
+from app import uploads
 from app.crud import file_metadata as metadata_crud
 from app.crud import patient_application_files as crud
 from app.crud import patient_applications as applications_crud
-from app.crud import patients as patients_crud
 from app.db import get_cursor
 from app.deid import (
     DEIDENTIFIABLE_LABEL,
@@ -19,17 +19,18 @@ from app.deid import (
     queued_status,
 )
 from app.errors import NotFoundError, ValidationError
-from app.file_metadata import extract
 from app.logging_setup import get_logger
 from app.schemas import (
     FileMetadata,
     FileReview,
-    FileMetadataCreate,
     PatientApplicationFile,
     PatientApplicationFileUpdate,
+    UploadJob,
     User,
 )
 from app.security import require_permission
+from app.uploads import known_patient_id as _known_patient_id
+from app.uploads import record_metadata as _record_metadata
 from app.xlsx import workbook_bytes
 from app.storage import (
     delete_file as remove_from_disk,
@@ -48,31 +49,10 @@ router = APIRouter(tags=["application-files"])
 MAX_FILE_BYTES = 50 * 1024 * 1024
 
 
-def _known_patient_id(cursor, application) -> Optional[str]:
-    """The patient this application belongs to, if they are on file."""
-    patient_id = getattr(application, "patient_id", None)
-    if not patient_id:
-        return None
-
-    return patient_id if patients_crud.get_patient(cursor, patient_id) else None
-
-
-def _record_metadata(cursor, file_id: str, path, extension: str) -> None:
-    """Extract and store metadata for one just-uploaded file."""
-    file_type, metadata, status, error = extract(path, extension)
-    try:
-        metadata_crud.create_metadata(
-            cursor,
-            FileMetadataCreate(
-                file_id=file_id,
-                file_type=file_type,
-                metadata=metadata,
-                status=status,
-                error=error,
-            ),
-        )
-    except Exception as exc:  # pragma: no cover - defensive
-        log.error("file_metadata_write_failed", file_id=file_id, error=str(exc))
+def _too_large(name: str) -> ValidationError:
+    return ValidationError(
+        f"'{name}' is larger than the {MAX_FILE_BYTES // (1024 * 1024)}MB limit"
+    )
 
 
 @router.get(
@@ -120,9 +100,7 @@ async def upload_application_files(
             continue
 
         if len(data) > MAX_FILE_BYTES:
-            raise ValidationError(
-                f"'{raw_name}' is larger than the {MAX_FILE_BYTES // (1024 * 1024)}MB limit"
-            )
+            raise _too_large(raw_name)
 
         extension = file_extension(raw_name)
         record_id = str(uuid.uuid4())
@@ -160,6 +138,96 @@ async def upload_application_files(
         count=len(created),
     )
     return created
+
+
+@router.post(
+    "/applications/{application_id}/files/background",
+    response_model=UploadJob,
+    status_code=202,
+)
+async def upload_application_files_in_background(
+    application_id: str,
+    background: BackgroundTasks,
+    request: Request,
+    files: List[UploadFile] = File(...),
+    description: Optional[str] = Form(default=None),
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("application:update")),
+):
+    """Take the files now, move and record them afterwards.
+
+    Same batch as the endpoint above, but the response comes back as soon
+    as the bytes are safely staged rather than after every file has been
+    written, inserted and parsed. Poll GET /upload-jobs/{id} for progress;
+    the user the application is assigned to is emailed when it is over.
+    """
+    applications_crud.get_application_or_404(cursor, application_id)
+
+    if not files:
+        raise ValidationError("No files were uploaded")
+
+    received_at = datetime.now(timezone.utc)
+    job = uploads.create_job(application_id)
+
+    staged = 0
+    try:
+        for index, upload in enumerate(files):
+            raw_name = upload.filename or "file"
+            data = await upload.read()
+
+            if len(data) == 0:
+                log.info("skipping_empty_upload", name=raw_name)
+                continue
+
+            if len(data) > MAX_FILE_BYTES:
+                raise _too_large(raw_name)
+
+            uploads.stage(job.id, index, raw_name, data, upload.content_type)
+            uploads.register_file(job.id, raw_name)
+            staged += 1
+    except Exception as exc:
+        # Nothing has been recorded yet, so there is nothing to unwind
+        # beyond the bytes sitting in staging.
+        uploads.abandon_job(job.id, str(exc))
+        raise
+
+    if not staged:
+        reason = "None of the selected files contained any data"
+        uploads.abandon_job(job.id, reason)
+        raise ValidationError(reason)
+
+    background.add_task(
+        uploads.run_upload_job,
+        job_id=job.id,
+        application_id=application_id,
+        description=description,
+        actor_id=actor.id,
+        received_at=received_at,
+        request_id=request.headers.get("X-Request-ID"),
+    )
+
+    log.info(
+        "application_files_staged",
+        application_id=application_id,
+        job_id=job.id,
+        count=staged,
+    )
+    return uploads.get_job(job.id)
+
+
+@router.get("/upload-jobs/{job_id}", response_model=UploadJob)
+def get_upload_job(
+    job_id: str,
+    _actor: User = Depends(require_permission("application:view")),
+):
+    """Progress of one background batch."""
+    job = uploads.get_job(job_id)
+    if job is None:
+        raise NotFoundError(
+            f"Upload job '{job_id}' is not known -- it may have finished long "
+            "ago, or the API may have restarted since it ran"
+        )
+    return job
 
 
 @router.get("/files/{file_id}", response_model=PatientApplicationFile)

@@ -24,6 +24,7 @@ import {
   type PatientApplication,
 } from '@/schemas/patientApplication'
 import { ApplicationSummary } from './ApplicationSummary'
+import { AssigneeCard } from './AssigneeField'
 import { ExistingPatientPicker } from './ExistingPatientPicker'
 import { FileReviewPanel } from './FileReviewPanel'
 
@@ -144,10 +145,25 @@ export function ApplicationWizard({
   const [furthest, setFurthest] = useState<StepNumber>(initialPatient ? 3 : 1)
   const [record, setRecord] = useState<PatientApplication | undefined>(application)
   const [rejecting, setRejecting] = useState(false)
+  const [assignedTo, setAssignedTo] = useState(application?.assigned_to_id ?? '')
 
   const goTo = (step: StepNumber) => {
     setCurrent(step)
     if (step > furthest) setFurthest(step)
+  }
+
+  /**
+   * Push the assignment at whatever exists. Before the application does,
+   * the choice is just held in state and goes up with the create call.
+   */
+  function assign(userId: string) {
+    setAssignedTo(userId)
+    if (!record || userId === (record.assigned_to_id ?? '')) return
+
+    void updateApplication
+      .mutateAsync({ id: record.id, values: { assigned_to_id: userId } })
+      .then(setRecord)
+      .catch(() => setAssignedTo(record.assigned_to_id ?? ''))
   }
 
   async function onPatientSaved(saved: Patient) {
@@ -157,13 +173,14 @@ export function ApplicationWizard({
       if (record) {
         const updated = await updateApplication.mutateAsync({
           id: record.id,
-          values: {},
+          values: { assigned_to_id: assignedTo },
         })
         setRecord(updated)
       } else {
         const created = await createApplication.mutateAsync({
           patient_id: saved.id,
           status: 'draft',
+          assigned_to_id: assignedTo,
         })
         setRecord(created)
       }
@@ -233,6 +250,12 @@ export function ApplicationWizard({
 
       {current === 1 ? (
         <div className="space-y-4">
+          <AssigneeCard
+            value={assignedTo}
+            onChange={assign}
+            disabled={updateApplication.isPending}
+          />
+
           {/* Only offered while the patient is still undecided. Once one
               is attached, changing it would silently move an application
               -- and any documents already on it -- to someone else. */}

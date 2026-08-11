@@ -21,7 +21,7 @@ def test_model_exposes_every_requested_field(as_admin):
         "id", "patient_id", "submitted_by_id", "reviewed_by_id", "status",
         "description", "created_by_id", "updated_by_id",
         "submitted_at", "created_at", "updated_at", "reviewed_at",
-        "status_reason",
+        "status_reason", "assigned_to_id",
     }
 
 

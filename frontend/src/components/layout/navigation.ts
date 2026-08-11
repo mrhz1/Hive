@@ -4,6 +4,7 @@ import {
   FileStack,
   LayoutDashboard,
   Shield,
+  Table2,
   UserCircle,
   Users,
   UsersRound,
@@ -39,6 +40,14 @@ export const NAV_ITEMS: NavItem[] = [
     to: '/files',
     icon: FileCheck2,
     permission: 'files:read',
+  },
+  {
+    // Reads what document uploads extracted, so it is gated on the same
+    // grant as the applications those documents belong to.
+    label: 'Metadata',
+    to: '/metadata',
+    icon: Table2,
+    permission: 'application:view',
   },
   { label: 'Roles', to: '/roles', icon: Shield, permission: 'role:view' },
   { label: 'Audit log', to: '/logs', icon: ClipboardList, permission: 'log:view' },
