@@ -41,6 +41,19 @@ class Deidentifier:
             self._analyzer = build_analyzer(self.config)
         return self._analyzer
 
+    def redactor(self):
+        """A plain str -> str redaction, for metadata values.
+
+        The page pipeline needs each entity's offsets so it can map them
+        back to pixel boxes. A metadata field has no geometry -- there is
+        nothing to paint -- so it only needs the replaced text.
+        """
+
+        def redact(text: str) -> str:
+            return redact_text(text, analyze_text(self.analyzer, text, self.config))
+
+        return redact
+
     def process_word(
         self,
         source_path: str,
@@ -97,10 +110,12 @@ class Deidentifier:
             blocks = read_blocks(document)
             changed = redact_document(document, redact_block)
 
-            stripped = scrub_metadata(document, DOCX)
+            stripped = scrub_metadata(document, DOCX, self.redactor())
             if stripped:
                 log.info(
-                    "metadata stripped from %s: %s", source_path, ", ".join(stripped)
+                    "metadata de-identified in %s: %s",
+                    source_path,
+                    ", ".join(stripped),
                 )
 
             os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
@@ -205,9 +220,13 @@ class Deidentifier:
                 result.pages.append(page_result)
                 text_pages.append(page_text)
 
-            stripped = scrub_metadata(doc, kind)
+            stripped = scrub_metadata(doc, kind, self.redactor())
             if stripped:
-                log.info("metadata stripped from %s: %s", source_path, ", ".join(stripped))
+                log.info(
+                    "metadata de-identified in %s: %s",
+                    source_path,
+                    ", ".join(stripped),
+                )
 
             os.makedirs(os.path.dirname(os.path.abspath(output_pdf)), exist_ok=True)
             save_document(doc, kind, output_pdf)

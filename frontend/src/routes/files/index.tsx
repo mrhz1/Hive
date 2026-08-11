@@ -16,7 +16,7 @@ import {
 } from '@/hooks/useResources'
 import { ApiError } from '@/lib/api/client'
 import { deidentifiedFilesApi } from '@/lib/api/resources'
-import { formatFileSize } from '@/schemas/applicationFile'
+import { formatFileSize, previewKind } from '@/schemas/applicationFile'
 import {
   fileHaystack,
   type DeidentifiedFile,
@@ -47,7 +47,7 @@ function FilesPage() {
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [viewing, setViewing] = useState<{
     file: DeidentifiedFile
-    url: string
+    url: string | null
   } | null>(null)
   const [showingMetadataFor, setShowingMetadataFor] =
     useState<DeidentifiedFile | null>(null)
@@ -58,7 +58,13 @@ function FilesPage() {
     return (data ?? []).filter((file) => fileHaystack(file).includes(term))
   }, [data, search])
 
+  /** Only a PDF needs its bytes here; the viewer renders the rest itself. */
   async function open(file: DeidentifiedFile) {
+    if (previewKind(file.file_type) !== 'pdf') {
+      setViewing({ file, url: null })
+      return
+    }
+
     setOpeningId(file.id)
     try {
       const blob = await deidentifiedFilesApi.fetchContent(file.id)
@@ -73,7 +79,7 @@ function FilesPage() {
   }
 
   function closeViewer() {
-    if (viewing) URL.revokeObjectURL(viewing.url)
+    if (viewing?.url) URL.revokeObjectURL(viewing.url)
     setViewing(null)
   }
 
@@ -190,10 +196,13 @@ function FilesPage() {
             file={{
               original_file_name: viewing.file.name,
               deidentified_file_name: viewing.file.name,
+              file_extension: viewing.file.file_type,
               mime_type: MIME_BY_TYPE[viewing.file.file_type] ?? 'application/pdf',
               file_size: viewing.file.file_size,
             }}
+            fileId={viewing.file.id}
             blobUrl={viewing.url}
+            source="library"
             isDeidentified
             onClose={closeViewer}
           />

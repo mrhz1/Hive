@@ -1,7 +1,16 @@
 """The de-identified file library."""
 from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 
 from app.audit import record_audit
@@ -14,10 +23,12 @@ from app.embed import embed_metadata, generated_facts
 from app.errors import NotFoundError, ValidationError
 from app.filetype import SNIFF_BYTES, resolve_extension
 from app.logging_setup import get_logger
+from app.preview import read_word_document, render_dicom_png
 from app.schemas import (
     DeidentifiedFile,
     PatientApplicationFileUpdate,
     User,
+    WordPreview,
 )
 from app.security import require_permission
 from app.storage import (
@@ -114,6 +125,58 @@ def download_deidentified_file(
         filename=record.deidentified_file_name or path.name,
         content_disposition_type="inline",
     )
+
+
+def _redacted_path(cursor, file_id: str):
+    """The redacted copy and how to read it. Never the original -- this
+    library does not expose it, and neither do its previews."""
+    record = crud.get_file_or_404(cursor, file_id)
+    if not record.de_identified_file_path:
+        raise ValidationError("This file has not been de-identified yet")
+
+    path = resolve_stored_path(record.de_identified_file_path)
+    if not path.is_file():
+        raise ValidationError("The de-identified file is missing from disk")
+
+    extension = (record.file_extension or "").lower()
+    return path, ("docx" if extension in ("doc", "docx") else extension)
+
+
+@router.get("/{file_id}/image")
+def preview_deidentified_image(
+    file_id: str,
+    frame: int = 0,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("files:download")),
+):
+    """One DICOM frame of the redacted copy, as a PNG."""
+    path, extension = _redacted_path(cursor, file_id)
+    if extension not in ("dcm", "dicom"):
+        raise ValidationError(f"'{extension}' files are not rendered as images")
+
+    content, frames = render_dicom_png(path, frame)
+    return Response(
+        content=content,
+        media_type="image/png",
+        headers={
+            "X-Frame-Count": str(frames),
+            "Access-Control-Expose-Headers": "X-Frame-Count",
+        },
+    )
+
+
+@router.get("/{file_id}/text", response_model=WordPreview)
+def preview_deidentified_text(
+    file_id: str,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("files:download")),
+):
+    """The redacted Word document's text."""
+    path, extension = _redacted_path(cursor, file_id)
+    if extension not in ("doc", "docx"):
+        raise ValidationError(f"'{extension}' files are not rendered as text")
+
+    return read_word_document(path)
 
 
 async def _read_upload(upload: UploadFile) -> bytes:

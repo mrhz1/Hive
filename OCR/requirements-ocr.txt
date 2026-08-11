@@ -32,3 +32,18 @@ numpy>=1.24.0,<2.4
 # image. Header tags are not touched in this stage -- scrubbing happens
 # in stage 2, alongside the redaction that consumes these spans.
 pydicom>=2.4.0
+
+# pydicom decodes only uncompressed and RLE pixel data on its own; every
+# compressed transfer syntax needs a plugin, and `dataset.pixel_array`
+# raises without one ("Could not decode DICOM pixel data").
+#
+# pillow alone covers JPEG Baseline and JPEG 2000 -- but NOT JPEG
+# Lossless (1.2.840.10008.1.2.4.57/.70) or JPEG-LS (.80/.81), which is
+# what most CT/CR/MR studies off a PACS actually arrive as. These three
+# close every remaining syntax, HTJ2K included.
+#
+# Required in BOTH venvs: stage 1 decodes frames to OCR them, stage 2
+# decodes again to paint the boxes in.
+pylibjpeg>=2.0
+pylibjpeg-libjpeg>=2.1     # JPEG, JPEG Lossless, JPEG-LS
+pylibjpeg-openjpeg>=2.2    # JPEG 2000, HTJ2K

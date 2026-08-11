@@ -21,6 +21,7 @@ from app.deid import (
 from app.errors import NotFoundError, ValidationError
 from app.filetype import SNIFF_BYTES, resolve_extension
 from app.logging_setup import get_logger
+from app.preview import read_word_document, render_dicom_png
 from app.schemas import (
     FileMetadata,
     FileReview,
@@ -28,6 +29,7 @@ from app.schemas import (
     PatientApplicationFileUpdate,
     UploadJob,
     User,
+    WordPreview,
 )
 from app.security import require_permission
 from app.uploads import known_patient_id as _known_patient_id
@@ -322,6 +324,74 @@ def download_application_file(
         filename=filename,
         content_disposition_type="inline",
     )
+
+
+def _preview_path(record, deidentified: bool):
+    """The file to preview, and the extension that says how to read it."""
+    if deidentified:
+        if not record.de_identified_file_path:
+            raise ValidationError("This file has not been de-identified yet")
+        path = resolve_stored_path(record.de_identified_file_path)
+        # The redacted copy of a Word document is always .docx, whatever
+        # the original was; DICOM and PDF keep their input format.
+        extension = "docx" if record.file_extension in ("doc", "docx") else record.file_extension
+    else:
+        path = resolve_stored_path(record.file_path)
+        extension = record.file_extension
+
+    if not path.is_file():
+        raise ValidationError("The stored file is missing from disk")
+
+    return path, (extension or "").lower()
+
+
+def _dicom_response(path, frame: int) -> Response:
+    content, frames = render_dicom_png(path, frame)
+    return Response(
+        content=content,
+        media_type="image/png",
+        headers={
+            "X-Frame-Count": str(frames),
+            # So the viewer can page through a multi-frame study without
+            # re-reading the header separately.
+            "Access-Control-Expose-Headers": "X-Frame-Count",
+        },
+    )
+
+
+@router.get("/files/{file_id}/image")
+def preview_application_file_image(
+    file_id: str,
+    frame: int = 0,
+    deidentified: bool = False,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("application:view")),
+):
+    """One DICOM frame as a PNG, so a browser can show it."""
+    record = crud.get_file_or_404(cursor, file_id)
+    path, extension = _preview_path(record, deidentified)
+
+    if extension not in ("dcm", "dicom"):
+        raise ValidationError(f"'{extension}' files are not rendered as images")
+
+    return _dicom_response(path, frame)
+
+
+@router.get("/files/{file_id}/text", response_model=WordPreview)
+def preview_application_file_text(
+    file_id: str,
+    deidentified: bool = False,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("application:view")),
+):
+    """A Word document's text, for a browser that would otherwise download it."""
+    record = crud.get_file_or_404(cursor, file_id)
+    path, extension = _preview_path(record, deidentified)
+
+    if extension not in ("doc", "docx"):
+        raise ValidationError(f"'{extension}' files are not rendered as text")
+
+    return read_word_document(path)
 
 
 @router.post("/files/{file_id}/deidentify", response_model=PatientApplicationFile)

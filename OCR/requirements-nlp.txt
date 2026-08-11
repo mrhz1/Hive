@@ -29,6 +29,14 @@ numpy>=1.24.0
 # Writes redacted pixels back into DICOM and scrubs its identifying tags.
 pydicom>=2.4.0
 
+# Decoding a compressed study needs a plugin -- see the longer note in
+# requirements-ocr.txt. Both stages decode, so both stages need these.
+# The redacted output is written back uncompressed (Explicit VR Little
+# Endian), so nothing has to re-encode.
+pylibjpeg>=2.0
+pylibjpeg-libjpeg>=2.1     # JPEG, JPEG Lossless, JPEG-LS
+pylibjpeg-openjpeg>=2.2    # JPEG 2000, HTJ2K
+
 # Word documents are redacted here rather than in stage 1: their text
 # needs no OCR, only PII detection, which is this stage's job.
 python-docx>=1.1.0

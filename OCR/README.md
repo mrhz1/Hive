@@ -217,6 +217,54 @@ any text layer selectable underneath — the classic redaction failure that
 has leaked documents in the real world. This matters for PDFs that have
 both a scan and an embedded text layer.
 
+### Metadata is de-identified, not deleted
+
+Content redaction is only half of it: a document's own metadata carries
+PHI too, and every format here used to have it **erased** — the PDF info
+dictionary emptied, ~45 named DICOM tags deleted, 11 Word properties
+blanked.
+
+That was lossy in both directions. It threw away `Modality`,
+`Manufacturer`, `Producer` and the acquisition parameters, none of which
+identify anyone; and it *missed* PHI in any field not on the list — a
+name in `StudyDescription`, a phone number in `ImageComments`, an address
+typed into a Word `comments` field all survived intact.
+
+So metadata now goes through the same analyzer the page content does. The
+field stays; its value is de-identified in place:
+
+```
+PatientName        Doe^Jane^A                    ->  <PERSON>
+PatientID          MRN4471                       ->  <MRN>
+StudyDescription   MRI BRAIN - JANE DOE          ->  MRI BRAIN - <PERSON>
+ImageComments      Call Dr Grant on 555-0142     ->  Call <PERSON> on <PHONE_NUMBER>
+Modality           MR                            ->  MR          (kept)
+Manufacturer       SIEMENS                       ->  SIEMENS     (kept)
+```
+
+**The analyzer is not trusted on its own.** It was trained on clinical
+prose, and a DICOM PN value (`Doe^Jane^A^^Dr`) or a bare `MRN4471` looks
+nothing like prose. Fields that name a person *by definition* — the
+`PHI_TAGS` list, PDF `author`, Word `author`/`last_modified_by` — are
+therefore replaced with `<REMOVED>` when the analyzer finds nothing in
+them. Detection only ever *adds* to that guarantee. Called without a
+redactor (`scrub_metadata(handle, kind)`) the whole pass falls back to
+the old blanking behaviour, so a caller with no analyzer still produces a
+safe file.
+
+Three constraints worth knowing:
+
+- **Dates and numbers are emptied, not tagged.** `<DATE>` is not a valid
+  DICOM `DA` value and a reader parsing it would choke, so those VRs are
+  blanked as before.
+- **UIDs are never rewritten.** Blanking `SOPInstanceUID` produces a file
+  nothing will open, and a UID identifies a study rather than a person.
+- **Private tags still go wholesale.** They are vendor-defined, so their
+  contents cannot be checked against anything.
+
+Sequences are walked too — PHI nests inside `SQ` items, and the old
+top-level-only pass never looked there.
+
 ## Configuration
 
 All env vars, all with defaults — nothing branches on environment, only
@@ -297,6 +345,27 @@ the redacted text (inserting one tag mangles another) and doubles the
 boxes. `merge_overlapping()` in `deid/analyzer.py` collapses them into
 disjoint spans, keeping the highest-scoring label. On the sample this cut
 32 raw detections to 20 real ones.
+
+**pydicom decodes almost nothing on its own.** `dataset.pixel_array`
+handles uncompressed and RLE and raises for every compressed transfer
+syntax without a plugin — surfacing as `Could not decode DICOM pixel
+data` on any real PACS export. pillow covers JPEG Baseline and JPEG 2000
+but **not** JPEG Lossless (`1.2.840.10008.1.2.4.57/.70`) or JPEG-LS
+(`.80/.81`), which is what most CT/CR/MR studies actually are.
+`pylibjpeg` + `-libjpeg` + `-openjpeg` close every remaining syntax,
+HTJ2K included, and are required in **both** venvs: stage 1 decodes
+frames to OCR them, stage 2 decodes again to paint the boxes in. Check
+with:
+
+```bash
+.venv-ocr/bin/python -c "from pydicom.pixels import decoders as D; \
+print([getattr(D,n).UID.name for n in dir(D) if n.endswith('Decoder') \
+and hasattr(getattr(D,n),'is_available') and not getattr(D,n).is_available])"
+```
+
+An empty list is what you want. The redacted output is written back
+uncompressed (Explicit VR Little Endian), so nothing has to re-encode —
+which is just as well, since these plugins decode only.
 
 **The NER model download is the slow part** (~440MB `pytorch_model.bin`,
 no safetensors in the repo). `scripts/stage_models.py` fetches it with

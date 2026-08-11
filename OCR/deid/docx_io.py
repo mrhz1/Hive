@@ -86,20 +86,62 @@ def redact_document(document, redact: Callable[[str], str]) -> int:
     return changed
 
 
-def clear_properties(document) -> List[str]:
-    """Blank the core properties. Returns the names cleared."""
-    cleared: List[str] = []
+# Names a person by definition, whatever it happens to contain. These
+# never keep their own value: if the analyzer does not fire, they are
+# replaced anyway.
+AUTHORSHIP_PROPERTIES = ("author", "last_modified_by")
+
+# Free text that may or may not carry PHI. Read, redacted where the
+# analyzer finds something, and otherwise left alone -- 'keywords:
+# cardiology' is worth keeping, and wiping it identifies nobody.
+SCANNED_PROPERTIES = CLEARED_PROPERTIES + ("category", "keywords", "subject")
+
+
+def deidentify_properties(document, redact=None) -> List[str]:
+    """De-identify the core properties in place.
+
+    Kept rather than blanked: a `title` with the patient's name taken out
+    still says what the document is. Only `author` and
+    `last_modified_by` are replaced unconditionally -- see the note on
+    trusting the analyzer in deid/metadata.py.
+    """
+    from deid.metadata import PLACEHOLDER, deidentify_value
+
+    touched: List[str] = []
     properties = document.core_properties
 
-    for name in CLEARED_PROPERTIES:
+    for name in dict.fromkeys(SCANNED_PROPERTIES + AUTHORSHIP_PROPERTIES):
         try:
-            if getattr(properties, name, None):
-                setattr(properties, name, "")
-                cleared.append(name)
-        except Exception as exc:  # pragma: no cover - defensive
-            log.warning("could not clear document property %s: %s", name, exc)
+            current = getattr(properties, name, None)
+        except Exception:  # pragma: no cover - python-docx typing
+            continue
 
-    return cleared
+        if not current or not str(current).strip():
+            continue
+
+        if redact is None:
+            # No analyzer: the old behaviour, which is still safe.
+            setattr(properties, name, "")
+            touched.append(name)
+            continue
+
+        replacement = deidentify_value(
+            str(current), redact, known_phi=name in AUTHORSHIP_PROPERTIES
+        )
+        if replacement is None:
+            continue
+
+        try:
+            setattr(properties, name, replacement or PLACEHOLDER)
+            touched.append(name)
+        except Exception as exc:  # pragma: no cover - defensive
+            log.warning("could not rewrite document property %s: %s", name, exc)
+
+    return touched
+
+
+# The name this had when it only ever blanked things.
+clear_properties = deidentify_properties
 
 
 def save_docx(document, output_path: str) -> None:

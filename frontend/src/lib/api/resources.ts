@@ -28,7 +28,9 @@ import {
   applicationFileSchema,
   fileMetadataSchema,
   uploadJobSchema,
+  wordPreviewSchema,
   type ApplicationFile,
+  type ImagePreview,
 } from '@/schemas/applicationFile'
 import {
   activeFilters,
@@ -67,6 +69,58 @@ async function request<T>(
     if (error instanceof Error && error.name === 'SchemaError') throw error
     throw toApiError(error)
   }
+}
+
+/**
+ * A rendered preview plus the frame count the API reports alongside it.
+ *
+ * The caller owns the object URL and must revoke it -- these are images,
+ * and a modal that opens a hundred frames without revoking leaks them
+ * all until the tab closes.
+ */
+async function fetchImagePreview(
+  path: string,
+  frame: number,
+  deidentified: boolean
+): Promise<ImagePreview> {
+  try {
+    const response = await api.get(path, {
+      responseType: 'blob',
+      params: {
+        ...(frame ? { frame } : {}),
+        ...(deidentified ? { deidentified: true } : {}),
+      },
+    })
+    const frames = Number(response.headers['x-frame-count'] ?? 1)
+    return {
+      url: URL.createObjectURL(response.data as Blob),
+      frames: Number.isFinite(frames) && frames > 0 ? frames : 1,
+    }
+  } catch (error) {
+    throw await blobError(error)
+  }
+}
+
+/**
+ * Errors from a responseType:'blob' request arrive as a Blob too, so the
+ * API's message is in there rather than on the parsed body.
+ */
+async function blobError(error: unknown): Promise<unknown> {
+  if (axios.isAxiosError(error) && error.response?.data instanceof Blob) {
+    try {
+      const parsed = apiErrorSchema.parse(
+        JSON.parse(await error.response.data.text())
+      )
+      return new ApiError(
+        error.response.status,
+        parsed.error.code,
+        parsed.error.detail
+      )
+    } catch {
+      // Not the API envelope; fall through to the generic mapping.
+    }
+  }
+  return toApiError(error)
 }
 
 /** '' from a <select> means "no role"; the API wants null. */
@@ -230,6 +284,18 @@ export const applicationFilesApi = {
   uploadJob: (jobId: string) =>
     request(uploadJobSchema, () => api.get(`/upload-jobs/${jobId}`)),
 
+  /** One DICOM frame as a PNG, plus how many frames there are. */
+  previewImage: (fileId: string, frame = 0, deidentified = false) =>
+    fetchImagePreview(`/files/${fileId}/image`, frame, deidentified),
+
+  /** A Word document as text -- see app/preview.py for why not HTML. */
+  previewText: (fileId: string, deidentified = false) =>
+    request(wordPreviewSchema, () =>
+      api.get(`/files/${fileId}/text`, {
+        params: deidentified ? { deidentified: true } : undefined,
+      })
+    ),
+
   remove: async (fileId: string) => {
     try {
       await api.delete(`/files/${fileId}`)
@@ -356,6 +422,12 @@ export const deidentifiedFilesApi = {
       throw toApiError(error)
     }
   },
+
+  previewImage: (fileId: string, frame = 0) =>
+    fetchImagePreview(`/files-library/${fileId}/image`, frame, false),
+
+  previewText: (fileId: string) =>
+    request(wordPreviewSchema, () => api.get(`/files-library/${fileId}/text`)),
 }
 
 export type { ApplicationFile, AuditLog, Patient, Role, User }

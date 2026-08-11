@@ -93,14 +93,18 @@ def test_a_patient_lookup_failure_does_not_raise(
 # ------------------------------------------------ what goes into the file
 
 
-def test_the_facts_are_written_into_a_pdf(tmp_path):
+def test_the_facts_are_added_to_a_pdf_without_replacing_it(tmp_path):
+    """The pipeline has already de-identified these fields in place, so
+    'Author: <PERSON>' is the de-identified value, not a leak. Overwriting
+    it would throw away the fact that a person was named there."""
     fitz = pytest.importorskip("fitz")
 
     path = tmp_path / "out_deid.pdf"
     document = fitz.open()
     document.new_page()
-    # The identified original's info dict, which must not survive.
-    document.set_metadata({"author": "Jane Doe", "title": "MRN 4471"})
+    document.set_metadata(
+        {"author": "<PERSON>", "title": "Discharge summary", "producer": "Acme 4.1"}
+    )
     document.save(str(path))
     document.close()
 
@@ -113,8 +117,11 @@ def test_the_facts_are_written_into_a_pdf(tmp_path):
     info = reopened.metadata
     reopened.close()
 
-    assert "Jane Doe" not in str(info)
-    assert "4471" not in str(info)
+    # What the pipeline left is still there.
+    assert info["author"] == "<PERSON>"
+    assert info["title"] == "Discharge summary"
+    assert info["producer"] == "Acme 4.1"
+    # And our own facts are alongside it.
     assert "patient_id=A7K2P9" in info["keywords"]
     assert "deidentified=yes" in info["keywords"]
 
@@ -164,13 +171,14 @@ def test_a_dicom_keeps_the_method_the_pipeline_already_set(tmp_path):
     assert "patient_id=A7K2P9" in methods
 
 
-def test_the_facts_are_written_into_a_word_document(tmp_path):
+def test_the_facts_are_added_to_a_word_document_without_replacing_it(tmp_path):
     docx = pytest.importorskip("docx")
 
     path = tmp_path / "letter_deid.docx"
     document = docx.Document()
     document.add_paragraph("body")
-    document.core_properties.author = "Jane Doe"
+    document.core_properties.author = "<PERSON>"
+    document.core_properties.keywords = "cardiology"
     document.save(str(path))
 
     written = embed_metadata(
@@ -179,7 +187,8 @@ def test_the_facts_are_written_into_a_word_document(tmp_path):
     assert written == "word"
 
     properties = docx.Document(str(path)).core_properties
-    assert properties.author != "Jane Doe"
+    assert properties.author == "<PERSON>"
+    assert properties.keywords == "cardiology"
     assert "patient_id=A7K2P9" in properties.comments
 
 

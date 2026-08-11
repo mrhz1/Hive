@@ -82,22 +82,89 @@ def _dataset(rows=64, cols=128, value=200):
     return dataset
 
 
-def test_dicom_identifying_tags_are_removed():
+IDENTIFYING_TAGS = (
+    "PatientName",
+    "PatientID",
+    "PatientBirthDate",
+    "PatientTelephoneNumbers",
+    "ReferringPhysicianName",
+    "InstitutionName",
+    "AccessionNumber",
+)
+
+
+def test_dicom_identifying_tags_keep_the_field_but_lose_the_value():
+    """The tag stays so the study is still a well-formed DICOM; what it
+    held does not. Deleting it outright lost the fact that the field was
+    ever populated, and told a reader nothing about why it is empty."""
     from deid.dicom_io import scrub_metadata
 
     dataset = _dataset()
+    before = {
+        tag: str(dataset[tag].value) for tag in IDENTIFYING_TAGS if tag in dataset
+    }
+    assert before, "the fixture should populate some identifying tags"
+
     scrub_metadata(dataset)
 
-    for tag in (
-        "PatientName",
-        "PatientID",
-        "PatientBirthDate",
-        "PatientTelephoneNumbers",
-        "ReferringPhysicianName",
-        "InstitutionName",
-        "AccessionNumber",
-    ):
-        assert tag not in dataset, f"{tag} survived"
+    for tag, original in before.items():
+        assert tag in dataset, f"{tag} was deleted rather than de-identified"
+        now = str(dataset[tag].value)
+        assert now != original, f"{tag} kept its value"
+        assert original not in now, f"{tag} still contains the original"
+
+
+def test_dicom_without_an_analyzer_still_removes_every_value():
+    """No analyzer to call is not a reason to leave PHI in place: the
+    known tags are replaced regardless of what any model thinks."""
+    from deid.dicom_io import scrub_metadata
+
+    dataset = _dataset()
+    scrub_metadata(dataset, redact=None)
+
+    for tag in IDENTIFYING_TAGS:
+        if tag in dataset:
+            value = str(dataset[tag].value)
+            assert value in ("", "<REMOVED>"), f"{tag} = {value!r}"
+
+
+def test_dicom_de_identifies_a_tag_no_deny_list_covers():
+    """StudyDescription is on no list, and used to survive intact. The
+    clinical part of it should still survive; the name should not."""
+    from deid.dicom_io import scrub_metadata
+
+    dataset = _dataset()
+    dataset.StudyDescription = "MRI BRAIN - JANE DOE"
+
+    scrub_metadata(dataset, redact=lambda text: text.replace("JANE DOE", "<PERSON>"))
+
+    assert dataset.StudyDescription == "MRI BRAIN - <PERSON>"
+
+
+def test_dicom_keeps_what_does_not_identify_anyone():
+    from deid.dicom_io import scrub_metadata
+
+    dataset = _dataset()
+    dataset.Modality = "MR"
+    dataset.Manufacturer = "SIEMENS"
+
+    scrub_metadata(dataset, redact=lambda text: text)
+
+    assert dataset.Modality == "MR"
+    assert dataset.Manufacturer == "SIEMENS"
+
+
+def test_dicom_dates_are_emptied_rather_than_tagged():
+    """'<DATE>' is not a valid DA value; a reader parsing it would choke."""
+    from deid.dicom_io import scrub_metadata
+
+    dataset = _dataset()
+    dataset.StudyDate = "20240103"
+
+    scrub_metadata(dataset, redact=lambda text: "<DATE>")
+
+    assert dataset.StudyDate == ""
+    assert dataset.PatientBirthDate == ""
 
 
 def test_dicom_private_tags_are_removed():
@@ -178,7 +245,7 @@ def test_dicom_round_trips_through_disk(tmp_path):
     save_dicom(dataset, str(out))
 
     reread = pydicom.dcmread(str(out))
-    assert "PatientName" not in reread
+    assert "Doe" not in str(reread.PatientName)
     assert reread.pixel_array[0:20, 0:20].max() == 0
     assert reread.PatientIdentityRemoved == "YES"
 
@@ -291,3 +358,111 @@ def test_word_properties_are_cleared_through_the_dispatcher():
     documents.scrub_metadata(document, documents.DOCX)
 
     assert document.core_properties.author == ""
+
+
+# ------------------------------------- de-identifying, rather than wiping
+
+
+def _name_redactor(text: str) -> str:
+    """Stands in for the analyzer, with its judgement made predictable."""
+    for name in ("Jane Doe", "Alan Grant"):
+        text = text.replace(name, "<PERSON>")
+    return text.replace("555-0142", "<PHONE_NUMBER>")
+
+
+def test_word_properties_keep_their_shape_when_de_identified():
+    from deid.docx_io import deidentify_properties
+
+    document = _document()
+    document.core_properties.keywords = "cardiology"
+
+    deidentify_properties(document, _name_redactor)
+
+    properties = document.core_properties
+    # The name goes; what the document is stays.
+    assert properties.title == "Referral for <PERSON>"
+    assert properties.comments == "Contact <PHONE_NUMBER>"
+    # Not identifying, so not touched.
+    assert properties.keywords == "cardiology"
+
+
+def test_word_authorship_never_keeps_its_own_value():
+    """`author` names a person by definition. If the analyzer finds
+    nothing in it, that is a miss, not a clean bill of health."""
+    from deid.docx_io import deidentify_properties
+
+    document = _document()
+    document.core_properties.author = "asdf qwerty"
+
+    deidentify_properties(document, lambda text: text)
+
+    assert document.core_properties.author == "<REMOVED>"
+
+
+def test_word_de_identification_leaves_nothing_on_disk(tmp_path):
+    from deid.docx_io import deidentify_properties, redact_document, save_docx
+
+    document = _document()
+    redact_document(document, _name_redactor)
+    deidentify_properties(document, _name_redactor)
+
+    out = tmp_path / "out.docx"
+    save_docx(document, str(out))
+
+    raw = _stored_xml(out)
+    assert "Jane Doe" not in raw
+    assert "Alan Grant" not in raw
+    assert "555-0142" not in raw
+
+
+def test_pdf_info_is_de_identified_rather_than_emptied():
+    """Emptying the dictionary took 'Producer: Acme Scanner' with it, and
+    that identifies nobody."""
+    import fitz
+
+    document = fitz.open()
+    document.new_page()
+    document.set_metadata(
+        {
+            "author": "Alan Grant",
+            "title": "Referral for Jane Doe",
+            "producer": "Acme Scanner 4.1",
+        }
+    )
+
+    documents.scrub_metadata(document, documents.PDF, _name_redactor)
+    info = document.metadata
+    document.close()
+
+    assert info["author"] == "<PERSON>"
+    assert info["title"] == "Referral for <PERSON>"
+    assert info["producer"] == "Acme Scanner 4.1"
+
+
+def test_pdf_author_never_keeps_its_own_value():
+    import fitz
+
+    document = fitz.open()
+    document.new_page()
+    document.set_metadata({"author": "asdf qwerty"})
+
+    documents.scrub_metadata(document, documents.PDF, lambda text: text)
+    info = document.metadata
+    document.close()
+
+    assert info["author"] == "<REMOVED>"
+
+
+def test_pdf_without_an_analyzer_still_empties_everything():
+    import fitz
+
+    document = fitz.open()
+    document.new_page()
+    document.set_metadata({"author": "Alan Grant", "title": "Referral"})
+
+    documents.scrub_metadata(document, documents.PDF)
+    info = document.metadata
+    document.close()
+
+    assert not info.get("author")
+    assert not info.get("title")

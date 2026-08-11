@@ -190,20 +190,125 @@ def _EXPLICIT_VR_LITTLE_ENDIAN():
     return ExplicitVRLittleEndian
 
 
-def scrub_metadata(dataset) -> List[str]:
-    """Remove or blank identifying tags."""
+# VRs that hold free text a placeholder can legally be written into,
+# with the length the standard allows for each.
+_TEXT_VR_LIMITS = {
+    "AE": 16,
+    "CS": 16,
+    "LO": 64,
+    "LT": 10240,
+    "PN": 64,
+    "SH": 16,
+    "ST": 1024,
+    "UC": 0,   # unlimited
+    "UT": 0,
+}
+
+# Dates, times and numbers cannot hold '<PATIENT>' -- a reader that
+# parses them would choke. They are emptied instead, which every one of
+# these VRs accepts.
+_EMPTIED_VRS = frozenset(
+    {"DA", "DT", "TM", "AS", "IS", "DS", "US", "SS", "UL", "SL", "FL", "FD"}
+)
+
+# Never rewritten: UIDs are structural. Blanking SOPInstanceUID or the
+# transfer syntax produces a file nothing will open, and they identify a
+# study rather than a person.
+_STRUCTURAL_VRS = frozenset({"UI", "OB", "OW", "OD", "OF", "OL", "OV", "UN", "SQ"})
+
+_PHI_TAG_SET = frozenset(PHI_TAGS)
+_BLANKED_TAG_SET = frozenset(BLANKED_TAGS)
+
+
+def _fit(value: str, vr: str) -> str:
+    limit = _TEXT_VR_LIMITS.get(vr, 0)
+    return value[:limit] if limit else value
+
+
+def _deidentify_element(element, redact, touched: List[str], prefix: str = "") -> None:
+    """De-identify one element in place, respecting what its VR can hold."""
+    from deid.metadata import PLACEHOLDER, deidentify_value
+
+    keyword = element.keyword or str(element.tag)
+    label = f"{prefix}{keyword}"
+    known_phi = keyword in _PHI_TAG_SET
+
+    if element.VR in _STRUCTURAL_VRS:
+        return
+
+    if element.VR in _EMPTIED_VRS:
+        # A date is identifying on its own -- birth dates especially --
+        # so the known list still empties these outright.
+        if known_phi or keyword in _BLANKED_TAG_SET:
+            if element.value not in (None, ""):
+                element.value = ""
+                touched.append(label)
+        return
+
+    if element.VM > 1 and isinstance(element.value, (list, tuple)):
+        values = [str(item) for item in element.value]
+        cleaned = [
+            deidentify_value(item, redact, known_phi) or item for item in values
+        ]
+        if cleaned != values:
+            element.value = [_fit(item, element.VR) for item in cleaned]
+            touched.append(label)
+        return
+
+    replacement = deidentify_value(element.value, redact, known_phi)
+    if replacement is not None:
+        element.value = _fit(replacement, element.VR)
+        touched.append(label)
+    elif known_phi and str(element.value or "").strip():
+        # Belt and braces: a known-PHI field never keeps its own value.
+        element.value = _fit(PLACEHOLDER, element.VR)
+        touched.append(label)
+
+
+def _walk(dataset, redact, touched: List[str], prefix: str = "", depth: int = 0) -> None:
+    """Every element, sequences included. PHI hides in nested datasets too."""
+    if depth > 8:  # pragma: no cover - guards a pathological file
+        return
+
+    for element in dataset:
+        if element.tag == 0x7FE00010:  # PixelData: handled by the redactor
+            continue
+
+        if element.VR == "SQ":
+            for index, item in enumerate(element.value or []):
+                _walk(
+                    item,
+                    redact,
+                    touched,
+                    f"{prefix}{element.keyword or element.tag}[{index}].",
+                    depth + 1,
+                )
+            continue
+
+        _deidentify_element(element, redact, touched, prefix)
+
+
+def scrub_metadata(dataset, redact=None) -> List[str]:
+    """De-identify the tags in place, keeping the study readable.
+
+    `redact` is the same analyzer-backed callable the page text goes
+    through. Without one this falls back to the old behaviour -- a
+    known-PHI tag is emptied rather than de-identified -- so a caller
+    that has no analyzer still produces a safe file.
+    """
     touched: List[str] = []
 
-    for name in PHI_TAGS:
-        if name in dataset:
-            del dataset[name]
-            touched.append(name)
+    if redact is None:
+        def redact(text: str) -> str:  # noqa: E306 - local fallback
+            return text
 
-    for name in BLANKED_TAGS:
-        if name in dataset:
-            dataset.data_element(name).value = ""
-            touched.append(name)
+    try:
+        _walk(dataset, redact, touched)
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("metadata de-identification pass failed: %s", exc)
 
+    # Private tags are vendor-defined: their contents cannot be checked
+    # against anything, so they still go entirely.
     try:
         dataset.remove_private_tags()
         touched.append("<private tags>")

@@ -1,10 +1,19 @@
-import { Check, Eye, FileJson, ShieldCheck, X } from 'lucide-react'
+import {
+  Check,
+  Eye,
+  FileJson,
+  ShieldCheck,
+  ShieldOff,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
+import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ReasonDialog } from '@/components/ReasonDialog'
-import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Misc'
+import { DropdownMenu, type MenuAction } from '@/components/ui/DropdownMenu'
 import { FileMetadataModal } from '@/features/applications/FileMetadataModal'
 import { FileViewerModal } from '@/features/patients/FileViewerModal'
 import { FolderUpload } from '@/features/patients/FolderUpload'
@@ -12,6 +21,7 @@ import {
   useApplicationFiles,
   useBackgroundUpload,
   useDeidentifyFile,
+  useDeleteApplicationFile,
   useReviewApplicationFile,
 } from '@/hooks/useResources'
 import { ApiError } from '@/lib/api/client'
@@ -22,6 +32,7 @@ import {
   formatFileSize,
   hasExtractableMetadata,
   isDeidInFlight,
+  previewKind,
   reviewTone,
   type ApplicationFile,
   type UploadJob,
@@ -39,6 +50,7 @@ export function FileReviewPanel({
   const filesQuery = useApplicationFiles(applicationId)
   const deidentify = useDeidentifyFile(applicationId)
   const review = useReviewApplicationFile(applicationId)
+  const remove = useDeleteApplicationFile(applicationId)
 
   // The batch reports where it put the files once the first one lands,
   // which is what the wizard records against the patient.
@@ -54,19 +66,39 @@ export function FileReviewPanel({
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [viewing, setViewing] = useState<{
     file: ApplicationFile
-    url: string
+    url: string | null
     isDeidentified: boolean
   } | null>(null)
 
   const [showingMetadataFor, setShowingMetadataFor] =
     useState<ApplicationFile | null>(null)
   const [rejecting, setRejecting] = useState<ApplicationFile | null>(null)
+  const [deleting, setDeleting] = useState<ApplicationFile | null>(null)
 
+  /**
+   * Only a PDF needs its bytes up front -- the modal renders it in an
+   * iframe. DICOM and Word are fetched as rendered previews by the
+   * viewer itself, so pulling a 200MB study here would be for nothing.
+   */
   async function showFile(file: ApplicationFile, deidentified = false) {
+    const extension =
+      deidentified && ['doc', 'docx'].includes(file.file_extension)
+        ? 'docx'
+        : file.file_extension
+
+    if (previewKind(extension) !== 'pdf') {
+      setViewing({ file, url: null, isDeidentified: deidentified })
+      return
+    }
+
     setOpeningId(file.id)
     try {
       const blob = await applicationFilesApi.fetchContent(file.id, deidentified)
-      setViewing({ file, url: URL.createObjectURL(blob), isDeidentified: deidentified })
+      setViewing({
+        file,
+        url: URL.createObjectURL(blob),
+        isDeidentified: deidentified,
+      })
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : 'Could not open this file')
     } finally {
@@ -75,8 +107,90 @@ export function FileReviewPanel({
   }
 
   function closeViewer() {
-    if (viewing) URL.revokeObjectURL(viewing.url)
+    if (viewing?.url) URL.revokeObjectURL(viewing.url)
     setViewing(null)
+  }
+
+  function actionsFor(file: ApplicationFile): MenuAction[] {
+    const deidentifying = deidentify.isPending && deidentify.variables === file.id
+    const reviewing = review.isPending && review.variables?.fileId === file.id
+
+    return [
+      {
+        id: 'original',
+        label: 'View original',
+        icon: <Eye className="size-4" aria-hidden="true" />,
+        isLoading: openingId === file.id,
+        onSelect: () => void showFile(file),
+      },
+      {
+        id: 'deidentified',
+        label: 'View de-identified',
+        icon: <ShieldCheck className="size-4" aria-hidden="true" />,
+        disabled: !file.de_identified_file_path,
+        title: file.de_identified_file_path
+          ? undefined
+          : 'No redacted copy has been produced yet',
+        onSelect: () => void showFile(file, true),
+      },
+      {
+        id: 'metadata',
+        label: 'Show metadata',
+        icon: <FileJson className="size-4" aria-hidden="true" />,
+        disabled: !hasExtractableMetadata(file.file_extension),
+        title: hasExtractableMetadata(file.file_extension)
+          ? undefined
+          : 'Metadata is only read from PDF, DICOM and Word files',
+        onSelect: () => setShowingMetadataFor(file),
+      },
+      {
+        id: 'deidentify',
+        separatorBefore: true,
+        label: file.deid_status === 'done' ? 'Re-run de-identification' : 'De-identify',
+        icon: canDeidentify(file.file_extension) ? (
+          <ShieldCheck className="size-4" aria-hidden="true" />
+        ) : (
+          <ShieldOff className="size-4" aria-hidden="true" />
+        ),
+        disabled:
+          !canDeidentify(file.file_extension) || isDeidInFlight(file.deid_status),
+        title: !canDeidentify(file.file_extension)
+          ? 'Only PDF, DICOM and Word files can be de-identified'
+          : isDeidInFlight(file.deid_status)
+            ? 'Already running'
+            : undefined,
+        isLoading: deidentifying,
+        onSelect: () => deidentify.mutate(file.id),
+      },
+      {
+        id: 'approve',
+        separatorBefore: true,
+        label: 'Approve',
+        icon: <Check className="size-4" aria-hidden="true" />,
+        disabled: file.review_status === 'approved',
+        title:
+          file.review_status === 'approved' ? 'Already approved' : undefined,
+        isLoading: reviewing && review.variables?.reviewStatus === 'approved',
+        onSelect: () =>
+          review.mutate({ fileId: file.id, reviewStatus: 'approved' }),
+      },
+      {
+        id: 'reject',
+        label: 'Reject',
+        icon: <X className="size-4" aria-hidden="true" />,
+        tone: 'danger',
+        onSelect: () => setRejecting(file),
+      },
+      {
+        id: 'delete',
+        separatorBefore: true,
+        label: 'Delete file',
+        icon: <Trash2 className="size-4" aria-hidden="true" />,
+        tone: 'danger',
+        isLoading: remove.isPending && remove.variables === file.id,
+        onSelect: () => setDeleting(file),
+      },
+    ]
   }
 
   const columns: Array<Column<ApplicationFile>> = [
@@ -155,77 +269,10 @@ export function FileReviewPanel({
         loadingLabel="Loading files"
         emptyMessage="No documents yet. Choose a folder above to add them."
         rowActions={(file) => (
-          <>
-            <Button
-              size="sm"
-              aria-label={`View original ${file.original_file_name}`}
-              isLoading={openingId === file.id}
-              leadingIcon={<Eye className="size-3.5" aria-hidden="true" />}
-              onClick={() => void showFile(file)}
-            >
-              Original
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              aria-label={`View de-identified ${file.original_file_name}`}
-              // Nothing to show until the job has produced a redacted copy.
-              disabled={!file.de_identified_file_path}
-              onClick={() => void showFile(file, true)}
-            >
-              De-identified
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              aria-label={`De-identify ${file.original_file_name}`}
-              disabled={
-                !canDeidentify(file.file_extension) ||
-                isDeidInFlight(file.deid_status)
-              }
-              isLoading={deidentify.isPending && deidentify.variables === file.id}
-              leadingIcon={<ShieldCheck className="size-3.5" aria-hidden="true" />}
-              onClick={() => deidentify.mutate(file.id)}
-            >
-              {file.deid_status === 'done' ? 'Re-run' : 'De-identify'}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              aria-label={`Show metadata for ${file.original_file_name}`}
-              disabled={!hasExtractableMetadata(file.file_extension)}
-              leadingIcon={<FileJson className="size-3.5" aria-hidden="true" />}
-              onClick={() => setShowingMetadataFor(file)}
-            >
-              Show metadata
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              aria-label={`Approve ${file.original_file_name}`}
-              disabled={file.review_status === 'approved'}
-              isLoading={
-                review.isPending &&
-                review.variables?.fileId === file.id &&
-                review.variables?.reviewStatus === 'approved'
-              }
-              leadingIcon={<Check className="size-3.5" aria-hidden="true" />}
-              onClick={() =>
-                review.mutate({ fileId: file.id, reviewStatus: 'approved' })
-              }
-            >
-              Approve
-            </Button>
-            <Button
-              size="sm"
-              variant="danger"
-              aria-label={`Reject ${file.original_file_name}`}
-              leadingIcon={<X className="size-3.5" aria-hidden="true" />}
-              onClick={() => setRejecting(file)}
-            >
-              Reject
-            </Button>
-          </>
+          <DropdownMenu
+            actions={actionsFor(file)}
+            label={`Actions for ${file.original_file_name}`}
+          />
         )}
       />
 
@@ -257,9 +304,25 @@ export function FileReviewPanel({
         />
       ) : null}
 
+      <ConfirmDeleteModal
+        open={Boolean(deleting)}
+        entityLabel="Document"
+        targetName={deleting?.original_file_name}
+        isDeleting={remove.isPending}
+        onCancel={() => setDeleting(null)}
+        onConfirm={() => {
+          if (!deleting) return
+          void remove
+            .mutateAsync(deleting.id)
+            .then(() => setDeleting(null))
+            .catch(() => undefined)
+        }}
+      />
+
       {viewing ? (
         <FileViewerModal
           file={viewing.file}
+          fileId={viewing.file.id}
           blobUrl={viewing.url}
           isDeidentified={viewing.isDeidentified}
           onClose={closeViewer}
