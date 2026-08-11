@@ -124,6 +124,40 @@ CREATE TABLE `file_metadata` (
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
+-- Who *saw* what. `audit_logs` records changes; this records reads,
+-- downloads, exports and refusals -- the questions an incident actually
+-- asks. Partitioned by day from the start: retrofitting a partition
+-- scheme onto a populated table means rewriting it, and a year of this
+-- is the one table that gets scanned by date.
+DROP TABLE IF EXISTS `access_logs`;
+
+CREATE TABLE `access_logs` (
+  `id` STRING,
+  `occurred_at` TIMESTAMP,
+  `action` STRING,
+  `outcome` STRING,
+  `actor_id` STRING,
+  `actor_username` STRING,
+  `actor_role` STRING,
+  `source_ip` STRING,
+  `user_agent` STRING,
+  `request_id` STRING,
+  `method` STRING,
+  `path` STRING,
+  `resource_type` STRING,
+  `resource_id` STRING,
+  `patient_id` STRING,
+  `application_id` STRING,
+  -- Did identified PHI leave? The same endpoint serves the original and
+  -- the redacted copy, and only one of those is a disclosure.
+  `identified` BOOLEAN,
+  `record_count` INT,
+  `byte_count` BIGINT,
+  `detail` STRING
+) PARTITIONED BY (`event_date` STRING)
+STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
 DROP TABLE IF EXISTS `audit_logs`;
 
 CREATE TABLE `audit_logs` (

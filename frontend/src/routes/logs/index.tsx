@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/Button'
 import { SelectField, TextField } from '@/components/ui/Field'
 import { Badge, PageHeader } from '@/components/ui/Misc'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
-import { useAuditLogs } from '@/hooks/useResources'
-import type { AuditAction, AuditLog } from '@/schemas/log'
+import { useAuditLogs, userHooks } from '@/hooks/useResources'
+import { AUDIT_ACTIONS, type AuditAction, type AuditLog } from '@/schemas/log'
 
 const ACTION_TONE: Record<AuditAction, 'success' | 'info' | 'danger'> = {
   CREATE: 'success',
@@ -21,10 +21,22 @@ function LogsList() {
   const navigate = useNavigate()
   const [entityType, setEntityType] = useState('')
   const [entityId, setEntityId] = useState('')
+  const [userId, setUserId] = useState('')
+  const [action, setAction] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  const users = userHooks.useList()
+  const nameFor = (id?: string | null) =>
+    users.data?.find((user) => user.id === id)?.username ?? id ?? '--'
 
   const filters = {
     ...(entityType ? { entity_type: entityType } : {}),
     ...(entityId ? { entity_id: entityId } : {}),
+    ...(userId ? { user_id: userId } : {}),
+    ...(action ? { action } : {}),
+    ...(dateFrom ? { date_from: dateFrom } : {}),
+    ...(dateTo ? { date_to: dateTo } : {}),
     limit: 200,
   }
 
@@ -54,6 +66,14 @@ function LogsList() {
       sortValue: (entry) => entry.entity_id,
     },
     {
+      id: 'who',
+      header: 'Who',
+      cell: (entry) => (
+        <span className="text-sm font-semibold">{nameFor(entry.user_id)}</span>
+      ),
+      sortValue: (entry) => entry.user_id ?? '',
+    },
+    {
       id: 'created',
       header: 'When',
       cell: (entry) => (
@@ -67,7 +87,7 @@ function LogsList() {
     <div className="space-y-6">
       <PageHeader
         title="Audit Log"
-        description="Every create, update and delete recorded by the API."
+        description="Every create, update and delete recorded by the API. For who *read* or downloaded something, see the Access log."
       />
 
       <div className="grid gap-4 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -87,14 +107,51 @@ function LogsList() {
           value={entityId}
           onChange={(event) => setEntityId(event.target.value)}
         />
+        {/* Who and when: the question an access review and an incident
+            both start from, and which this page could not be asked. */}
+        <SelectField
+          label="Who"
+          placeholder="Anyone"
+          value={userId}
+          onChange={(event) => setUserId(event.target.value)}
+          options={(users.data ?? []).map((user) => ({
+            value: user.id,
+            label: user.username,
+          }))}
+        />
+        <SelectField
+          label="Action"
+          placeholder="Any action"
+          value={action}
+          onChange={(event) => setAction(event.target.value)}
+          options={AUDIT_ACTIONS.map((value) => ({ value, label: value }))}
+        />
+        <TextField
+          label="From"
+          type="date"
+          value={dateFrom}
+          onChange={(event) => setDateFrom(event.target.value)}
+        />
+        <TextField
+          label="To"
+          type="date"
+          value={dateTo}
+          onChange={(event) => setDateTo(event.target.value)}
+        />
         <div className="flex items-end">
           <Button
             variant="outline"
             onClick={() => {
               setEntityType('')
               setEntityId('')
+              setUserId('')
+              setAction('')
+              setDateFrom('')
+              setDateTo('')
             }}
-            disabled={!entityType && !entityId}
+            disabled={
+              !entityType && !entityId && !userId && !action && !dateFrom && !dateTo
+            }
           >
             Clear filters
           </Button>

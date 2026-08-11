@@ -3,6 +3,10 @@ import { apiErrorSchema } from '@/schemas/common'
 import type { z } from 'zod'
 import { ApiError, api, toApiError } from './client'
 import {
+  accessLogListSchema,
+  type AccessLogFilters,
+} from '@/schemas/accessLog'
+import {
   auditLogListSchema,
   auditLogSchema,
   type AuditLog,
@@ -241,6 +245,13 @@ export const logsApi = {
   list: (filters: AuditLogFilters = {}) =>
     request(auditLogListSchema, () => api.get('/logs', { params: filters })),
   get: (id: string) => request(auditLogSchema, () => api.get(`/logs/${id}`)),
+}
+
+export const accessLogsApi = {
+  list: (filters: AccessLogFilters = {}) =>
+    request(accessLogListSchema, () =>
+      api.get('/access-logs', { params: filters })
+    ),
 }
 
 export const applicationFilesApi = {

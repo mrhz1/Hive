@@ -249,6 +249,16 @@ def resolve_stored_path(stored: str) -> Path:
         path=stored,
         storage_roots=[str(r) for r in roots],
     )
+    # A stored path that resolves outside the roots is either corruption
+    # or someone steering the resolver; both are worth a durable record.
+    from app.access_log import FAILURE, INTEGRITY, record_access
+
+    record_access(
+        INTEGRITY,
+        outcome=FAILURE,
+        resource_type="file_path",
+        detail=f"outside storage root: {stored}"[:500],
+    )
     raise ValidationError("Stored file path is outside the storage root")
 
 

@@ -9,6 +9,9 @@ export const auditLogSchema = z.object({
   action: z.enum(AUDIT_ACTIONS),
   entity_type: z.string(),
   entity_id: z.string(),
+  /** Who did it. Stored all along, but dropped here, so the page could
+      not show it and could not be filtered by it. */
+  user_id: z.string().nullable().optional(),
   old_values: z.record(z.string(), z.unknown()).nullable().optional(),
   new_values: z.record(z.string(), z.unknown()).nullable().optional(),
   created_at: timestampSchema,
@@ -21,5 +24,10 @@ export const auditLogListSchema = z.array(auditLogSchema)
 export type AuditLogFilters = {
   entity_type?: string
   entity_id?: string
+  user_id?: string
+  action?: string
+  /** YYYY-MM-DD, both inclusive. */
+  date_from?: string
+  date_to?: string
   limit?: number
 }

@@ -48,6 +48,7 @@ def _seed():
         "patient_application_files": [],
         "file_metadata": [],
         "audit_logs": [],
+        "access_logs": [],
     }
 
 
@@ -71,10 +72,21 @@ _SELECT = re.compile(r"^SELECT (?P<cols>.+?) FROM `(?P<table>\w+)`(?P<rest>.*)$"
 _INSERT = re.compile(
     r"^INSERT INTO `(?P<table>\w+)` \((?P<cols>.+?)\) VALUES \((?P<vals>.+)\)$", re.S
 )
+# The access trail writes batches into a dated partition, so its INSERT
+# has a shape the plain one above cannot parse:
+#   INSERT INTO TABLE `t` PARTITION (`event_date` = %s) (cols) VALUES (..), (..)
+_INSERT_PARTITIONED = re.compile(
+    r"^INSERT INTO TABLE `(?P<table>\w+)` "
+    r"PARTITION \(`(?P<part>\w+)` = %s\) \((?P<cols>.+?)\) VALUES (?P<rows>.+)$",
+    re.S,
+)
 _UPDATE = re.compile(r"^UPDATE `(?P<table>\w+)` SET (?P<sets>.+?) WHERE `(?P<key>\w+)` = %s$", re.S)
 _DELETE = re.compile(r"^DELETE FROM `(?P<table>\w+)` WHERE `(?P<key>\w+)` = %s$", re.S)
 _DELETE_IN = re.compile(r"^DELETE FROM `(?P<table>\w+)` WHERE `(?P<key>\w+)` IN \((?P<slots>[%s, ]+)\)$", re.S)
-_WHERE = re.compile(r"WHERE `(?P<col>\w+)` = %s")
+# Comparisons, not just equality: the log filters bound by date, and a
+# pattern that only matched `= %s` would skip those clauses while still
+# consuming their parameters -- silently comparing the wrong values.
+_WHERE = re.compile(r"`(?P<col>\w+)` (?P<op>=|>=|<=|<|>) %s")
 _COL = re.compile(r"`(\w+)`")
 
 
@@ -131,7 +143,7 @@ class FakeHiveCursor:
         rows = list(self._rows(table))
         for where in _WHERE.finditer(rest):
             wanted = params.pop(0)
-            rows = [r for r in rows if r.get(where.group("col")) == wanted]
+            rows = _compare(rows, where.group("col"), where.group("op"), wanted)
 
         if "ORDER BY `created_at` DESC" in rest:
             rows.sort(key=lambda r: str(r.get("created_at")), reverse=True)
@@ -166,6 +178,10 @@ class FakeHiveCursor:
         return out
 
     def _insert(self, sql, params):
+        partitioned = _INSERT_PARTITIONED.match(sql)
+        if partitioned:
+            return self._insert_partitioned(partitioned, params)
+
         match = _INSERT.match(sql)
         assert match, f"unparsed INSERT: {sql}"
         columns = _COL.findall(match.group("cols"))
@@ -178,6 +194,31 @@ class FakeHiveCursor:
         values = [_eval_value(e, params) for e in expressions]
         assert not params, f"INSERT binds {len(params)} params too many: {sql}"
         self._rows(match.group("table")).append(dict(zip(columns, values)))
+        return []
+
+    def _insert_partitioned(self, match, params):
+        """A batched INSERT into one partition -- the access trail's shape.
+
+        The partition value is the first bound parameter, then one group
+        of placeholders per row, in column order.
+        """
+        columns = _COL.findall(match.group("cols"))
+        partition_value = params.pop(0)
+
+        row_count = match.group("rows").count("(")
+        assert len(params) == row_count * len(columns), (
+            f"batched INSERT binds {len(params)} params for "
+            f"{row_count} rows x {len(columns)} columns"
+        )
+
+        rows = self._rows(match.group("table"))
+        for index in range(row_count):
+            start = index * len(columns)
+            values = params[start : start + len(columns)]
+            row = dict(zip(columns, values))
+            row[match.group("part")] = partition_value
+            rows.append(row)
+
         return []
 
     def _update(self, sql, params):
@@ -211,6 +252,26 @@ class FakeHiveCursor:
         wanted = set(params)
         self.store[table] = [r for r in self._rows(table) if r.get(key) not in wanted]
         return []
+
+
+def _compare(rows, column, op, wanted):
+    """One WHERE clause, applied the way Hive would."""
+    if op == "=":
+        return [r for r in rows if r.get(column) == wanted]
+
+    def key(row):
+        # Timestamps arrive as datetimes and bounds as strings.
+        value = row.get(column)
+        return str(value) if value is not None else ""
+
+    target = str(wanted)
+    tests = {
+        ">=": lambda r: key(r) >= target,
+        ">": lambda r: key(r) > target,
+        "<=": lambda r: key(r) <= target,
+        "<": lambda r: key(r) < target,
+    }
+    return [r for r in rows if tests[op](r)]
 
 
 def _split_values(clause):
@@ -280,6 +341,7 @@ def client(cursor, monkeypatch):
     monkeypatch.setattr("app.deid.hive_cursor", fake_hive_cursor)
     monkeypatch.setattr("app.submission.hive_cursor", fake_hive_cursor)
     monkeypatch.setattr("app.uploads.hive_cursor", fake_hive_cursor)
+    monkeypatch.setattr("app.access_log.hive_cursor", fake_hive_cursor)
 
     app.dependency_overrides[get_cursor] = lambda: cursor
     with TestClient(app) as test_client:
@@ -299,6 +361,40 @@ def storage_root(tmp_path, monkeypatch):
     root = tmp_path / "patient_files"
     monkeypatch.setattr("app.storage.STORAGE_ROOT", root)
     return root
+
+
+@pytest.fixture
+def access_events(cursor, monkeypatch):
+    """Access events, written on demand instead of on a timer.
+
+    The real writer flushes from a background thread every few seconds,
+    which a test outruns. Holding the thread back and flushing by hand
+    exercises the same enqueue and INSERT path, deterministically.
+    """
+    from app import access_log
+
+    monkeypatch.setattr(access_log, "_ensure_writer", lambda: None)
+
+    class Events:
+        def flush(self):
+            access_log.flush_once()
+            return self.rows
+
+        @property
+        def rows(self):
+            return cursor.store["access_logs"]
+
+        def of(self, action):
+            return [row for row in self.rows if row["action"] == action]
+
+    # Anything a previous test left queued would land in this store.
+    while True:
+        try:
+            access_log._queue.get_nowait()
+        except Exception:
+            break
+
+    return Events()
 
 
 @pytest.fixture

@@ -1,5 +1,6 @@
 import {
   ClipboardList,
+  Eye,
   FileCheck2,
   FileStack,
   LayoutDashboard,
@@ -51,5 +52,14 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { label: 'Roles', to: '/roles', icon: Shield, permission: 'role:view' },
   { label: 'Audit log', to: '/logs', icon: ClipboardList, permission: 'log:view' },
+  {
+    // Who *saw* what, as opposed to who changed it. Same grant: this
+    // reveals which patients a person looked at, so it is sensitive in
+    // itself and belongs with reviewers rather than everyone.
+    label: 'Access log',
+    to: '/access-logs',
+    icon: Eye,
+    permission: 'log:view',
+  },
   { label: 'Profile', to: '/profile', icon: UserCircle },
 ]

@@ -2,6 +2,7 @@ from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
+from app.access_log import READ, record_access
 from app.audit import record_audit
 from app.crud import file_metadata as metadata_crud
 from app.crud import patient_application_files as files_crud
@@ -53,9 +54,22 @@ def list_patients(
 def get_patient(
     patient_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("patient:view")),
+    actor: User = Depends(require_permission("patient:view")),
 ):
-    return crud.get_patient_or_404(cursor, patient_id)
+    record = crud.get_patient_or_404(cursor, patient_id)
+
+    # The detail view is the identified record itself. The list endpoint
+    # is deliberately not recorded: it is hit on every page load and
+    # would bury the reads that mean something.
+    record_access(
+        READ,
+        actor=actor,
+        resource_type="patient",
+        resource_id=patient_id,
+        patient_id=patient_id,
+        identified=True,
+    )
+    return record
 
 
 @router.put("/{patient_id}", response_model=Patient)

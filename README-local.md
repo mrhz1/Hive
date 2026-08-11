@@ -260,6 +260,68 @@ progress for the UI to poll, not a record: the files and their rows are
 the record. A restart mid-batch loses the progress bar, not the
 documents, and `/upload-jobs/{id}` then 404s.
 
+### The two trails
+
+Two questions, two tables, one page each. Neither is ever updated or
+deleted -- and `audit_logs` should have `UPDATE`/`DELETE` revoked from the
+application's Hive principal, because code cannot enforce that on itself.
+
+| | `audit_logs` | `access_logs` |
+|---|---|---|
+| Answers | what **changed** | who **saw** it |
+| Written by | `app/audit.py`, per change | `app/access_log.py`, buffered |
+| Page | Audit log | Access log |
+| Partitioned | no (low volume) | **by day** |
+
+**`access_logs` records** downloads, previews, metadata reads, exports,
+patient detail views, permission denials, authentication failures and
+integrity refusals. Every row carries the actor, their source address and
+user agent, the request id, the patient, and:
+
+- **`identified`** -- whether identified PHI left, or only a redacted
+  copy. The same endpoint serves both, separated by `?deidentified=`, and
+  only one of them is a disclosure. Without this flag every routine read
+  looks like a breach.
+- **`record_count`** on exports. "Exported 4,127 rows" and "exported 3"
+  are different events.
+
+Patient *list* views are deliberately not recorded: they fire on every
+page load and would bury the reads that mean something. Detail views are.
+
+**Writes are buffered.** A Hive INSERT costs seconds, almost all of it
+planning, and the cost is per statement -- so a batch of 200 rows costs
+about what one row costs. A background thread flushes every few seconds,
+which keeps Hive off the request path entirely. The trade is a bounded
+loss window: a kill between flushes loses what was queued, which is why
+each event is written to the Application log synchronously as it happens.
+
+Reads are partition-pruned. Bound the dates on the Access log page and
+the query reads those days; leave them open and it reads every day ever
+recorded. That is the whole reason the table is partitioned from the
+start -- retrofitting a partition scheme means rewriting the table.
+
+### Alerting
+
+`scripts/access_alerts.py`, run as a CML Job on a schedule, counts events
+per actor in a window and emails when a threshold is crossed -- bulk
+identified downloads, large exports, repeated denials, authentication
+failures. It uses the SMTP relay already configured for upload notices,
+so it needs no new infrastructure.
+
+```bash
+python scripts/access_alerts.py --window 60 --dry-run
+```
+
+The thresholds in `.env.example` are starting points. Watch them against
+real traffic for a fortnight and move them: an alert that cries wolf gets
+ignored, which is worse than not having one.
+
+Two limits worth stating plainly. The app only sees requests that
+**reach** it -- failed sign-ins die at the proxy, so those logs have to be
+read where they are. And this records access **through the API**: reading
+files off the volume, or querying Hive directly, needs OS and Ranger
+auditing respectively.
+
 ### Logging / tracing
 
 structlog with `contextvars`, so one `request_id` threads through the
@@ -267,11 +329,36 @@ whole transaction -- including the background audit write, which re-binds
 it explicitly. Grep a single id to see a request end to end:
 
 ```
-request_started    method=POST path=/users request_id=4c0e60a7...
 user_created       request_id=4c0e60a7... user_id=51963c2c...
 request_finished   duration_ms=1393.15 status_code=201 request_id=4c0e60a7...
 audit_recorded     action=CREATE entity_type=user request_id=4c0e60a7...
 ```
+
+The middleware also binds **`source_ip` and `user_agent`** onto every
+line of a request. "Which account" is not enough on its own to scope an
+incident or to notice a shared login, and binding it once here means no
+call site has to remember. `source_ip` comes out of `X-Forwarded-For`,
+counting `TRUSTED_PROXY_COUNT` hops in from the right -- everything
+further left is client-supplied, so that count has to match the
+deployment rather than be guessed.
+
+`request_started` is at DEBUG. It carried nothing `request_finished`
+does not, and at two lines per request it was most of the volume.
+
+**Two renderings.** `console` is aligned key=value for a terminal;
+`json` is one object per line for anything that ingests logs. Unset,
+`LOG_FORMAT` picks by where stdout goes -- a terminal gets console, a
+captured pipe gets json -- so local runs stay readable and Cloudera AI
+gets machine-readable output without configuring anything. Tail a
+production log by eye with `... | jq` and you get the pretty form back.
+
+> **PHI does not go in the log stream.** Record values live in
+> `audit_logs`, never in a log line -- the log lines carry the *names* of
+> the fields that changed. The de-identification subprocess is the one
+> place this had to be actively defended: its dependencies quote the
+> document into their warnings (see the gotchas in
+> [OCR/README.md](OCR/README.md)), so `app/deid.py` logs a filtered,
+> bounded `detail` rather than the raw stderr it used to.
 
 Console rendering is for local readability; swap in
 `structlog.processors.JSONRenderer()` in `app/logging_setup.py` if the

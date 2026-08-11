@@ -6,11 +6,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app import cloudera, deid, deid_queue
+from app import access_log, cloudera, deid, deid_queue
 from app.errors import AppError, app_error_handler, unhandled_error_handler
 from app.logging_setup import configure_logging, get_logger
 from app.middleware import RequestContextMiddleware
 from app.routers import (
+    access_log as access_log_router,
     audit_log,
     file_metadata,
     files,
@@ -47,6 +48,9 @@ async def lifespan(_app: FastAPI):
 
     if deid.DEID_BACKEND == "cml_job":
         deid_queue.stop()
+
+    # Whatever is still buffered goes to Hive before the process exits.
+    access_log.stop()
 
 
 app = FastAPI(
@@ -114,6 +118,7 @@ app.include_router(patient_application_files.router)
 app.include_router(patient_applications.router)
 app.include_router(roles.router)
 app.include_router(audit_log.router)
+app.include_router(access_log_router.router)
 
 
 @app.get("/health", tags=["meta"])
