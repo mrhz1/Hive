@@ -23,6 +23,7 @@ from app.filetype import SNIFF_BYTES, resolve_extension
 from app.logging_setup import get_logger
 from app.preview import read_word_document, render_dicom_png
 from app.schemas import (
+    BulkResult,
     FileMetadata,
     FileReview,
     PatientApplicationFile,
@@ -426,6 +427,113 @@ def deidentify_application_file(
 
     log.info("deid_queued", file_id=file_id, application_id=record.application_id)
     return updated
+
+
+@router.post(
+    "/applications/{application_id}/files/deidentify-all",
+    response_model=BulkResult,
+)
+def deidentify_all_application_files(
+    application_id: str,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("application:update")),
+):
+    """Queue every file on this application that can be de-identified.
+
+    One request rather than one per file: an application can hold
+    thousands, and the browser firing that many is both slow and a good
+    way to have half of them rejected.
+    """
+    applications_crud.get_application_or_404(cursor, application_id)
+    records = crud.list_files(cursor, application_id)
+
+    reasons: dict = {}
+    queued = 0
+
+    for record in records:
+        if isinstance(record.file_extension, str) and not is_deidentifiable(
+            record.file_extension
+        ):
+            reasons["unsupported format"] = reasons.get("unsupported format", 0) + 1
+            continue
+        if record.deid_status in ("queued", "processing"):
+            reasons["already running"] = reasons.get("already running", 0) + 1
+            continue
+
+        crud.update_file(
+            cursor,
+            record.id,
+            PatientApplicationFileUpdate(deid_status=queued_status()),
+        )
+        background.add_task(
+            dispatch_deidentification,
+            file_id=record.id,
+            request_id=request.headers.get("X-Request-ID"),
+        )
+        queued += 1
+
+    log.info(
+        "deid_queued_in_bulk",
+        application_id=application_id,
+        queued=queued,
+        skipped=len(records) - queued,
+    )
+    return BulkResult(
+        total=len(records),
+        changed=queued,
+        skipped=len(records) - queued,
+        reasons=reasons,
+    )
+
+
+@router.post(
+    "/applications/{application_id}/files/approve-all",
+    response_model=BulkResult,
+)
+def approve_all_application_files(
+    application_id: str,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("application:update")),
+):
+    """Approve every document still awaiting a decision.
+
+    Files already rejected are left alone: a bulk approve is for clearing
+    the undecided pile, not for overturning somebody's verdict.
+    """
+    applications_crud.get_application_or_404(cursor, application_id)
+    records = crud.list_files(cursor, application_id)
+
+    reasons: dict = {}
+    approved = 0
+
+    for record in records:
+        if record.review_status == "approved":
+            reasons["already approved"] = reasons.get("already approved", 0) + 1
+            continue
+        if record.review_status == "rejected":
+            reasons["rejected, left alone"] = (
+                reasons.get("rejected, left alone", 0) + 1
+            )
+            continue
+
+        crud.update_file(
+            cursor,
+            record.id,
+            PatientApplicationFileUpdate(review_status="approved"),
+        )
+        approved += 1
+
+    log.info(
+        "files_approved_in_bulk", application_id=application_id, approved=approved
+    )
+    return BulkResult(
+        total=len(records),
+        changed=approved,
+        skipped=len(records) - approved,
+        reasons=reasons,
+    )
 
 
 @router.put("/files/{file_id}", response_model=PatientApplicationFile)

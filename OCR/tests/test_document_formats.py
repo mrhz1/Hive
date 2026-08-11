@@ -154,6 +154,55 @@ def test_dicom_keeps_what_does_not_identify_anyone():
     assert dataset.Manufacturer == "SIEMENS"
 
 
+def test_dicom_stays_decodable_however_eager_the_analyzer_is():
+    """The reported bug: the analyzer called 'MONOCHROME2' a person, so
+    PhotometricInterpretation became '<PERSON>' and the study would not
+    render at all -- 'pixel data could not be decoded'.
+
+    Coded values are matched against enumerations, never read, so there
+    is nothing in them to de-identify.
+    """
+    from deid.dicom_io import scrub_metadata
+
+    dataset = _dataset()
+
+    # An analyzer that tags absolutely everything, which is the worst
+    # case this has to survive.
+    scrub_metadata(dataset, redact=lambda text: "<PERSON>")
+
+    assert dataset.PhotometricInterpretation == "MONOCHROME2"
+    assert int(dataset.Rows) > 0
+    assert int(dataset.Columns) > 0
+    assert int(dataset.BitsAllocated) == 8
+    assert int(dataset.SamplesPerPixel) == 1
+    # The whole point: it still decodes.
+    assert dataset.pixel_array.shape == (dataset.Rows, dataset.Columns)
+
+
+def test_dicom_codes_are_left_alone():
+    """Modality is a CS code. '<PERSON>' is not a modality."""
+    from deid.dicom_io import scrub_metadata
+
+    dataset = _dataset()
+    dataset.Modality = "MR"
+
+    scrub_metadata(dataset, redact=lambda text: "<PERSON>")
+
+    assert dataset.Modality == "MR"
+
+
+def test_dicom_free_text_is_still_redacted_under_the_same_analyzer():
+    """The narrowing must not have switched redaction off everywhere."""
+    from deid.dicom_io import scrub_metadata
+
+    dataset = _dataset()
+    dataset.StudyDescription = "MRI BRAIN - JANE DOE"
+
+    scrub_metadata(dataset, redact=lambda text: text.replace("JANE DOE", "<PERSON>"))
+
+    assert dataset.StudyDescription == "MRI BRAIN - <PERSON>"
+
+
 def test_dicom_dates_are_emptied_rather_than_tagged():
     """'<DATE>' is not a valid DA value; a reader parsing it would choke."""
     from deid.dicom_io import scrub_metadata

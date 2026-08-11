@@ -43,6 +43,25 @@ export function reviewTone(status: string): 'success' | 'danger' | 'neutral' {
   return 'neutral'
 }
 
+/** Everything about a document a search term could plausibly mean. */
+export function fileHaystack(file: {
+  original_file_name: string
+  file_extension: string
+  description?: string | null
+  review_status: string
+  deid_status: string
+}): string {
+  return [
+    file.original_file_name,
+    file.file_extension,
+    file.description ?? '',
+    file.review_status,
+    file.deid_status,
+  ]
+    .join(' ')
+    .toLowerCase()
+}
+
 /** Nothing may be submitted while a document is still undecided. */
 export function undecidedCount(files: Array<{ review_status: string }>): number {
   return files.filter((file) => file.review_status !== 'approved' &&
@@ -105,6 +124,30 @@ export function metadataTone(status: string): 'success' | 'danger' | 'neutral' {
   if (status === 'ok') return 'success'
   if (status === 'failed') return 'danger'
   return 'neutral'
+}
+
+// --------------------------------------------------------- bulk actions
+
+export const bulkResultSchema = z.object({
+  total: z.number(),
+  changed: z.number(),
+  skipped: z.number(),
+  reasons: z.record(z.string(), z.number()).default({}),
+})
+
+export type BulkResult = z.infer<typeof bulkResultSchema>
+
+/** 'Nothing to do', or what happened and what it left behind. */
+export function bulkSummary(result: BulkResult, verb: string): string {
+  if (result.total === 0) return 'There are no documents yet.'
+  if (result.changed === 0) return `Nothing to ${verb}.`
+
+  const done = `${result.changed} of ${result.total} ${verb === 'approve' ? 'approved' : 'queued'}`
+  const why = Object.entries(result.reasons)
+    .map(([reason, count]) => `${count} ${reason}`)
+    .join(', ')
+
+  return why ? `${done}; ${why}.` : `${done}.`
 }
 
 // -------------------------------------------------------------- previews

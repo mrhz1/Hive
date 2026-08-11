@@ -26,6 +26,7 @@ import {
 import {
   applicationFileListSchema,
   applicationFileSchema,
+  bulkResultSchema,
   fileMetadataSchema,
   uploadJobSchema,
   wordPreviewSchema,
@@ -311,6 +312,21 @@ export const applicationFilesApi = {
 
   deidentify: (fileId: string) =>
     request(applicationFileSchema, () => api.post(`/files/${fileId}/deidentify`)),
+
+  /**
+   * One request for the whole application. An application can hold
+   * thousands of documents, and the browser firing that many is both
+   * slow and a good way to have half of them rejected.
+   */
+  deidentifyAll: (applicationId: string) =>
+    request(bulkResultSchema, () =>
+      api.post(`/applications/${applicationId}/files/deidentify-all`)
+    ),
+
+  approveAll: (applicationId: string) =>
+    request(bulkResultSchema, () =>
+      api.post(`/applications/${applicationId}/files/approve-all`)
+    ),
 
   review: (fileId: string, reviewStatus: 'approved' | 'rejected', note?: string) =>
     request(applicationFileSchema, () =>
