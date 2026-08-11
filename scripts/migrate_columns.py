@@ -30,6 +30,7 @@ MIGRATIONS = (
     ("patient_application_files", "review_status", "STRING"),
     ("patient_application_files", "review_note", "STRING"),
     ("patient_applications", "status_reason", "STRING"),
+    ("patient_applications", "assigned_to_id", "STRING"),
 )
 
 

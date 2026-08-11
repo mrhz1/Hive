@@ -78,7 +78,10 @@ CREATE TABLE `patient_applications` (
   `description` STRING,
   `created_by_id` STRING,
   `updated_by_id` STRING,
-  `status_reason` STRING
+  `status_reason` STRING,
+  -- The user who has to do the work. Notifications about this
+  -- application's uploads go to them.
+  `assigned_to_id` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 

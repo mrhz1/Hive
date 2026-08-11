@@ -86,6 +86,15 @@ def _get_metadata(cursor, metadata_id: str) -> FileMetadata:
     return _row_to_metadata(row)
 
 
+def list_metadata(cursor) -> List[FileMetadata]:
+    """Every extraction on record, newest first."""
+    execute(
+        cursor,
+        f"SELECT {_COLS} FROM `file_metadata` ORDER BY `created_at` DESC",
+    )
+    return [_row_to_metadata(r) for r in cursor.fetchall()]
+
+
 def get_metadata_for_file(cursor, file_id: str) -> Optional[FileMetadata]:
     """The newest row for a file."""
     execute(

@@ -117,13 +117,10 @@ def document_name(
     return f"{patient_id}-{document_type}-{serial}{suffix}"
 
 
-def write_patient_document(
-    patient_id: str,
-    extension: str,
-    data: bytes,
-    received_at: datetime,
+def _patient_document_target(
+    patient_id: str, extension: str, received_at: datetime
 ) -> Path:
-    """Store one upload under the patient naming scheme."""
+    """A free path under the patient naming scheme. Creates the folder."""
     directory = patient_dir(patient_id, received_at)
     directory.mkdir(parents=True, exist_ok=True)
 
@@ -135,29 +132,70 @@ def write_patient_document(
             patient_id, document_type, serial, extension
         )
         if not target.exists():
-            break
-    else:
-        raise ValidationError("Could not allocate a unique document serial")
+            return target
+
+    raise ValidationError("Could not allocate a unique document serial")
+
+
+def write_patient_document(
+    patient_id: str,
+    extension: str,
+    data: bytes,
+    received_at: datetime,
+) -> Path:
+    """Store one upload under the patient naming scheme."""
+    target = _patient_document_target(patient_id, extension, received_at)
 
     target.write_bytes(data)
     log.info(
         "file_stored",
         patient_id=patient_id,
-        document_type=document_type,
+        document_type=document_type_for(extension),
         path=str(target),
         bytes=len(data),
     )
     return target
 
 
+def move_patient_document(
+    patient_id: str,
+    extension: str,
+    source: Path,
+    received_at: datetime,
+) -> Path:
+    """Same destination as write_patient_document, for bytes already on disk.
+
+    Staging and storage share a filesystem, so this is a rename rather
+    than a copy -- the whole reason a background batch can move a folder
+    of scans without reading any of them back into memory.
+    """
+    target = _patient_document_target(patient_id, extension, received_at)
+
+    shutil.move(str(source), str(target))
+    log.info(
+        "file_moved",
+        patient_id=patient_id,
+        document_type=document_type_for(extension),
+        source=str(source),
+        path=str(target),
+    )
+    return target
+
+
+def _application_document_target(
+    application_id: str, file_id: str, sanitized_name: str
+) -> Path:
+    directory = application_dir(application_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / f"{file_id}_{sanitized_name}"
+
+
 def write_file(
     application_id: str, file_id: str, sanitized_name: str, data: bytes
 ) -> Path:
     """Legacy layout, kept for uploads whose patient cannot be resolved."""
-    directory = application_dir(application_id)
-    directory.mkdir(parents=True, exist_ok=True)
+    target = _application_document_target(application_id, file_id, sanitized_name)
 
-    target = directory / f"{file_id}_{sanitized_name}"
     target.write_bytes(data)
     log.info(
         "file_stored",
@@ -165,6 +203,23 @@ def write_file(
         file_id=file_id,
         path=str(target),
         bytes=len(data),
+    )
+    return target
+
+
+def move_file(
+    application_id: str, file_id: str, sanitized_name: str, source: Path
+) -> Path:
+    """write_file's destination, for bytes already staged on disk."""
+    target = _application_document_target(application_id, file_id, sanitized_name)
+
+    shutil.move(str(source), str(target))
+    log.info(
+        "file_moved",
+        application_id=application_id,
+        file_id=file_id,
+        source=str(source),
+        path=str(target),
     )
     return target
 

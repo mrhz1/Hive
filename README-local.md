@@ -18,11 +18,18 @@ make run     # start the FastAPI app on CDSW_APP_PORT (8100)
 make test    # run pytest suite (FastAPI app tests)
 ```
 
+> `make init` **drops and recreates every table.** It is for an empty
+> database. On one that already has data, use
+> `python scripts/migrate_columns.py --apply` instead -- see
+> [Columns added after launch](DEPLOYMENT.md#columns-added-after-launch).
+
 Expected timings:
 - `make up`: container starts in seconds, but HiveServer2 itself isn't
-  ready for ~60-120s while Derby initializes. `make check` will fail with a
-  connection error during that window -- retry it rather than assuming
-  something is broken.
+  ready for ~60-120s while Derby initializes. Port 10000 is bound before
+  it can serve a session, so a check inside that window sees
+  `TSocket read 0 bytes` rather than a connection refusal. `make check`
+  waits it out (150s; `HIVE_CHECK_TIMEOUT` to change), so a failure from
+  it means something really is wrong -- see Troubleshooting.
 - `make init` / `make verify`: each Hive query (including single-row
   INSERT) can take a few seconds due to query planning overhead -- this is
   normal Hive behavior, not a local misconfiguration.
@@ -46,7 +53,7 @@ Interactive docs at `http://localhost:8100/docs` once `make run` is up.
 | `patient` | singular, matching the Cloudera metastore. `fstname`/`lstname` + provider (`p*`) and patient (`pt*`) contact blocks, `dt_reg`/`dt_b`/`dt_d` DATEs; no role, and no lifecycle columns — record data only |
 | `patient_application_files` | one row per uploaded document, keyed on `application_id` — documents belong to a submission, not to a patient directly. Bytes live under `FILE_STORAGE_DIR`; the row carries the de-identification state. No per-file review verdict: that is recorded once, on the application |
 | `file_metadata` | one row per file, holding metadata extracted at upload time (PDF / DICOM / Word) as JSON-in-STRING. Schemaless on purpose — a DICOM study and a Word document share almost no fields |
-| `patient_applications` | one submission of a patient + their documents for review; holds who did what and when |
+| `patient_applications` | one submission of a patient + their documents for review; holds who did what and when, and `assigned_to_id` -- the user set to work on it, who is emailed about its uploads |
 | `audit_logs` | append-only; `user_id` names the acting caller; `old_values`/`new_values` are JSON-in-STRING |
 
 ### Endpoints
@@ -66,6 +73,20 @@ Documents hang off an **application**, not a patient:
 `?deidentified=true` for the redacted copy), `/files/{id}/deidentify`
 (POST) and `/files/{id}/metadata` (GET -- what was extracted from the
 document at upload time).
+
+`/applications/{id}/files/background` (POST multipart) is the same upload
+without the wait: it stages the bytes, answers 202 with an upload job,
+and moves, records and parses the files afterwards.
+`/upload-jobs/{id}` (GET) reports progress, and the user in the
+application's `assigned_to_id` is emailed when the batch ends -- whether
+it worked or not. See [Email](#email).
+
+`/file-metadata` (GET) browses every extraction at once rather than one
+file at a time, filterable by `search` (which reaches inside the stored
+blob, field names as well as values), `status`, `file_type` and
+`patient_id`. `/file-metadata/export` takes the same filters and returns
+the matching rows as an `.xlsx`, one column per extracted field found in
+them.
 
 All of them are gated on `application:*` rather than `patient:*`: these
 files are part of a submission, so anyone who may read an application may
@@ -112,6 +133,46 @@ taken deliberately: an audit failure cannot fail the request, so it is
 logged loudly instead of raised (see `app/audit.py`). If audit durability
 ever has to be transactional with the change itself, that has to move
 back inline.
+
+### Email
+
+`app/mailer.py` talks to an SMTP relay -- plain, port 25, no credentials,
+which is what Cloudera gives a workload on the cluster network. Set
+`SMTP_HOST` to switch it on; leave it unset and every send becomes a
+logged no-op, so nothing here needs a mail server locally. See
+`.env.example` for the rest (`SMTP_FROM`, and the `SMTP_STARTTLS` /
+`SMTP_USER` pair for pointing at a real provider).
+
+Nothing raises on a failed send. An upload that succeeded must not be
+reported as failed because a mail server was down, so `send_email`
+returns a bool and logs `email_send_failed`.
+
+Currently the only notifications are upload outcomes, from
+`app/notifications.py`: the user in the application's `assigned_to_id`
+hears when a background batch finishes, and hears with the failing file
+names when it does not. An unassigned application falls back to whoever
+started the upload -- a batch failing silently is worse than one email to
+a roughly-right inbox.
+
+### Background uploads
+
+`POST /applications/{id}/files` writes, inserts and parses every file
+before it answers, which is a long time to hold a request open for a
+folder of scans. `/files/background` splits that: the request stages the
+bytes under `FILE_STORAGE_DIR/.uploads/<job id>/` and answers 202, then a
+`BackgroundTask` moves each file into place (a rename -- staging and
+storage share a filesystem), inserts its row, extracts its metadata, and
+emails the assignee.
+
+One bad file does not cost the batch: it is marked `failed` on the job
+with its error and the rest carry on, which is what `partial` means on an
+upload job. Nothing is half-recorded either way -- a file that never
+moved has no row.
+
+Job state is in-process, like the de-identification dispatcher's. It is
+progress for the UI to poll, not a record: the files and their rows are
+the record. A restart mid-batch loses the progress bar, not the
+documents, and `/upload-jobs/{id}` then 404s.
 
 ### Logging / tracing
 
@@ -170,15 +231,42 @@ either value in code; always read `HIVE_AUTH` from the environment. If you
 see this error locally, check `.env.local` actually has `NOSASL` and that
 nothing overrode it in your shell.
 
-**`TSocket read 0 bytes` immediately on connect**
-The server is rejecting the transport, not just being slow. The
-`apache/hive:4.0.0` image's default `hive.server2.authentication` is
-`NONE`, which HiveServer2 still speaks over SASL PLAIN -- incompatible
-with impyla's `NOSASL` mode. `conf/hive-site.xml` in this repo already
-sets `hive.server2.authentication=NOSASL` to fix this; if you see this
-error, confirm that file is still mounted (`docker exec hive-local grep
-authentication /opt/hive/conf/hive-site.xml`) and wasn't dropped by an
-unrelated compose change.
+**`TSocket read 0 bytes`**
+HiveServer2 closed the connection. Two quite different causes give the
+identical message, so check them in this order.
+
+*It is still starting, or is not running at all.* Much the commoner one.
+Port 10000 is bound before HiveServer2 can serve a session -- the
+embedded Derby metastore is still initialising behind it -- so `connect()`
+succeeds and the first statement gets the socket closed under it. That is
+why the failure reads `FAILED to run SHOW DATABASES` rather than
+`FAILED to connect`. On a first `make up` against an empty volume this
+window is 1-2 minutes; on a restart it is seconds. `make check` now
+retries for 150s (`HIVE_CHECK_TIMEOUT` to change it), so this should
+resolve itself -- if it does not, confirm the container is actually up:
+
+```bash
+docker compose ps        # STATUS must be Up, not Exited
+docker compose logs -f hiveserver2   # wait for 'Starting HiveServer2'
+```
+
+An `Exited (143)` container is one that was stopped -- by `make down`, or
+by Docker/WSL shutting down. `make up` brings it back; the warehouse
+volume survives, so the database is still there.
+
+*The transport really is being rejected.* The `apache/hive:4.0.0` image's
+default `hive.server2.authentication` is `NONE`, which HiveServer2 still
+speaks over SASL PLAIN -- incompatible with impyla's `NOSASL` mode.
+`conf/hive-site.xml` in this repo already sets
+`hive.server2.authentication=NOSASL` to fix this; if the wait above times
+out, confirm that file is still mounted and wasn't dropped by an
+unrelated compose change:
+
+```bash
+docker exec hive-local grep -A1 authentication /opt/hive/conf/hive-site.xml
+```
+
+This one does not clear on its own, however long you wait.
 
 **Connects fine, but every query (even `OpenSession`) resets the
 connection (`ConnectionResetError` / `unexpected exception`)**

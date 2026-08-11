@@ -12,6 +12,7 @@ from app.logging_setup import configure_logging, get_logger
 from app.middleware import RequestContextMiddleware
 from app.routers import (
     audit_log,
+    file_metadata,
     files,
     me,
     patient_applications,
@@ -108,6 +109,7 @@ app.include_router(me.router)
 app.include_router(users.router)
 app.include_router(patients.router)
 app.include_router(files.router)
+app.include_router(file_metadata.router)
 app.include_router(patient_application_files.router)
 app.include_router(patient_applications.router)
 app.include_router(roles.router)

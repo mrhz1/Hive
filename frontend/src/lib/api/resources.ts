@@ -27,8 +27,14 @@ import {
   applicationFileListSchema,
   applicationFileSchema,
   fileMetadataSchema,
+  uploadJobSchema,
   type ApplicationFile,
 } from '@/schemas/applicationFile'
+import {
+  activeFilters,
+  fileMetadataRowListSchema,
+  type FileMetadataFilters,
+} from '@/schemas/fileMetadata'
 import {
   roleListSchema,
   roleSchema,
@@ -113,6 +119,16 @@ export type ApplicationPayload = {
   patient_id?: string
   status?: string
   description?: string | null
+  /** '' from the assignee <select> means "nobody"; the API wants null. */
+  assigned_to_id?: string | null
+}
+
+function toApplicationPayload(values: ApplicationPayload) {
+  if (!('assigned_to_id' in values)) return values
+  return {
+    ...values,
+    assigned_to_id: values.assigned_to_id || null,
+  }
 }
 
 export const applicationsApi = {
@@ -123,9 +139,13 @@ export const applicationsApi = {
   get: (id: string) =>
     request(patientApplicationSchema, () => api.get(`/applications/${id}`)),
   create: (values: ApplicationPayload) =>
-    request(patientApplicationSchema, () => api.post('/applications', values)),
+    request(patientApplicationSchema, () =>
+      api.post('/applications', toApplicationPayload(values))
+    ),
   update: (id: string, values: ApplicationPayload) =>
-    request(patientApplicationSchema, () => api.put(`/applications/${id}`, values)),
+    request(patientApplicationSchema, () =>
+      api.put(`/applications/${id}`, toApplicationPayload(values))
+    ),
 
   reject: (id: string, reason: string) =>
     request(patientApplicationSchema, () =>
@@ -184,6 +204,32 @@ export const applicationFilesApi = {
     )
   },
 
+  /**
+   * The same batch, handed off rather than waited on: the response comes
+   * back once the bytes are staged, and the job says how the moving and
+   * recording went afterwards.
+   */
+  uploadInBackground: (
+    applicationId: string,
+    files: File[],
+    description?: string
+  ) => {
+    const form = new FormData()
+    for (const file of files) {
+      form.append('files', file, file.webkitRelativePath || file.name)
+    }
+    if (description) form.append('description', description)
+
+    return request(uploadJobSchema, () =>
+      api.post(`/applications/${applicationId}/files/background`, form, {
+        headers: { 'Content-Type': undefined },
+      })
+    )
+  },
+
+  uploadJob: (jobId: string) =>
+    request(uploadJobSchema, () => api.get(`/upload-jobs/${jobId}`)),
+
   remove: async (fileId: string) => {
     try {
       await api.delete(`/files/${fileId}`)
@@ -240,6 +286,26 @@ export const applicationFilesApi = {
           if (parseError instanceof ApiError) throw parseError
         }
       }
+      throw toApiError(error)
+    }
+  },
+}
+
+export const fileMetadataApi = {
+  list: (filters: FileMetadataFilters = {}) =>
+    request(fileMetadataRowListSchema, () =>
+      api.get('/file-metadata', { params: activeFilters(filters) })
+    ),
+
+  /** The filtered table as a workbook -- same filters, same rows. */
+  export: async (filters: FileMetadataFilters = {}): Promise<Blob> => {
+    try {
+      const response = await api.get('/file-metadata/export', {
+        responseType: 'blob',
+        params: activeFilters(filters),
+      })
+      return response.data as Blob
+    } catch (error) {
       throw toApiError(error)
     }
   },

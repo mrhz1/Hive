@@ -1,6 +1,7 @@
 import { Badge, Card, DescriptionItem } from '@/components/ui/Misc'
 import { LoadingBlock } from '@/components/ui/Spinner'
-import { useApplicationFiles } from '@/hooks/useResources'
+import { useApplicationFiles, userHooks } from '@/hooks/useResources'
+import { userLabel } from '@/schemas/user'
 import { patientName, type Patient } from '@/schemas/patient'
 import {
   applicationTone,
@@ -24,6 +25,12 @@ export function ApplicationSummary({
   const filesQuery = useApplicationFiles(application?.id)
   const files = filesQuery.data ?? []
 
+  // Only to put a name to the id the application carries.
+  const usersQuery = userHooks.useList({ enabled: Boolean(application?.assigned_to_id) })
+  const assignee = usersQuery.data?.find(
+    (user) => user.id === application?.assigned_to_id
+  )
+
   return (
     <div className="space-y-6">
       <Card className="p-5">
@@ -40,6 +47,17 @@ export function ApplicationSummary({
 
         <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
           <DescriptionItem label="Name">{patientName(patient)}</DescriptionItem>
+          {application ? (
+            <DescriptionItem label="Assigned to">
+              {assignee ? (
+                userLabel(assignee)
+              ) : application.assigned_to_id ? (
+                application.assigned_to_id
+              ) : (
+                <span className="text-[rgb(var(--foreground-muted))]">Nobody</span>
+              )}
+            </DescriptionItem>
+          ) : null}
           <Detail label="Date of birth" value={patient.dt_b} />
           <Detail label="Email" value={patient.ptemail} />
           <Detail label="Phone" value={patient.ptphone} />

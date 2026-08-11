@@ -279,6 +279,7 @@ def client(cursor, monkeypatch):
     monkeypatch.setattr("app.audit.hive_cursor", fake_hive_cursor)
     monkeypatch.setattr("app.deid.hive_cursor", fake_hive_cursor)
     monkeypatch.setattr("app.submission.hive_cursor", fake_hive_cursor)
+    monkeypatch.setattr("app.uploads.hive_cursor", fake_hive_cursor)
 
     app.dependency_overrides[get_cursor] = lambda: cursor
     with TestClient(app) as test_client:
@@ -298,6 +299,22 @@ def storage_root(tmp_path, monkeypatch):
     root = tmp_path / "patient_files"
     monkeypatch.setattr("app.storage.STORAGE_ROOT", root)
     return root
+
+
+@pytest.fixture
+def sent_emails(monkeypatch):
+    """Every notification the code tried to send, instead of an SMTP socket."""
+    outbox = []
+
+    def fake_send(to, subject, body, html=None):
+        recipients = [address for address in to if address]
+        if not recipients:
+            return False
+        outbox.append({"to": recipients, "subject": subject, "body": body})
+        return True
+
+    monkeypatch.setattr("app.notifications.send_email", fake_send)
+    return outbox
 
 
 def minimal_patient(**overrides):

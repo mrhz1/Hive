@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { createCrudHooks, errorMessage } from './createCrudHooks'
 import {
   applicationsApi,
   applicationFilesApi,
   deidentifiedFilesApi,
+  fileMetadataApi,
   patientsApi,
   logsApi,
   rolesApi,
@@ -13,6 +15,12 @@ import {
 } from '@/lib/api/resources'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AuditLogFilters } from '@/schemas/log'
+import type { FileMetadataFilters } from '@/schemas/fileMetadata'
+import {
+  isUploadJobSettled,
+  uploadJobSummary,
+  type UploadJob,
+} from '@/schemas/applicationFile'
 import type { ApplicationFile } from '@/schemas/applicationFile'
 import type { PatientFormValues } from '@/schemas/patient'
 import type { RoleFormValues } from '@/schemas/role'
@@ -175,6 +183,93 @@ export function useUploadApplicationFiles(applicationId: string) {
   })
 }
 
+/** How often to ask the API how a running batch is getting on. */
+const UPLOAD_POLL_MS = 1500
+
+/**
+ * Hand a batch of files to the API and watch it from a distance.
+ *
+ * The upload itself returns as soon as the bytes are staged; the moving,
+ * recording and metadata extraction happen after, and this polls the job
+ * until they are over. The assigned user gets an email either way -- the
+ * toasts here are for whoever is still sitting in front of the wizard.
+ */
+export function useBackgroundUpload(
+  applicationId: string,
+  onFinished?: (job: UploadJob) => void
+) {
+  const queryClient = useQueryClient()
+  const [jobId, setJobId] = useState<string | null>(null)
+  // Terminal state arrives on a poll, which can repeat; announce it once.
+  const announced = useRef<string | null>(null)
+
+  const start = useMutation({
+    mutationFn: ({ files, description }: { files: File[]; description?: string }) =>
+      applicationFilesApi.uploadInBackground(applicationId, files, description),
+    onSuccess: (job) => {
+      announced.current = null
+      queryClient.setQueryData(queryKeys.applicationFiles.uploadJob(job.id), job)
+      setJobId(job.id)
+      toast.info(
+        job.total === 1
+          ? 'Upload started -- moving 1 file'
+          : `Upload started -- moving ${job.total} files`,
+        { description: 'You can carry on; an email goes out when it is done.' }
+      )
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not upload files'))
+    },
+  })
+
+  const job = useQuery({
+    queryKey: queryKeys.applicationFiles.uploadJob(jobId ?? ''),
+    queryFn: () => applicationFilesApi.uploadJob(jobId as string),
+    enabled: Boolean(jobId),
+    // Stop the moment the batch is settled, rather than polling forever.
+    refetchInterval: (query) =>
+      isUploadJobSettled(query.state.data) ? false : UPLOAD_POLL_MS,
+    staleTime: 0,
+    retry: false,
+  })
+
+  const finished = job.data
+  useEffect(() => {
+    if (!finished || !isUploadJobSettled(finished)) return
+    if (announced.current === finished.id) return
+    announced.current = finished.id
+
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.applicationFiles.list(applicationId),
+    })
+
+    const summary = uploadJobSummary(finished)
+    if (finished.status === 'done') {
+      toast.success('Upload finished', { description: summary })
+    } else if (finished.status === 'partial') {
+      toast.warning('Upload finished with errors', { description: summary })
+    } else {
+      toast.error('Upload failed', { description: summary })
+    }
+
+    onFinished?.(finished)
+  }, [finished, applicationId, queryClient, onFinished])
+
+  const isRunning = Boolean(jobId) && !isUploadJobSettled(job.data)
+
+  const dismiss = useCallback(() => setJobId(null), [])
+
+  return {
+    start: start.mutateAsync,
+    /** True from the click until the batch has settled. */
+    isUploading: start.isPending || isRunning,
+    /** True only while the bytes are still going up. */
+    isSending: start.isPending,
+    job: job.data,
+    dismiss,
+  }
+}
+
 export function useUploadFilesForApplication() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -245,6 +340,41 @@ export function useDeleteApplicationFile(applicationId: string) {
     },
     onError: (error) => {
       toast.error(errorMessage(error, 'Could not delete file'))
+    },
+  })
+}
+
+/** Extracted metadata across every document, filtered by the API. */
+export function useFileMetadataRows(
+  filters: FileMetadataFilters = {},
+  enabled = true
+) {
+  return useQuery({
+    queryKey: queryKeys.fileMetadata.list(filters),
+    queryFn: () => fileMetadataApi.list(filters),
+    enabled,
+    // The search box drives this key; keep the previous rows on screen
+    // while the next term is fetched rather than blanking the table.
+    placeholderData: (previous) => previous,
+  })
+}
+
+export function useExportFileMetadata() {
+  return useMutation({
+    mutationFn: (filters: FileMetadataFilters) => fileMetadataApi.export(filters),
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `file-metadata-${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+      toast.success('Metadata exported')
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not export the metadata'))
     },
   })
 }

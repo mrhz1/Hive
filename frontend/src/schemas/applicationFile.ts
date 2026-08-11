@@ -106,3 +106,54 @@ export function metadataTone(status: string): 'success' | 'danger' | 'neutral' {
   if (status === 'failed') return 'danger'
   return 'neutral'
 }
+
+// ----------------------------------------------------------- upload jobs
+
+export const uploadJobFileSchema = z.object({
+  name: z.string(),
+  status: z.string(),
+  file_id: z.string().nullable().optional(),
+  error: z.string().nullable().optional(),
+})
+
+export const uploadJobSchema = z.object({
+  id: idSchema,
+  application_id: idSchema,
+  status: z.string(),
+  total: z.number(),
+  stored: z.number(),
+  failed: z.number(),
+  created_at: timestampSchema,
+  finished_at: z.string().nullable().optional(),
+  error: z.string().nullable().optional(),
+  folder: z.string().nullable().optional(),
+  files: z.array(uploadJobFileSchema).default([]),
+})
+
+export type UploadJob = z.infer<typeof uploadJobSchema>
+
+/** Whether the batch is over, one way or another -- stop polling. */
+export function isUploadJobSettled(job: UploadJob | undefined): boolean {
+  return Boolean(job && ['done', 'partial', 'failed'].includes(job.status))
+}
+
+export function uploadJobTone(status: string): 'success' | 'warning' | 'danger' {
+  if (status === 'done') return 'success'
+  if (status === 'failed') return 'danger'
+  return 'warning'
+}
+
+export function uploadJobSummary(job: UploadJob): string {
+  if (job.status === 'failed') {
+    return job.error
+      ? `The upload failed: ${job.error}`
+      : `None of the ${job.total} file${job.total === 1 ? '' : 's'} could be stored.`
+  }
+  if (job.status === 'partial') {
+    return `${job.stored} of ${job.total} files stored; ${job.failed} failed.`
+  }
+  if (job.status === 'done') {
+    return `${job.stored} file${job.stored === 1 ? '' : 's'} stored.`
+  }
+  return `Moving ${job.total} file${job.total === 1 ? '' : 's'} into storage…`
+}

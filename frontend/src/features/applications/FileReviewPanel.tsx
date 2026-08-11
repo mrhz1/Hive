@@ -1,5 +1,5 @@
 import { Check, Eye, FileJson, ShieldCheck, X } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ReasonDialog } from '@/components/ReasonDialog'
@@ -10,9 +10,9 @@ import { FileViewerModal } from '@/features/patients/FileViewerModal'
 import { FolderUpload } from '@/features/patients/FolderUpload'
 import {
   useApplicationFiles,
+  useBackgroundUpload,
   useDeidentifyFile,
   useReviewApplicationFile,
-  useUploadApplicationFiles,
 } from '@/hooks/useResources'
 import { ApiError } from '@/lib/api/client'
 import { applicationFilesApi } from '@/lib/api/resources'
@@ -24,13 +24,9 @@ import {
   isDeidInFlight,
   reviewTone,
   type ApplicationFile,
+  type UploadJob,
 } from '@/schemas/applicationFile'
-
-/** The folder an upload landed in, from any one of its file paths. */
-function folderOf(filePath: string): string {
-  const cut = filePath.lastIndexOf('/')
-  return cut > 0 ? filePath.slice(0, cut) : filePath
-}
+import { UploadProgress } from './UploadProgress'
 
 export function FileReviewPanel({
   applicationId,
@@ -41,9 +37,19 @@ export function FileReviewPanel({
   onUploaded?: (folder: string) => void
 }) {
   const filesQuery = useApplicationFiles(applicationId)
-  const upload = useUploadApplicationFiles(applicationId)
   const deidentify = useDeidentifyFile(applicationId)
   const review = useReviewApplicationFile(applicationId)
+
+  // The batch reports where it put the files once the first one lands,
+  // which is what the wizard records against the patient.
+  const onJobFinished = useCallback(
+    (job: UploadJob) => {
+      if (job.folder && onUploaded) onUploaded(job.folder)
+    },
+    [onUploaded]
+  )
+
+  const upload = useBackgroundUpload(applicationId, onJobFinished)
 
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [viewing, setViewing] = useState<{
@@ -126,16 +132,18 @@ export function FileReviewPanel({
   return (
     <div className="space-y-6">
       <FolderUpload
-        isUploading={upload.isPending}
+        isUploading={upload.isSending}
         onUpload={async (files, description) => {
-          const created = await upload.mutateAsync({
+          await upload.start({
             files,
             ...(description ? { description } : {}),
           })
-          const first = created[0]
-          if (first && onUploaded) onUploaded(folderOf(first.file_path))
         }}
       />
+
+      {upload.job ? (
+        <UploadProgress job={upload.job} onDismiss={upload.dismiss} />
+      ) : null}
 
       <DataTable
         data={filesQuery.data}

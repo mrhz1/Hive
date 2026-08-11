@@ -299,6 +299,51 @@ class FileMetadataCreate(BaseModel):
     error: Optional[str] = None
 
 
+class FileMetadataRow(FileMetadata):
+    """A `file_metadata` row with the document it describes joined on.
+
+    The stored row knows only a file id, which is useless to look at. The
+    browse table needs the document's name and whose it is, so the join
+    happens once on the way out rather than in every caller.
+    """
+
+    file_name: Optional[str] = None
+    application_id: Optional[str] = None
+    patient_id: Optional[str] = None
+
+
+# --------------------------------------------------------- upload jobs
+
+UPLOAD_JOB_STATUSES = ("pending", "running", "done", "partial", "failed")
+
+
+class UploadJobFile(BaseModel):
+    """One file's fate within a job."""
+
+    name: str
+    status: str = Field(pattern="^(pending|stored|failed)$")
+    file_id: Optional[str] = None
+    error: Optional[str] = None
+
+
+class UploadJob(BaseModel):
+    """Progress of one background upload batch."""
+
+    id: str
+    application_id: str
+    status: str
+    total: int
+    stored: int
+    failed: int
+    created_at: datetime
+    finished_at: Optional[datetime] = None
+    error: Optional[str] = None
+    # Where the batch landed, once the first file is in place. The wizard
+    # records it on the patient as their source folder.
+    folder: Optional[str] = None
+    files: List[UploadJobFile] = Field(default_factory=list)
+
+
 # ------------------------------------------------- patient applications
 
 APPLICATION_STATUSES = ("draft", "submitted", "approved", "rejected", "deleted")
@@ -312,12 +357,30 @@ class PatientApplicationCreate(BaseModel):
     patient_id: str = Field(min_length=1)
     status: str = Field(default="draft", pattern=_STATUS_PATTERN)
     description: Optional[str] = None
+    # Who is to work on it. Upload notifications go to this user.
+    assigned_to_id: Optional[str] = None
+
+    @field_validator("assigned_to_id", mode="before")
+    @classmethod
+    def _blank_assignee_to_null(cls, value: Any) -> Any:
+        """An empty <select> means unassigned, not a user whose id is ''."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class PatientApplicationUpdate(BaseModel):
     status: Optional[str] = Field(default=None, pattern=_STATUS_PATTERN)
     description: Optional[str] = None
     status_reason: Optional[str] = None
+    assigned_to_id: Optional[str] = None
+
+    @field_validator("assigned_to_id", mode="before")
+    @classmethod
+    def _blank_assignee_to_null(cls, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class StatusReason(BaseModel):
@@ -340,6 +403,7 @@ class PatientApplication(BaseModel):
     updated_at: Optional[datetime] = None
     reviewed_at: Optional[datetime] = None
     status_reason: Optional[str] = None
+    assigned_to_id: Optional[str] = None
 
 
 class AuditLogCreate(BaseModel):
