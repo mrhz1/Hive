@@ -64,13 +64,15 @@ def test_upload_lands_under_the_patient(as_admin, storage_root):
 def test_document_type_comes_from_the_format(as_admin, storage_root):
     patient_id, application_id = _patient_and_application(as_admin)
 
-    for name, expected in (
-        ("scan.pdf", "pdf"),
-        ("study.dcm", "dicom"),
-        ("letter.docx", "word"),
-        ("notes.txt", "txt"),
+    # Content matched to the name: an extension is only believed when it
+    # names a format we handle, so a .txt full of PDF bytes is a PDF.
+    for name, data, expected in (
+        ("scan.pdf", b"%PDF-1.4 fake", "pdf"),
+        ("study.dcm", b"%PDF-1.4 fake", "dicom"),
+        ("letter.docx", b"%PDF-1.4 fake", "word"),
+        ("notes.txt", b"just some notes", "txt"),
     ):
-        record = _upload(as_admin, application_id, name=name).json()[0]
+        record = _upload(as_admin, application_id, name=name, data=data).json()[0]
         stored = pathlib.Path(record["file_path"])
         assert stored.name.startswith(f"{patient_id}-{expected}-"), stored.name
 

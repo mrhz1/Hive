@@ -218,19 +218,29 @@ def test_upload_rejects_a_format_the_library_does_not_handle(
     assert response.status_code == 422
 
 
-def test_upload_records_the_metadata_facts(as_admin, storage_root, deid_dirs):
+def test_upload_keeps_generated_facts_out_of_the_metadata_row(
+    as_admin, storage_root, deid_dirs
+):
+    """The row says what the document arrived carrying. What this system
+    works out afterwards goes into the file itself -- see app/embed.py."""
     patient_id, record = _patient_with_file(as_admin, storage_root)
 
     as_admin.post(
         "/files-library",
         data={"patient_id": patient_id, "replaces_file_id": record["id"]},
-        files=[("file", ("fixed.pdf", b"data", "application/pdf"))],
+        files=[("file", ("fixed.pdf", b"%PDF-1.4 data", "application/pdf"))],
     )
 
     metadata = as_admin.get(f"/files/{record['id']}/metadata").json()["metadata"]
-    assert metadata["patient_id"] == patient_id
-    assert metadata["deidentified_by"] == "manual upload"
-    assert metadata["deidentified_file_type"] == "pdf"
+
+    for generated in (
+        "patient_id",
+        "deidentified_by",
+        "deidentified_file_type",
+        "deidentified_file_name",
+        "deidentified_at",
+    ):
+        assert generated not in metadata, generated
 
 
 # -------------------------------------------------------------- deleting

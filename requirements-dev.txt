@@ -40,6 +40,12 @@ python-dotenv==1.0.1
 pypdf==5.1.0
 pydicom==3.0.1
 python-docx==1.1.2
+# python-docx reads only the 2007+ zip format. A pre-2007 .doc is an OLE2
+# compound file, and .doc is an accepted upload, so without this every
+# legacy Word document records 'failed' with no metadata at all. olefile
+# is pure python with no dependencies of its own; if it is ever missing,
+# extraction degrades back to that same 'failed' row rather than erroring.
+olefile==0.47
 
 # Stamps the patient id onto de-identified PDFs when an application is
 # submitted (app/stamp.py).

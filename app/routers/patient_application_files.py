@@ -19,6 +19,7 @@ from app.deid import (
     queued_status,
 )
 from app.errors import NotFoundError, ValidationError
+from app.filetype import SNIFF_BYTES, resolve_extension
 from app.logging_setup import get_logger
 from app.schemas import (
     FileMetadata,
@@ -102,7 +103,8 @@ async def upload_application_files(
         if len(data) > MAX_FILE_BYTES:
             raise _too_large(raw_name)
 
-        extension = file_extension(raw_name)
+        # A DICOM off a PACS often arrives with no extension at all.
+        extension = resolve_extension(raw_name, data[:SNIFF_BYTES])
         record_id = str(uuid.uuid4())
 
         if patient_id:

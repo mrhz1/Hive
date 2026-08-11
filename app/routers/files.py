@@ -1,18 +1,18 @@
 """The de-identified file library."""
-from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from app.audit import record_audit
-from app.crud import file_metadata as metadata_crud
 from app.crud import patient_application_files as crud
 from app.crud import patient_applications as applications_crud
 from app.crud import patients as patients_crud
 from app.db import get_cursor
 from app.deid import DEIDENTIFIABLE_LABEL, is_deidentifiable
+from app.embed import embed_metadata, generated_facts
 from app.errors import NotFoundError, ValidationError
+from app.filetype import SNIFF_BYTES, resolve_extension
 from app.logging_setup import get_logger
 from app.schemas import (
     DeidentifiedFile,
@@ -24,7 +24,6 @@ from app.storage import (
     deid_dir_for,
     delete_file as remove_from_disk,
     document_name,
-    file_extension,
     guess_mime_type,
     resolve_stored_path,
 )
@@ -152,14 +151,16 @@ async def upload_deidentified_file(
     patients_crud.get_patient_or_404(cursor, patient_id)
 
     raw_name = file.filename or "file"
-    extension = file_extension(raw_name)
+    data = await _read_upload(file)
+
+    # After the read, not before: an extensionless DICOM is only
+    # recognisable from its bytes.
+    extension = resolve_extension(raw_name, data[:SNIFF_BYTES])
     if not is_deidentifiable(extension):
         raise ValidationError(
             f"'{extension}' files are not handled here (accepted: "
             f"{DEIDENTIFIABLE_LABEL})"
         )
-
-    data = await _read_upload(file)
 
     if replaces_file_id:
         record = crud.get_file_or_404(cursor, replaces_file_id)
@@ -229,16 +230,17 @@ async def upload_deidentified_file(
         )
         action = "CREATE"
 
-    metadata_crud.merge_metadata_for_file(
-        cursor,
-        result.id,
-        {
-            "deidentified_file_name": stored.name,
-            "deidentified_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "patient_id": patient_id,
-            "deidentified_file_type": extension,
-            "deidentified_by": "manual upload",
-        },
+    # Into the file, not into `file_metadata` -- that row is for what the
+    # document arrived carrying. See app/embed.py.
+    embed_metadata(
+        stored,
+        extension,
+        generated_facts(
+            patient_id=patient_id,
+            output_name=stored.name,
+            output_type=extension,
+            by="manual upload",
+        ),
     )
 
     background.add_task(

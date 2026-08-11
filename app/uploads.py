@@ -34,6 +34,7 @@ from app.crud import patient_applications as applications_crud
 from app.crud import patients as patients_crud
 from app.db import hive_cursor
 from app.file_metadata import extract
+from app.filetype import head_of, resolve_extension
 from app.logging_setup import get_logger
 from app.notifications import (
     notify_upload_failed,
@@ -265,7 +266,9 @@ def _store_staged(
     received_at: datetime,
 ):
     """Move one staged file into storage and record it."""
-    extension = file_extension(staged.name)
+    # Read the type off the staged bytes, not the name: a DICOM off a
+    # PACS often arrives with no extension at all.
+    extension = resolve_extension(staged.name, head_of(staged.path))
     record_id = str(uuid.uuid4())
 
     if patient_id:

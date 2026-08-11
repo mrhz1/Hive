@@ -2,17 +2,16 @@
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import structlog
 
 from app import deid_queue
-from app.crud import file_metadata as metadata_crud
 from app.crud import patient_application_files as crud
 from app.crud import patient_applications as applications_crud
 from app.db import hive_cursor
+from app.embed import embed_metadata, generated_facts
 from app.logging_setup import get_logger
 from app.schemas import PatientApplicationFileUpdate
 from app.storage import resolve_stored_path
@@ -165,26 +164,30 @@ def _patient_id_for(cursor, application_id: str) -> str:
 
 
 def _record_deid_metadata(record, produced: Path) -> None:
-    """Note what came out of de-identification, on the file's metadata row."""
+    """Write what came out of de-identification into the output file.
+
+    Deliberately not into `file_metadata`: that row holds what the
+    *original* arrived carrying, and mixing our own facts into it made
+    the two indistinguishable once stored. See app/embed.py.
+    """
+    output_type = produced.suffix.lstrip(".").lower()
+
     try:
         with hive_cursor() as cursor:
             patient_id = _patient_id_for(cursor, record.application_id)
-            metadata_crud.merge_metadata_for_file(
-                cursor,
-                record.id,
-                {
-                    "deidentified_file_name": produced.name,
-                    "deidentified_at": datetime.now(timezone.utc).isoformat(
-                        timespec="seconds"
-                    ),
-                    "patient_id": patient_id,
-                    "deidentified_file_type": produced.suffix.lstrip(".").lower(),
-                },
-            )
-    except Exception as exc:  # pragma: no cover - annotation is not critical
-        log.warning(
-            "deid_metadata_write_failed", file_id=record.id, error=str(exc)
-        )
+    except Exception as exc:
+        log.warning("deid_patient_lookup_failed", file_id=record.id, error=str(exc))
+        patient_id = ""
+
+    embed_metadata(
+        produced,
+        output_type,
+        generated_facts(
+            patient_id=patient_id,
+            output_name=produced.name,
+            output_type=output_type,
+        ),
+    )
 
 
 def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None:

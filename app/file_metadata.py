@@ -3,6 +3,7 @@ import datetime as _datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from app.filetype import OLE_MAGIC
 from app.logging_setup import get_logger
 from app.schemas import METADATA_EXTENSIONS
 
@@ -70,7 +71,7 @@ def _extract_dicom(path: Path) -> Dict[str, str]:
     return _collect(pairs())
 
 
-def _extract_word(path: Path) -> Dict[str, str]:
+def _extract_docx(path: Path) -> Dict[str, str]:
     import docx
 
     document = docx.Document(str(path))
@@ -92,6 +93,43 @@ def _extract_word(path: Path) -> Dict[str, str]:
             ("table_count", len(document.tables)),
         ]
     )
+
+
+def _decoded(value: Any) -> Any:
+    """olefile hands back bytes for text properties on older documents."""
+    if isinstance(value, (bytes, bytearray)):
+        return value.decode("utf-8", "replace").strip("\x00") or None
+    return value
+
+
+def _extract_legacy_doc(path: Path) -> Dict[str, str]:
+    """A pre-2007 .doc: OLE2, so python-docx cannot open it at all.
+
+    The properties live in the SummaryInformation streams, which is what
+    olefile reads. Without it the row records 'failed' with the reason,
+    which is what this format did before and is not made worse by it.
+    """
+    import olefile
+
+    ole = olefile.OleFileIO(str(path))
+    try:
+        properties = ole.get_metadata()
+        names = list(properties.SUMMARY_ATTRIBS) + list(properties.DOCSUM_ATTRIBS)
+        return _collect(
+            (name, _decoded(getattr(properties, name, None))) for name in names
+        )
+    finally:
+        ole.close()
+
+
+def _extract_word(path: Path) -> Dict[str, str]:
+    """Word, either generation. The container says which, not the name."""
+    with open(path, "rb") as handle:
+        head = handle.read(len(OLE_MAGIC))
+
+    if head == OLE_MAGIC:
+        return _extract_legacy_doc(path)
+    return _extract_docx(path)
 
 
 _EXTRACTORS = {
