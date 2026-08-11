@@ -17,8 +17,10 @@ import { queryKeys } from '@/lib/queryKeys'
 import type { AuditLogFilters } from '@/schemas/log'
 import type { FileMetadataFilters } from '@/schemas/fileMetadata'
 import {
+  bulkSummary,
   isUploadJobSettled,
   uploadJobSummary,
+  type BulkResult,
   type UploadJob,
 } from '@/schemas/applicationFile'
 import type { ApplicationFile } from '@/schemas/applicationFile'
@@ -316,6 +318,54 @@ export function useDeidentifyFile(applicationId: string) {
       toast.error(errorMessage(error, 'Could not start de-identification'))
     },
   })
+}
+
+/** De-identify, or approve, every file on the application at once. */
+function useBulkFileAction(
+  applicationId: string,
+  action: (id: string) => Promise<BulkResult>,
+  verb: 'approve' | 'de-identify',
+  failure: string
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => action(applicationId),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.applicationFiles.list(applicationId),
+      })
+      const description = bulkSummary(result, verb)
+      if (result.changed === 0) {
+        toast.info(description)
+      } else {
+        toast.success(
+          verb === 'approve' ? 'Documents approved' : 'De-identification started',
+          { description }
+        )
+      }
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, failure))
+    },
+  })
+}
+
+export function useDeidentifyAllFiles(applicationId: string) {
+  return useBulkFileAction(
+    applicationId,
+    applicationFilesApi.deidentifyAll,
+    'de-identify',
+    'Could not start de-identification'
+  )
+}
+
+export function useApproveAllFiles(applicationId: string) {
+  return useBulkFileAction(
+    applicationId,
+    applicationFilesApi.approveAll,
+    'approve',
+    'Could not approve the documents'
+  )
 }
 
 export function useFileMetadata(fileId: string | undefined) {

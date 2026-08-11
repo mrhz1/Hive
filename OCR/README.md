@@ -254,6 +254,14 @@ safe file.
 
 Three constraints worth knowing:
 
+- **Only free text is redacted.** `PN`, `LO`, `SH`, `ST`, `LT`, `UT` and
+  `UC` — the VRs that hold prose. **`CS` is deliberately excluded**: it
+  holds *codes* (`MONOCHROME2`, `MR`, `YES`) matched against
+  enumerations, never read, and an analyzer trained on clinical prose
+  will occasionally call one a person. Writing `<PERSON>` into
+  `PhotometricInterpretation` produces a study nothing can decode. The
+  tags the pixel decoder reads (`NEVER_MODIFIED` in `dicom_io.py`) are
+  additionally pinned by name, whatever any list says.
 - **Dates and numbers are emptied, not tagged.** `<DATE>` is not a valid
   DICOM `DA` value and a reader parsing it would choke, so those VRs are
   blanked as before.

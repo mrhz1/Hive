@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  bulkSummary,
+  fileHaystack,
   isUploadJobSettled,
   previewKind,
   uploadJobSummary,
@@ -137,5 +139,66 @@ describe('preview kinds', () => {
   it('leaves anything else as a download', () => {
     expect(previewKind('txt')).toBe('download')
     expect(previewKind('')).toBe('download')
+  })
+})
+
+describe('finding a document in a long list', () => {
+  const file = {
+    original_file_name: 'Consent-Form.PDF',
+    file_extension: 'pdf',
+    description: 'signed by the patient',
+    review_status: 'pending',
+    deid_status: 'done',
+  }
+
+  it('matches on name, case-insensitively', () => {
+    expect(fileHaystack(file)).toContain('consent-form.pdf')
+  })
+
+  it('matches on type and description too', () => {
+    const hay = fileHaystack(file)
+    expect(hay).toContain('pdf')
+    expect(hay).toContain('signed by the patient')
+  })
+
+  it('copes with no description', () => {
+    expect(() => fileHaystack({ ...file, description: null })).not.toThrow()
+  })
+})
+
+describe('bulk action summaries', () => {
+  const result = (over = {}) => ({
+    total: 10,
+    changed: 7,
+    skipped: 3,
+    reasons: {},
+    ...over,
+  })
+
+  it('says nothing happened when nothing could', () => {
+    expect(bulkSummary(result({ changed: 0 }), 'approve')).toBe(
+      'Nothing to approve.'
+    )
+  })
+
+  it('says so when there is nothing there at all', () => {
+    expect(bulkSummary(result({ total: 0, changed: 0 }), 'approve')).toBe(
+      'There are no documents yet.'
+    )
+  })
+
+  it('reports what it did and what it left behind', () => {
+    expect(
+      bulkSummary(
+        result({ reasons: { 'rejected, left alone': 3 } }),
+        'approve'
+      )
+    ).toBe('7 of 10 approved; 3 rejected, left alone.')
+  })
+
+  it('uses the right verb for de-identification', () => {
+    expect(bulkSummary(result({ reasons: {} }), 'de-identify')).toBe(
+      '7 of 10 queued.'
+    )
   })
 })

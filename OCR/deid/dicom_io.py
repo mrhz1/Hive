@@ -190,11 +190,16 @@ def _EXPLICIT_VR_LITTLE_ENDIAN():
     return ExplicitVRLittleEndian
 
 
-# VRs that hold free text a placeholder can legally be written into,
-# with the length the standard allows for each.
-_TEXT_VR_LIMITS = {
-    "AE": 16,
-    "CS": 16,
+# The only VRs that hold free text, and so the only ones an entity tag
+# may be written into. The length is what the standard allows for each.
+#
+# CS is deliberately absent. It is a *code* -- 'MONOCHROME2', 'MR',
+# 'YES' -- and an analyzer trained on clinical prose will occasionally
+# call one of those a person. Writing '<PERSON>' into
+# PhotometricInterpretation produces a study nothing can decode, which is
+# exactly what happened. Codes are matched against enumerations, never
+# read, so there is nothing in them to de-identify.
+_REDACTABLE_VR_LIMITS = {
     "LO": 64,
     "LT": 10240,
     "PN": 64,
@@ -204,24 +209,44 @@ _TEXT_VR_LIMITS = {
     "UT": 0,
 }
 
-# Dates, times and numbers cannot hold '<PATIENT>' -- a reader that
-# parses them would choke. They are emptied instead, which every one of
-# these VRs accepts.
-_EMPTIED_VRS = frozenset(
-    {"DA", "DT", "TM", "AS", "IS", "DS", "US", "SS", "UL", "SL", "FL", "FD"}
-)
-
-# Never rewritten: UIDs are structural. Blanking SOPInstanceUID or the
-# transfer syntax produces a file nothing will open, and they identify a
-# study rather than a person.
+# Never touched at all: UIDs and binary are structural, and blanking
+# SOPInstanceUID or the transfer syntax produces a file nothing opens.
 _STRUCTURAL_VRS = frozenset({"UI", "OB", "OW", "OD", "OF", "OL", "OV", "UN", "SQ"})
+
+# Belt and braces over the VR rules: whatever any list says, these are
+# what the pixel decoder reads. A study is unreadable without them, and
+# none of them can identify anybody.
+NEVER_MODIFIED = frozenset(
+    {
+        "BitsAllocated",
+        "BitsStored",
+        "Columns",
+        "HighBit",
+        "NumberOfFrames",
+        "PhotometricInterpretation",
+        "PixelAspectRatio",
+        "PixelRepresentation",
+        "PlanarConfiguration",
+        "RescaleIntercept",
+        "RescaleSlope",
+        "RescaleType",
+        "Rows",
+        "SamplesPerPixel",
+        "SmallestImagePixelValue",
+        "LargestImagePixelValue",
+        "TransferSyntaxUID",
+        "WindowCenter",
+        "WindowWidth",
+        "VOILUTFunction",
+    }
+)
 
 _PHI_TAG_SET = frozenset(PHI_TAGS)
 _BLANKED_TAG_SET = frozenset(BLANKED_TAGS)
 
 
 def _fit(value: str, vr: str) -> str:
-    limit = _TEXT_VR_LIMITS.get(vr, 0)
+    limit = _REDACTABLE_VR_LIMITS.get(vr, 0)
     return value[:limit] if limit else value
 
 
@@ -233,12 +258,14 @@ def _deidentify_element(element, redact, touched: List[str], prefix: str = "") -
     label = f"{prefix}{keyword}"
     known_phi = keyword in _PHI_TAG_SET
 
-    if element.VR in _STRUCTURAL_VRS:
+    if keyword in NEVER_MODIFIED or element.VR in _STRUCTURAL_VRS:
         return
 
-    if element.VR in _EMPTIED_VRS:
-        # A date is identifying on its own -- birth dates especially --
-        # so the known list still empties these outright.
+    if element.VR not in _REDACTABLE_VR_LIMITS:
+        # Not free text: a code, a date, a number. Nothing in it can be
+        # read as prose, so there is nothing for the analyzer to find --
+        # but a date of birth still identifies, so the known list empties
+        # these outright. Empty is valid for every one of these VRs.
         if known_phi or keyword in _BLANKED_TAG_SET:
             if element.value not in (None, ""):
                 element.value = ""

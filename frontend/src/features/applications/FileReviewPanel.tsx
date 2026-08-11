@@ -1,5 +1,6 @@
 import {
   Check,
+  CheckCheck,
   Eye,
   FileJson,
   ShieldCheck,
@@ -7,19 +8,24 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ReasonDialog } from '@/components/ReasonDialog'
+import { Button } from '@/components/ui/Button'
+import { TextField } from '@/components/ui/Field'
 import { Badge } from '@/components/ui/Misc'
+import { Spinner } from '@/components/ui/Spinner'
 import { DropdownMenu, type MenuAction } from '@/components/ui/DropdownMenu'
 import { FileMetadataModal } from '@/features/applications/FileMetadataModal'
 import { FileViewerModal } from '@/features/patients/FileViewerModal'
 import { FolderUpload } from '@/features/patients/FolderUpload'
 import {
   useApplicationFiles,
+  useApproveAllFiles,
   useBackgroundUpload,
+  useDeidentifyAllFiles,
   useDeidentifyFile,
   useDeleteApplicationFile,
   useReviewApplicationFile,
@@ -29,11 +35,13 @@ import { applicationFilesApi } from '@/lib/api/resources'
 import {
   canDeidentify,
   deidTone,
+  fileHaystack,
   formatFileSize,
   hasExtractableMetadata,
   isDeidInFlight,
   previewKind,
   reviewTone,
+  undecidedCount,
   type ApplicationFile,
   type UploadJob,
 } from '@/schemas/applicationFile'
@@ -99,6 +107,22 @@ export function FileReviewPanel({
     useState<ApplicationFile | null>(null)
   const [rejecting, setRejecting] = useState<ApplicationFile | null>(null)
   const [deleting, setDeleting] = useState<ApplicationFile | null>(null)
+  const [search, setSearch] = useState('')
+
+  const approveAll = useApproveAllFiles(applicationId)
+  const deidentifyAll = useDeidentifyAllFiles(applicationId)
+
+  const files = useMemo(() => filesQuery.data ?? [], [filesQuery.data])
+
+  // Filtered here rather than server-side: the list is already loaded,
+  // and a round trip per keystroke would be slower than the filter.
+  const visible = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return files
+    return files.filter((file) => fileHaystack(file).includes(term))
+  }, [files, search])
+
+  const undecided = undecidedCount(files)
 
   /**
    * Only a PDF needs its bytes up front -- the modal renders it in an
@@ -231,22 +255,46 @@ export function FileReviewPanel({
           </span>
         </div>
       ),
-      sortValue: (file) => file.original_file_name,
+      sortValue: (file) => file.original_file_name.toLowerCase(),
+    },
+    {
+      id: 'type',
+      header: 'Type',
+      cell: (file) => (
+        <Badge tone="neutral">{file.file_extension || 'file'}</Badge>
+      ),
+      sortValue: (file) => file.file_extension,
     },
     {
       id: 'review',
       header: 'Review',
       cell: (file) => (
         <div className="min-w-0">
-          <Badge tone={reviewTone(file.review_status)}>{file.review_status}</Badge>
-          {file.review_note ? (
-            <span
-              className="mt-1 block truncate text-xs text-[rgb(var(--foreground-muted))]"
-              title={file.review_note}
-            >
-              {file.review_note}
+          {/* The menu closes the moment an action is chosen, taking its
+              own spinner with it. Without this the row sits unchanged
+              for a few seconds and nothing says anything happened. */}
+          {review.isPending && review.variables?.fileId === file.id ? (
+            <span className="inline-flex items-center gap-2 text-xs font-semibold text-[rgb(var(--foreground-muted))]">
+              <Spinner size="sm" label="" />
+              {review.variables.reviewStatus === 'approved'
+                ? 'Approving…'
+                : 'Rejecting…'}
             </span>
-          ) : null}
+          ) : (
+            <>
+              <Badge tone={reviewTone(file.review_status)}>
+                {file.review_status}
+              </Badge>
+              {file.review_note ? (
+                <span
+                  className="mt-1 block truncate text-xs text-[rgb(var(--foreground-muted))]"
+                  title={file.review_note}
+                >
+                  {file.review_note}
+                </span>
+              ) : null}
+            </>
+          )}
         </div>
       ),
       sortValue: (file) => file.review_status,
@@ -284,15 +332,57 @@ export function FileReviewPanel({
         <UploadProgress job={upload.job} onDismiss={upload.dismiss} />
       ) : null}
 
+      <div className="flex flex-wrap items-end justify-between gap-4 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4">
+        <div className="min-w-64 flex-1">
+          <TextField
+            label="Search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Find a document by name, type or description..."
+            aria-label="Search documents"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            disabled={undecided === 0}
+            title={
+              undecided === 0
+                ? 'Every document has been decided'
+                : `Approve the ${undecided} document${undecided === 1 ? '' : 's'} still waiting`
+            }
+            isLoading={approveAll.isPending}
+            leadingIcon={<CheckCheck className="size-4" aria-hidden="true" />}
+            onClick={() => approveAll.mutate()}
+          >
+            Approve all
+          </Button>
+          <Button
+            variant="outline"
+            disabled={files.length === 0}
+            isLoading={deidentifyAll.isPending}
+            leadingIcon={<ShieldCheck className="size-4" aria-hidden="true" />}
+            onClick={() => deidentifyAll.mutate()}
+          >
+            De-identify all
+          </Button>
+        </div>
+      </div>
+
       <DataTable
-        data={filesQuery.data}
+        data={visible}
         columns={columns}
         getRowId={(file) => file.id}
         isLoading={filesQuery.isLoading}
         isFetching={filesQuery.isFetching}
         error={filesQuery.error}
         loadingLabel="Loading files"
-        emptyMessage="No documents yet. Choose a folder above to add them."
+        emptyMessage={
+          search.trim()
+            ? `No document matches "${search.trim()}".`
+            : 'No documents yet. Choose a folder above to add them.'
+        }
         rowActions={(file) => (
           <DropdownMenu
             actions={actionsFor(file)}

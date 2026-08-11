@@ -239,6 +239,20 @@ class FileReview(BaseModel):
     review_note: Optional[str] = None
 
 
+class BulkResult(BaseModel):
+    """What a whole-application action did, and to how much.
+
+    An application can hold thousands of documents; the caller needs the
+    counts, not the rows back.
+    """
+
+    total: int
+    changed: int
+    skipped: int
+    # Named so the UI can say why, rather than only how many.
+    reasons: dict = Field(default_factory=dict)
+
+
 class PatientApplicationFileUpdate(BaseModel):
     """Fields the de-identification job (or a user) may set afterwards."""
 
