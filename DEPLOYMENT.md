@@ -451,8 +451,11 @@ Currently that is `patient_application_files.review_status` and
 `.review_note` (a reviewer's verdict on a document, kept apart from
 `deid_status` — a perfectly redacted scan can still be illegible),
 `patient_applications.status_reason` (why an application was rejected or
-deleted) and `patient_applications.assigned_to_id` (the user set to work
-on the application, and the one emailed about its uploads).
+deleted), `patient_applications.assigned_to_id` (the user set to work on
+the application, and the one emailed about its uploads) and
+`patient_applications.original_file_path` (where *this* application's
+documents came from — per application, because a second application for
+the same patient routinely draws on a different folder).
 
 Existing rows read NULL for a new column, which the API treats as
 `pending`/no reason, so nothing needs backfilling.

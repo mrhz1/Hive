@@ -38,8 +38,24 @@ def _assert_assignee_exists(cursor, user_id: Optional[str]) -> None:
     """An application assigned to nobody real would silently stop notifying."""
     if not user_id:
         return
-    if users_crud.get_user(cursor, user_id) is None:
-        raise ValidationError(f"User '{user_id}' does not exist")
+    if users_crud.get_user(cursor, user_id) is not None:
+        return
+
+    # Logged with what the lookup actually saw: the id arriving here comes
+    # from a <select> built out of GET /users, so a miss means the two
+    # disagree -- a stale list in the browser, or a user deleted since it
+    # was fetched.
+    known = users_crud.list_users(cursor)
+    log.warning(
+        "assignee_not_found",
+        assigned_to_id=user_id,
+        users_visible=len(known),
+        sample_ids=[user.id for user in known[:5]],
+    )
+    raise ValidationError(
+        f"User '{user_id}' does not exist. If they were on the list a "
+        "moment ago, reload the page -- the list may be out of date."
+    )
 
 
 @router.post("", response_model=PatientApplication, status_code=201)

@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { ReasonDialog } from '@/components/ReasonDialog'
 import { Button } from '@/components/ui/Button'
 import { Card, PageHeader } from '@/components/ui/Misc'
+import { FolderPathField } from '@/features/patients/FolderPathField'
 import { PatientForm } from '@/features/patients/PatientForm'
 import {
   patientHooks,
@@ -147,6 +148,13 @@ export function ApplicationWizard({
   const [rejecting, setRejecting] = useState(false)
   const [assignedTo, setAssignedTo] = useState(application?.assigned_to_id ?? '')
 
+  // This application's source folder, not the patient's. A second
+  // application for the same patient routinely draws on a different one,
+  // so it is asked for here and stored on the application.
+  const [folder, setFolder] = useState(application?.original_file_path ?? '')
+  const [folderFiles, setFolderFiles] = useState<File[]>([])
+  const [folderError, setFolderError] = useState<string | null>(null)
+
   const goTo = (step: StepNumber) => {
     setCurrent(step)
     if (step > furthest) setFurthest(step)
@@ -166,26 +174,43 @@ export function ApplicationWizard({
       .catch(() => setAssignedTo(record.assigned_to_id ?? ''))
   }
 
+  /** Step 1 cannot be left without somewhere for the documents to come from. */
+  function folderIsMissing(): boolean {
+    if (folder.trim()) {
+      setFolderError(null)
+      return false
+    }
+    setFolderError('Choose the folder this application’s documents come from')
+    return true
+  }
+
   async function onPatientSaved(saved: Patient) {
     setPatient(saved)
 
+    // The patient is saved either way; only the application waits.
+    if (folderIsMissing()) return
+
+    let current: PatientApplication | undefined
     try {
       if (record) {
-        const updated = await updateApplication.mutateAsync({
+        current = await updateApplication.mutateAsync({
           id: record.id,
-          values: { assigned_to_id: assignedTo },
+          values: { assigned_to_id: assignedTo, original_file_path: folder },
         })
-        setRecord(updated)
       } else {
-        const created = await createApplication.mutateAsync({
+        current = await createApplication.mutateAsync({
           patient_id: saved.id,
           status: 'draft',
           assigned_to_id: assignedTo,
+          original_file_path: folder,
         })
-        setRecord(created)
       }
+      setRecord(current)
     } catch {
-      // The mutation hooks toast their own message.
+      // The mutation hooks toast their own message. Staying on step 1 is
+      // the point: step 2 has nothing to attach documents to, and moving
+      // there anyway is what produced 'create an application first'.
+      return
     }
 
     goTo(2)
@@ -195,13 +220,14 @@ export function ApplicationWizard({
     await onPatientSaved(chosen)
   }
 
-  function recordUploadFolder(folder: string) {
+  /** Where the batch actually landed, kept on the patient as a default. */
+  function recordUploadFolder(landedIn: string) {
     if (!patient || patient.original_file_path) return
 
     void updatePatient
       .mutateAsync({
         id: patient.id,
-        values: { ...toPatientFormValues(patient), original_file_path: folder },
+        values: { ...toPatientFormValues(patient), original_file_path: landedIn },
       })
       .then(setPatient)
       .catch(() => undefined)
@@ -256,6 +282,29 @@ export function ApplicationWizard({
             disabled={updateApplication.isPending}
           />
 
+          <Card className="p-5">
+            <h2 className="text-[11px] font-bold tracking-widest text-[rgb(var(--foreground-muted))] uppercase">
+              Documents
+            </h2>
+            <div className="mt-4">
+              <FolderPathField
+                label="Source folder"
+                required
+                value={folder}
+                files={folderFiles}
+                disabled={isSaving}
+                onSelect={(path, files) => {
+                  // Keep a typed-in path when the picker yields none.
+                  setFolder(path || folder)
+                  setFolderFiles(files)
+                  if (path || files.length) setFolderError(null)
+                }}
+                {...(folderError ? { error: folderError } : {})}
+                hint="Required. This application's own folder -- a later application for the same patient may use a different one. Anything selected here is uploaded in step 2."
+              />
+            </div>
+          </Card>
+
           {/* Only offered while the patient is still undecided. Once one
               is attached, changing it would silently move an application
               -- and any documents already on it -- to someone else. */}
@@ -271,6 +320,8 @@ export function ApplicationWizard({
               cancelTo="/applications"
               submitLabel={patient ? 'Save and continue' : 'Create and continue'}
               onSaved={onPatientSaved}
+              // The application asks for its own folder above.
+              showFilePath={false}
             />
           )}
         </div>
@@ -282,6 +333,8 @@ export function ApplicationWizard({
             <FileReviewPanel
               applicationId={record.id}
               onUploaded={recordUploadFolder}
+              initialFiles={folderFiles}
+              onInitialFilesTaken={() => setFolderFiles([])}
             />
             <div className="flex flex-wrap justify-between gap-3">
               <Button variant="outline" onClick={() => goTo(1)}>

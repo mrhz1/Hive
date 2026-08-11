@@ -47,6 +47,13 @@ export function ApplicationSummary({
 
         <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
           <DescriptionItem label="Name">{patientName(patient)}</DescriptionItem>
+          {application?.original_file_path ? (
+            <DescriptionItem label="Source folder">
+              <span className="font-mono text-xs break-all">
+                {application.original_file_path}
+              </span>
+            </DescriptionItem>
+          ) : null}
           {application ? (
             <DescriptionItem label="Assigned to">
               {assignee ? (

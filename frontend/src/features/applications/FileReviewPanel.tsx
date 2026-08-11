@@ -7,7 +7,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { DataTable, type Column } from '@/components/DataTable'
@@ -42,10 +42,19 @@ import { UploadProgress } from './UploadProgress'
 export function FileReviewPanel({
   applicationId,
   onUploaded,
+  initialFiles,
+  onInitialFilesTaken,
 }: {
   applicationId: string
   /** Where the batch landed. The wizard records it on the patient. */
   onUploaded?: (folder: string) => void
+  /**
+   * Picked in step 1, before there was an application to attach them to.
+   * Uploaded once on arrival here rather than making the user choose the
+   * same folder a second time.
+   */
+  initialFiles?: File[]
+  onInitialFilesTaken?: () => void
 }) {
   const filesQuery = useApplicationFiles(applicationId)
   const deidentify = useDeidentifyFile(applicationId)
@@ -62,6 +71,22 @@ export function FileReviewPanel({
   )
 
   const upload = useBackgroundUpload(applicationId, onJobFinished)
+
+  // Once per application: the effect re-runs whenever the parent
+  // re-renders with the same array, and a second upload would duplicate
+  // every document.
+  const takenFor = useRef<string | null>(null)
+  const { start: startUpload } = upload
+
+  useEffect(() => {
+    if (!applicationId || takenFor.current === applicationId) return
+    if (!initialFiles || initialFiles.length === 0) return
+
+    takenFor.current = applicationId
+    void startUpload({ files: initialFiles })
+      .then(() => onInitialFilesTaken?.())
+      .catch(() => undefined)
+  }, [applicationId, initialFiles, startUpload, onInitialFilesTaken])
 
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [viewing, setViewing] = useState<{

@@ -29,6 +29,12 @@ export const patientApplicationSchema = z.object({
   status_reason: nullableText,
   /** The user who has to work on it; upload notices go to them. */
   assigned_to_id: nullableText,
+  /**
+   * Where this application's documents came from. Per application, not
+   * per patient: a second application for the same patient routinely
+   * draws on a different folder.
+   */
+  original_file_path: nullableText,
 })
 
 export type PatientApplication = z.infer<typeof patientApplicationSchema>

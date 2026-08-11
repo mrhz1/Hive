@@ -81,7 +81,11 @@ CREATE TABLE `patient_applications` (
   `status_reason` STRING,
   -- The user who has to do the work. Notifications about this
   -- application's uploads go to them.
-  `assigned_to_id` STRING
+  `assigned_to_id` STRING,
+  -- Where this application's documents came from. Per application, not
+  -- per patient: a second application for the same patient routinely
+  -- draws on a different folder.
+  `original_file_path` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
