@@ -12,6 +12,7 @@ import uuid
 import structlog
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.errors import internal_error_response
 from app.logging_setup import get_logger
 
 log = get_logger(__name__)
@@ -73,10 +74,16 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
         try:
             response = await call_next(request)
-        except Exception:
+        except Exception as exc:
             duration_ms = round((time.perf_counter() - started) * 1000, 2)
-            log.exception("request_errored", duration_ms=duration_ms)
-            raise
+            log.exception("request_errored", duration_ms=duration_ms, error=str(exc))
+            # Answered here rather than re-raised. Starlette handles a
+            # re-raised exception *outside* the CORS middleware, so the
+            # 500 goes back with no Access-Control-Allow-Origin on it and
+            # the browser reports a CORS failure -- hiding the actual
+            # error behind a misconfiguration that isn't there. This
+            # response passes back out through CORS like any other.
+            response = internal_error_response()
 
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
         log.info(

@@ -269,6 +269,78 @@ def test_a_done_row_does_not_end_the_wait_while_the_run_is_alive(
     assert polls["n"] >= 4, "stopped waiting as soon as the row said done"
 
 
+def test_the_gap_between_polls_opens_out(table, monkeypatch):
+    """A run is minutes of OCR. Asking every ten seconds for the whole of
+    one is hundreds of calls to be told the same thing."""
+    table["a"] = Row("a", 1)
+
+    waits = []
+    monkeypatch.setattr(deid_queue, "POLL_SECONDS", 10)
+    monkeypatch.setattr(deid_queue, "MAX_POLL_SECONDS", 60)
+    monkeypatch.setattr(deid_queue._stop, "wait", lambda s: waits.append(s) or False)
+
+    polls = {"n": 0}
+
+    def run_status(_run_id):
+        polls["n"] += 1
+        if polls["n"] < 8:
+            return "ENGINE_RUNNING"
+        table["a"].deid_status = "done"
+        return "ENGINE_SUCCEEDED"
+
+    monkeypatch.setattr(deid_queue, "start_deid_job_run", lambda environment=None: "r")
+    monkeypatch.setattr(deid_queue, "get_job_run_status", run_status)
+
+    deid_queue.drain_once()
+
+    assert waits[0] == 10, "the first check should still be prompt"
+    assert waits == sorted(waits), "the interval must never shrink"
+    assert waits[-1] == 60, "and must settle at the cap"
+    # The whole point: the same stretch of time, far fewer questions.
+    assert sum(waits) > 10 * len(waits) / 2
+
+
+def test_a_busy_job_is_asked_less_and_less_often(table, monkeypatch):
+    """Every one of these refusals is a Skipped run on the Job's history."""
+    table["a"] = Row("a", 1)
+
+    waits = []
+    monkeypatch.setattr(deid_queue, "POLL_SECONDS", 10)
+    monkeypatch.setattr(deid_queue, "MAX_POLL_SECONDS", 60)
+    monkeypatch.setattr(deid_queue, "_deferrals", 0)
+    monkeypatch.setattr(deid_queue._stop, "wait", lambda s: waits.append(s) or False)
+
+    def start(environment=None):
+        raise ClouderaCapacityError("job run for job x already active, code 9")
+
+    monkeypatch.setattr(deid_queue, "start_deid_job_run", start)
+
+    for _ in range(6):
+        deid_queue.drain_once()
+
+    assert table["a"].deid_status == "queued", "a busy Job is not the file's fault"
+    assert waits == sorted(waits)
+    assert waits[0] == 10 and waits[-1] == 60
+
+
+def test_a_run_that_starts_clears_the_backoff(table, monkeypatch):
+    """Backing off is for a Job that keeps refusing, not for one that
+    was busy once an hour ago."""
+    table["a"] = Row("a", 1)
+    monkeypatch.setattr(deid_queue, "_deferrals", 5)
+
+    def start(environment=None):
+        table["a"].deid_status = "done"
+        return "r"
+
+    monkeypatch.setattr(deid_queue, "start_deid_job_run", start)
+    monkeypatch.setattr(deid_queue, "get_job_run_status", lambda r: "ENGINE_SUCCEEDED")
+
+    deid_queue.drain_once()
+
+    assert deid_queue._deferrals == 0
+
+
 def test_a_silent_control_plane_eventually_lets_the_row_decide(
     table, monkeypatch
 ):

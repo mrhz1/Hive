@@ -1,5 +1,6 @@
 import os
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -26,9 +27,59 @@ from app.routers import (
 configure_logging()
 log = get_logger(__name__)
 
+
+def _origin_only(value: str) -> str:
+    """`https://host:port` out of whatever was pasted into the variable."""
+    cleaned = value.strip()
+    if not cleaned or cleaned == "*":
+        return cleaned
+
+    parsed = urlparse(cleaned if "//" in cleaned else f"//{cleaned}")
+    if not parsed.netloc:
+        return ""
+    return f"{parsed.scheme or 'https'}://{parsed.netloc}"
+
+
+def _cors_origins() -> list[str]:
+    """Allowed browser origins.
+
+    An origin is scheme + host + port and nothing else, so
+    `https://example.org/` and `https://example.org/app` are both misses
+    -- and the browser then reports a CORS failure that looks exactly
+    like the server ignoring the setting. Trailing slashes and paths are
+    trimmed here rather than left to be found out that way.
+    """
+    configured = os.environ.get("CORS_ORIGINS")
+    if configured:
+        return [
+            origin
+            for origin in (_origin_only(o) for o in configured.split(","))
+            if origin
+        ]
+
+    # The Vite dev server, wherever it landed when 5173 was taken.
+    return [
+        f"http://{host}:{port}"
+        for host in ("localhost", "127.0.0.1")
+        for port in range(5173, 5181)
+    ]
+
+
+CORS_ORIGINS = _cors_origins()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Say at boot whether de-identification can actually be dispatched."""
+    # A browser will not say which origin it was refused for, and the
+    # failure looks identical to the API being down. Printing the list
+    # turns 'why the CORS error' into reading one line of the log.
+    log.info(
+        "cors_origins_allowed",
+        origins=CORS_ORIGINS,
+        configured=bool(os.environ.get("CORS_ORIGINS")),
+    )
+
     if deid.DEID_BACKEND == "cml_job" and not cloudera.is_configured():
         log.error(
             "deid_backend_misconfigured",
@@ -65,22 +116,9 @@ app = FastAPI(
 
 app.add_middleware(RequestContextMiddleware)
 
-def _cors_origins() -> list[str]:
-    """Allowed browser origins."""
-    configured = os.environ.get("CORS_ORIGINS")
-    if configured:
-        return [o.strip() for o in configured.split(",") if o.strip()]
-
-    return [
-        f"http://{host}:{port}"
-        for host in ("localhost", "127.0.0.1")
-        for port in range(5173, 5181)
-    ]
-
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins(),
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
