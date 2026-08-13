@@ -63,9 +63,20 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     )
 
 
-async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    log.exception("unhandled_exception", error=str(exc))
+def internal_error_response() -> JSONResponse:
+    """The envelope for a crash, wherever it is caught.
+
+    Deliberately says nothing: an unhandled exception's message is as
+    likely to be a Hive statement or a file path as anything a caller
+    could act on. The correlation id on the response is how it is tied
+    back to the traceback in the log.
+    """
     return JSONResponse(
         status_code=500,
         content={"error": {"code": "internal_error", "detail": "Internal server error"}},
     )
+
+
+async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    log.exception("unhandled_exception", error=str(exc))
+    return internal_error_response()
