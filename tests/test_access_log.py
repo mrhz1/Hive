@@ -90,6 +90,23 @@ def test_opening_the_redacted_copy_is_not_a_disclosure(
     assert _file_events(access_events.flush(), "read")[-1]["identified"] is False
 
 
+def test_the_event_names_the_document_that_was_opened(
+    as_admin, storage_root, access_events
+):
+    """A file id says a document was opened; it does not say which one,
+    and the name it is stored under is not always the name it was
+    uploaded with -- sanitising strips accents and punctuation."""
+    _, application_id = _patient_and_application(as_admin)
+    record = _upload(as_admin, application_id, name="Muller, J - CT chest.pdf")
+
+    as_admin.get(f"/files/{record['id']}/content")
+
+    event = _file_events(access_events.flush(), "read")[-1]
+    assert event["detail"] == "Muller, J - CT chest.pdf"
+    assert event["detail"] != record["sanitized_file_name"]
+    assert event["resource_id"] == record["id"]
+
+
 def test_taking_a_copy_away_is_recorded_as_a_download(
     as_admin, storage_root, access_events
 ):

@@ -260,7 +260,7 @@ def get_application_file_metadata(
 
     # The original's own metadata: names, MRNs, whatever the format held.
     _record_file_access(
-        cursor, document, actor, READ, deidentified=False, detail="metadata"
+        cursor, document, actor, READ, deidentified=False, note="metadata"
     )
     return record
 
@@ -301,7 +301,7 @@ def export_application_file_metadata(
         EXPORT,
         deidentified=False,
         record_count=len(items),
-        detail=name,
+        note=name,
     )
 
     return Response(
@@ -355,7 +355,6 @@ def read_application_file(
         DOWNLOAD if download else READ,
         deidentified=deidentified,
         byte_count=record.file_size,
-        detail=filename,
     )
 
     return FileResponse(
@@ -376,10 +375,37 @@ def _patient_of(cursor, application_id: str) -> Optional[str]:
     return getattr(application, "patient_id", None)
 
 
+def _document_name(record, deidentified: bool) -> str:
+    """What the document is called on screen.
+
+    Not the name it has on disk: sanitising strips accents and
+    punctuation, so the stored name can differ enough from the uploaded
+    one that nobody recognises the document -- which is the whole use of
+    naming it in the trail.
+    """
+    if deidentified:
+        return record.deidentified_file_name or record.sanitized_file_name
+    return record.original_file_name
+
+
 def _record_file_access(
-    cursor, record, actor, action: str, *, deidentified: bool, **extra
+    cursor,
+    record,
+    actor,
+    action: str,
+    *,
+    deidentified: bool,
+    note: Optional[str] = None,
+    **extra,
 ) -> None:
-    """One access event for a file, with what only this layer knows."""
+    """One access event for a file, with what only this layer knows.
+
+    Every one of these names the document. A file id and a patient id
+    answer 'was there a disclosure'; they do not answer 'which document
+    did they open', which is what anybody reading the log actually wants
+    and had to go and look up by hand.
+    """
+    name = _document_name(record, deidentified)
     record_access(
         action,
         actor=actor,
@@ -390,6 +416,7 @@ def _record_file_access(
         # The same endpoints serve the original and the redacted copy;
         # only one of those is a disclosure.
         identified=not deidentified,
+        detail=f"{name} ({note})" if note else name,
         **extra,
     )
 
@@ -443,7 +470,7 @@ def preview_application_file_image(
         raise ValidationError(f"'{extension}' files are not rendered as images")
 
     _record_file_access(
-        cursor, record, actor, READ, deidentified=deidentified, detail=f"frame {frame}"
+        cursor, record, actor, READ, deidentified=deidentified, note=f"frame {frame}"
     )
     return _dicom_response(path, frame)
 

@@ -9,8 +9,10 @@ import { useAccessLogs } from '@/hooks/useResources'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
   ACCESS_ACTIONS,
+  accessedName,
   accessSummary,
   accessTone,
+  resourceLabel,
   type AccessLog,
 } from '@/schemas/accessLog'
 
@@ -85,6 +87,36 @@ function AccessLogPage() {
         </div>
       ),
       sortValue: (entry) => entry.action,
+    },
+    {
+      id: 'what-of',
+      header: 'File / resource',
+      cell: (entry) => {
+        const name = accessedName(entry)
+        return (
+          <div className="min-w-0">
+            {/* The name first: a file id says a document was opened, it
+                does not say which one, and looking that up by hand was
+                what made this table hard to read. */}
+            <span
+              className="block truncate text-sm font-semibold"
+              title={name ?? undefined}
+            >
+              {name ?? resourceLabel(entry)}
+            </span>
+            {entry.resource_id ? (
+              <code
+                className="block truncate text-xs text-[rgb(var(--foreground-muted))]"
+                title={entry.resource_id}
+              >
+                {name ? `${resourceLabel(entry)} · ` : ''}
+                {entry.resource_id}
+              </code>
+            ) : null}
+          </div>
+        )
+      },
+      sortValue: (entry) => accessedName(entry) ?? resourceLabel(entry),
     },
     {
       id: 'patient',
