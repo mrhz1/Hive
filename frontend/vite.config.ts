@@ -10,10 +10,11 @@ import { defineConfig } from 'vitest/config'
  * the page talks only to the dev server's own origin, so there is no
  * cross-origin request for a browser to refuse and no CORS_ORIGINS to
  * keep in step -- which is the only way that works when something
- * (Knox, an SSO proxy) sits in front of the API and answers the
- * preflight itself with a redirect the browser will not follow.
+ * (Knox, the Cloudera AI app gateway) sits in front of the API and
+ * answers the browser's preflight itself.
  *
- * Use it with VITE_API_BASE_URL=/api.
+ * lib/api/client.ts reads the same variable and switches the app's base
+ * URL to `/api`, so this is the only thing to set.
  */
 const PROXY_TARGET_VAR = 'VITE_API_PROXY_TARGET'
 
