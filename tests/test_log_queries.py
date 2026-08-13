@@ -4,6 +4,8 @@ Before this the change trail could only be filtered by entity: the actor
 was stored and not queryable, so "what did this person do, and when" had
 no answer through the application at all.
 """
+from datetime import datetime
+
 from conftest import ADMIN_ID, VIEWER_ID, minimal_patient
 
 
@@ -107,7 +109,7 @@ def test_the_access_trail_answers_who_saw_this_patient(
         files=[("files", ("scan.pdf", b"%PDF-1.4 fake", "application/pdf"))],
     ).json()[0]
 
-    as_admin.get(f"/files/{record['id']}/content")
+    as_admin.get(f"/files/{record['id']}/content", params={"download": True})
     access_events.flush()
 
     found = as_admin.get("/access-logs", params={"patient_id": patient_id}).json()
@@ -129,6 +131,28 @@ def test_the_access_trail_can_be_narrowed_to_disclosures(
     found = as_admin.get("/access-logs", params={"identified_only": True}).json()
 
     assert found and all(row["identified"] for row in found)
+
+
+def test_the_time_an_event_happened_says_which_zone_it_is_in(
+    as_admin, access_events
+):
+    """Hive TIMESTAMP carries no zone, so what comes back out of it is a
+    bare wall-clock reading. Served without an offset a browser reads it
+    as local time and shows every event at the UTC hour -- which is what
+    put the access log four hours ahead of the people reading it."""
+    patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
+    as_admin.get(f"/patients/{patient_id}")
+    access_events.flush()
+
+    # What a real read back hands over: the zone is gone, because the
+    # column never had one.
+    for row in access_events.rows:
+        row["occurred_at"] = row["occurred_at"].replace(tzinfo=None)
+
+    when = as_admin.get("/access-logs").json()[0]["occurred_at"]
+
+    assert when.endswith("Z") or when[-6] in "+-", when
+    assert datetime.fromisoformat(when.replace("Z", "+00:00")).tzinfo is not None
 
 
 def test_the_access_trail_needs_the_log_permission(client, access_events):

@@ -1,7 +1,9 @@
 import { ChevronLeft, ChevronRight, Download, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
+import { usePermissions } from '@/hooks/useCurrentUser'
 import { ApiError } from '@/lib/api/client'
 import {
   applicationFilesApi,
@@ -328,6 +330,10 @@ export function FileViewerModal({
 }) {
   const close = useCallback(() => onClose(), [onClose])
 
+  const { can } = usePermissions()
+  const canDownload = can('files:download')
+  const [isDownloading, setIsDownloading] = useState(false)
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') close()
@@ -349,6 +355,39 @@ export function FileViewerModal({
       : file.file_extension
   const kind = previewKind(extension)
 
+  /**
+   * Fetched again rather than saved from the bytes already in the iframe.
+   * The blob the viewer is showing was asked for as a read, and saving it
+   * from here would put a copy on somebody's disk with nothing in the
+   * access log to say so -- the second request is what records it as a
+   * download.
+   */
+  async function saveACopy() {
+    setIsDownloading(true)
+    try {
+      const blob =
+        source === 'library'
+          ? await deidentifiedFilesApi.fetchContent(fileId, true)
+          : await applicationFilesApi.fetchContent(fileId, isDeidentified, true)
+
+      const url = URL.createObjectURL(blob)
+      const anchor = window.document.createElement('a')
+      anchor.href = url
+      anchor.download = displayName
+      // In the document and revoked a tick later: a detached anchor is
+      // ignored by some browsers, and revoking in the same turn can pull
+      // the blob out from under a save that has not started reading it.
+      window.document.body.append(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (caught) {
+      toast.error(errorText(caught, 'Could not download this file'))
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col bg-[rgb(var(--background))]/80 p-4 backdrop-blur-sm sm:p-8"
@@ -369,18 +408,18 @@ export function FileViewerModal({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {/* A download attribute on a blob URL works where opening a
-                blob in another window does not. */}
-            {blobUrl ? (
-              <a href={blobUrl} download={displayName}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  leadingIcon={<Download className="size-3.5" aria-hidden="true" />}
-                >
-                  Download
-                </Button>
-              </a>
+            {/* Only for those allowed to take a copy away. Reading it in
+                here needs no such thing, so the viewer opens either way. */}
+            {canDownload ? (
+              <Button
+                variant="outline"
+                size="sm"
+                isLoading={isDownloading}
+                leadingIcon={<Download className="size-3.5" aria-hidden="true" />}
+                onClick={() => void saveACopy()}
+              >
+                Download
+              </Button>
             ) : null}
             <Button variant="ghost" size="sm" onClick={close} aria-label="Close viewer">
               <X className="size-4" aria-hidden="true" />
@@ -410,7 +449,7 @@ export function FileViewerModal({
         ) : (
           <ViewerMessage>
             {`'${file.file_extension || 'This'}' files cannot be shown here. `}
-            {blobUrl ? 'Use Download to open it locally.' : ''}
+            {canDownload ? 'Use Download to open it locally.' : ''}
           </ViewerMessage>
         )}
       </div>

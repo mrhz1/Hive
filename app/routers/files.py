@@ -106,12 +106,17 @@ def get_deidentified_file(
 
 
 @router.get("/{file_id}/content")
-def download_deidentified_file(
+def read_deidentified_file(
     file_id: str,
+    download: bool = False,
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("files:download")),
 ):
-    """The redacted bytes. Never the original -- this library does not expose it."""
+    """The redacted bytes. Never the original -- this library does not expose it.
+
+    As on the application copy: opening it in the viewer is a read, and
+    only `download=true` is a copy leaving.
+    """
     record = crud.get_file_or_404(cursor, file_id)
     if not record.de_identified_file_path:
         raise ValidationError("This file has not been de-identified yet")
@@ -120,13 +125,13 @@ def download_deidentified_file(
     if not path.is_file():
         raise ValidationError("The de-identified file is missing from disk")
 
-    _record_library_access(cursor, record, actor, DOWNLOAD)
+    _record_library_access(cursor, record, actor, DOWNLOAD if download else READ)
 
     return FileResponse(
         path,
         media_type=record.mime_type,
         filename=record.deidentified_file_name or path.name,
-        content_disposition_type="inline",
+        content_disposition_type="attachment" if download else "inline",
     )
 
 

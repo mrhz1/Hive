@@ -33,7 +33,7 @@ from app.schemas import (
     User,
     WordPreview,
 )
-from app.security import require_permission
+from app.security import assert_permission, require_permission
 from app.uploads import known_patient_id as _known_patient_id
 from app.uploads import record_metadata as _record_metadata
 from app.xlsx import workbook_bytes
@@ -314,13 +314,26 @@ def export_application_file_metadata(
 
 
 @router.get("/files/{file_id}/content")
-def download_application_file(
+def read_application_file(
     file_id: str,
     deidentified: bool = False,
+    download: bool = False,
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
-    """Serves the bytes."""
+    """Serves the bytes, to be read in the viewer or kept.
+
+    The same bytes go over the wire either way, but the two are not the
+    same event: opening a document in the viewer is a read, and only
+    `download=true` -- what the viewer's Download button asks for -- puts
+    a copy somewhere this system can no longer see. Recording every
+    preview as a download made the trail useless for telling them apart,
+    so the caller says which one it is, and taking a copy needs the
+    permission for it.
+    """
+    if download:
+        assert_permission(actor, "files:download")
+
     record = crud.get_file_or_404(cursor, file_id)
 
     if deidentified:
@@ -339,7 +352,7 @@ def download_application_file(
         cursor,
         record,
         actor,
-        DOWNLOAD,
+        DOWNLOAD if download else READ,
         deidentified=deidentified,
         byte_count=record.file_size,
         detail=filename,
@@ -349,7 +362,7 @@ def download_application_file(
         path,
         media_type=record.mime_type,
         filename=filename,
-        content_disposition_type="inline",
+        content_disposition_type="attachment" if download else "inline",
     )
 
 

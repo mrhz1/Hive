@@ -362,11 +362,23 @@ export const applicationFilesApi = {
     }
   },
 
-  fetchContent: async (fileId: string, deidentified = false): Promise<Blob> => {
+  /**
+   * The bytes. `download` is what separates the two events in the access
+   * log -- opening a document in the viewer is a read, and only the
+   * Download button takes a copy away, which needs `files:download`.
+   */
+  fetchContent: async (
+    fileId: string,
+    deidentified = false,
+    download = false
+  ): Promise<Blob> => {
     try {
       const response = await api.get(`/files/${fileId}/content`, {
         responseType: 'blob',
-        params: deidentified ? { deidentified: true } : undefined,
+        params: {
+          ...(deidentified ? { deidentified: true } : {}),
+          ...(download ? { download: true } : {}),
+        },
       })
       return response.data as Blob
     } catch (error) {
@@ -444,10 +456,11 @@ export const deidentifiedFilesApi = {
     }
   },
 
-  fetchContent: async (fileId: string): Promise<Blob> => {
+  fetchContent: async (fileId: string, download = false): Promise<Blob> => {
     try {
       const response = await api.get(`/files-library/${fileId}/content`, {
         responseType: 'blob',
+        params: download ? { download: true } : undefined,
       })
       return response.data as Blob
     } catch (error) {
