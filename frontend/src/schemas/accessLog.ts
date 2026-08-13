@@ -70,15 +70,59 @@ export function accessTone(
   return 'neutral'
 }
 
-/** What the row did, in words, for people who do not read event names. */
-export function accessSummary(entry: AccessLog): string {
-  const what = entry.resource_type ?? 'record'
-  if (entry.action === 'export') {
-    return `Exported ${entry.record_count ?? 0} ${what} rows`
+/** Event names as the people reading them would say them. */
+const RESOURCE_LABELS: Record<string, string> = {
+  application_file: 'document',
+  deidentified_file: 'de-identified document',
+  file_metadata: 'document metadata',
+  patient: 'patient record',
+  permission: 'permission',
+  file_path: 'stored file',
+}
+
+export function resourceLabel(entry: AccessLog): string {
+  const type = entry.resource_type
+  if (!type) return 'record'
+  return RESOURCE_LABELS[type] ?? type.replace(/_/g, ' ')
+}
+
+/**
+ * The name of the thing that was accessed, or null when the row is
+ * about no one thing in particular.
+ *
+ * Only the file events carry a name in `detail` -- a metadata browse
+ * puts the search in there, and a refusal has nothing to name. Reading
+ * `detail` as a name everywhere would caption a search as a filename.
+ */
+const NAMED_RESOURCES = ['application_file', 'deidentified_file']
+
+export function accessedName(entry: AccessLog): string | null {
+  if (!entry.resource_type || !NAMED_RESOURCES.includes(entry.resource_type)) {
+    return null
   }
-  if (entry.action === 'download') return `Downloaded a ${what}`
+  return entry.detail ?? null
+}
+
+/**
+ * What the row did, in words, for people who do not read event names.
+ *
+ * What it was done *to* is `accessedName`, in its own column -- saying
+ * the filename twice on one row only crowds out the rest of it.
+ */
+export function accessSummary(entry: AccessLog): string {
+  const what = resourceLabel(entry)
+
+  // Not '... N document rows': the count is of spreadsheet rows, and the
+  // column beside this already says what they came out of.
+  if (entry.action === 'export') return `Exported ${entry.record_count ?? 0} rows`
+  if (entry.action === 'download') return 'Took a copy away'
   if (entry.action === 'denied') return `Refused: needs ${entry.resource_id}`
   if (entry.action === 'auth_failure') return entry.detail ?? 'Sign-in refused'
   if (entry.action === 'integrity') return entry.detail ?? 'Integrity check failed'
+  if (accessedName(entry)) return 'Opened in the viewer'
+  if (entry.resource_type === 'file_metadata' && entry.detail) {
+    // 'search=siemens', which is the whole of what was browsed.
+    return `Browsed ${what} (${entry.detail})`
+  }
   return `Viewed a ${what}`
 }

@@ -147,7 +147,9 @@ def _record_library_access(cursor, record, actor, action: str) -> None:
         application_id=record.application_id,
         identified=False,
         byte_count=record.file_size,
-        detail=record.deidentified_file_name,
+        # The name the library lists it under, so the trail and the page
+        # call the same file the same thing.
+        detail=record.deidentified_file_name or record.sanitized_file_name,
     )
 
 
