@@ -4,9 +4,18 @@
 it was recorded anywhere durable before.
 """
 import pytest
-from conftest import ADMIN_ID, minimal_patient
+from conftest import ADMIN_ID, VIEWER_USER, minimal_patient
 
 from app import access_log
+
+
+def _file_events(rows, action):
+    """Events about an application's documents, and nothing else."""
+    return [
+        row
+        for row in rows
+        if row["action"] == action and row["resource_type"] == "application_file"
+    ]
 
 
 def _patient_and_application(client):
@@ -30,6 +39,7 @@ def _upload(client, application_id, name="scan.pdf", data=b"%PDF-1.4 fake"):
 def test_opening_the_original_is_recorded_as_a_disclosure(
     as_admin, storage_root, access_events
 ):
+    """A read, not a download -- the viewer showed it, nothing was kept."""
     patient_id, application_id = _patient_and_application(as_admin)
     record = _upload(as_admin, application_id)
 
@@ -39,10 +49,12 @@ def test_opening_the_original_is_recorded_as_a_disclosure(
     )
 
     rows = access_events.flush()
-    downloads = [r for r in rows if r["action"] == "download"]
-    assert len(downloads) == 1
+    assert not _file_events(rows, "download")
 
-    event = downloads[0]
+    reads = _file_events(rows, "read")
+    assert len(reads) == 1
+
+    event = reads[0]
     assert event["actor_id"] == ADMIN_ID
     assert event["actor_username"] == "admin"
     assert event["patient_id"] == patient_id
@@ -75,8 +87,54 @@ def test_opening_the_redacted_copy_is_not_a_disclosure(
 
     as_admin.get(f"/files/{record['id']}/content", params={"deidentified": True})
 
-    downloads = [r for r in access_events.flush() if r["action"] == "download"]
-    assert downloads[-1]["identified"] is False
+    assert _file_events(access_events.flush(), "read")[-1]["identified"] is False
+
+
+def test_taking_a_copy_away_is_recorded_as_a_download(
+    as_admin, storage_root, access_events
+):
+    """The same bytes as a read, but a copy of them now exists somewhere
+    this system cannot see -- which is the distinction the trail is for."""
+    _, application_id = _patient_and_application(as_admin)
+    record = _upload(as_admin, application_id)
+
+    response = as_admin.get(
+        f"/files/{record['id']}/content", params={"download": True}
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].startswith("attachment")
+
+    rows = access_events.flush()
+    assert not _file_events(rows, "read")
+
+    downloads = _file_events(rows, "download")
+    assert len(downloads) == 1
+    assert downloads[0]["identified"] is True
+    assert downloads[0]["byte_count"] == record["file_size"]
+
+
+def test_a_viewer_may_read_a_file_but_not_download_it(
+    as_admin, client, storage_root, access_events
+):
+    """`application:view` opens it in the viewer; keeping a copy is
+    `files:download`, and the viewer hides its Download button to match."""
+    _, application_id = _patient_and_application(as_admin)
+    record = _upload(as_admin, application_id)
+
+    client.headers.update({"REMOTE-USER": VIEWER_USER})
+
+    assert client.get(f"/files/{record['id']}/content").status_code == 200
+
+    denied = client.get(f"/files/{record['id']}/content", params={"download": True})
+    assert denied.status_code == 403
+    assert "files:download" in denied.json()["error"]["detail"]
+
+    rows = access_events.flush()
+    assert not _file_events(rows, "download")
+    assert [r["resource_id"] for r in rows if r["action"] == "denied"] == [
+        "files:download"
+    ]
 
 
 def test_the_event_is_partitioned_by_the_day_it_happened(
@@ -88,7 +146,7 @@ def test_the_event_is_partitioned_by_the_day_it_happened(
 
     as_admin.get(f"/files/{record['id']}/content")
 
-    event = [r for r in access_events.flush() if r["action"] == "download"][0]
+    event = _file_events(access_events.flush(), "read")[0]
     assert event["event_date"] == event["occurred_at"].strftime("%Y-%m-%d")
 
 
@@ -105,7 +163,7 @@ def test_a_file_that_is_missing_is_not_recorded_as_read(
     )
     as_admin.get(f"/files/{record['id']}/content", params={"deidentified": True})
 
-    assert not [r for r in access_events.flush() if r["action"] == "download"]
+    assert not _file_events(access_events.flush(), "read")
 
 
 # ------------------------------------------------------------- the bulk path
@@ -222,7 +280,7 @@ def test_a_batch_is_one_statement_per_day(as_admin, storage_root, access_events,
     ]
 
     assert len(inserts) == 1, "one day of events should be one INSERT"
-    assert len([r for r in access_events.rows if r["action"] == "download"]) == 5
+    assert len(_file_events(access_events.rows, "read")) == 5
 
 
 def test_a_write_failure_does_not_raise(as_admin, storage_root, access_events, monkeypatch):

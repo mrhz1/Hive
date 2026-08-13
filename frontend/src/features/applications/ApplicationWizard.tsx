@@ -216,8 +216,22 @@ export function ApplicationWizard({
     goTo(2)
   }
 
-  async function onPatientChosen(chosen: Patient) {
-    await onPatientSaved(chosen)
+  /**
+   * Picking somebody off the list only fills the form in. Nothing is
+   * created and nothing moves on: their details are shown to be read
+   * through, corrected if they are out of date, and saved deliberately.
+   * Selecting used to create the application and jump to step 2 on its
+   * own, which flashed the form up for a second and left no chance to
+   * check -- let alone change -- what the application was being filed
+   * against.
+   */
+  function onPatientChosen(chosen: Patient) {
+    setPatient(chosen)
+  }
+
+  /** Undo the pick, while there is still nothing filed against it. */
+  function clearChosenPatient() {
+    setPatient(undefined)
   }
 
   /** Where the batch actually landed, kept on the patient as a default. */
@@ -313,16 +327,33 @@ export function ApplicationWizard({
           )}
 
           {source === 'existing' && !patient ? (
-            <ExistingPatientPicker onSelect={onPatientChosen} isBusy={isSaving} />
+            <ExistingPatientPicker onSelect={onPatientChosen} />
           ) : (
-            <PatientForm
-              {...(patient ? { patient } : {})}
-              cancelTo="/applications"
-              submitLabel={patient ? 'Save and continue' : 'Create and continue'}
-              onSaved={onPatientSaved}
-              // The application asks for its own folder above.
-              showFilePath={false}
-            />
+            <>
+              {/* Only while the pick can still be undone -- once an
+                  application exists it is filed against this patient. */}
+              {source === 'existing' && patient && !record ? (
+                <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+                  <p className="text-sm text-[rgb(var(--foreground-muted))]">
+                    Check <strong>{patientName(patient)}</strong>'s details
+                    below, correct anything out of date, then save to
+                    continue.
+                  </p>
+                  <Button variant="outline" size="sm" onClick={clearChosenPatient}>
+                    Choose a different patient
+                  </Button>
+                </Card>
+              ) : null}
+
+              <PatientForm
+                {...(patient ? { patient } : {})}
+                cancelTo="/applications"
+                submitLabel={patient ? 'Save and continue' : 'Create and continue'}
+                onSaved={onPatientSaved}
+                // The application asks for its own folder above.
+                showFilePath={false}
+              />
+            </>
           )}
         </div>
       ) : null}

@@ -64,29 +64,41 @@ def get_current_user(
     return user
 
 
+def assert_permission(user: User, permission: str) -> User:
+    """Refuse the user unless they hold `permission`, and record it either way.
+
+    Separate from the dependency because some endpoints only need a second
+    permission for part of what they do -- serving a file's bytes to be
+    read is `application:view`, handing them over as a download is
+    `files:download` -- and a dependency cannot see the query parameters
+    that decide which one applies.
+    """
+    if permission not in user.permissions:
+        log.warning(
+            "permission_denied",
+            required=permission,
+            granted=user.permissions,
+        )
+        # One denial is somebody clicking the wrong thing; fifteen in
+        # a minute across different resources is enumeration, and
+        # that is only visible if each one is recorded.
+        record_access(
+            DENIED,
+            outcome=DENIED,
+            actor=user,
+            resource_type="permission",
+            resource_id=permission,
+        )
+        raise PermissionDeniedError(
+            f"Permission '{permission}' is required for this operation"
+        )
+    return user
+
+
 def require_permission(permission: str):
     """Dependency factory: require_permission('user:view')."""
 
     def dependency(current_user: User = Depends(get_current_user)) -> User:
-        if permission not in current_user.permissions:
-            log.warning(
-                "permission_denied",
-                required=permission,
-                granted=current_user.permissions,
-            )
-            # One denial is somebody clicking the wrong thing; fifteen in
-            # a minute across different resources is enumeration, and
-            # that is only visible if each one is recorded.
-            record_access(
-                DENIED,
-                outcome=DENIED,
-                actor=current_user,
-                resource_type="permission",
-                resource_id=permission,
-            )
-            raise PermissionDeniedError(
-                f"Permission '{permission}' is required for this operation"
-            )
-        return current_user
+        return assert_permission(current_user, permission)
 
     return dependency

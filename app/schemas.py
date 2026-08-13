@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, List, Mapping, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
@@ -478,6 +478,21 @@ class AccessLog(BaseModel):
     record_count: Optional[int] = None
     byte_count: Optional[int] = None
     detail: Optional[str] = None
+
+    @field_validator("occurred_at")
+    @classmethod
+    def _as_utc(cls, value: datetime) -> datetime:
+        """Say out loud that the moment is UTC.
+
+        Events are recorded with `datetime.now(timezone.utc)`, but Hive
+        TIMESTAMP carries no zone, so what comes back out is a bare
+        wall-clock reading. Serialised as-is it has no offset on it, and
+        a browser reads an offset-less timestamp as *local* time -- which
+        showed every event at the UTC hour, four hours off for anybody in
+        Eastern time. Stamping the zone here is what makes the client
+        able to convert it.
+        """
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
 class AuditLog(BaseModel):
