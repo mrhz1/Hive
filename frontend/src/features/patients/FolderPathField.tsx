@@ -9,6 +9,7 @@ export function FolderPathField({
   value,
   files,
   onSelect,
+  onPathChange,
   required = false,
   disabled = false,
   error,
@@ -19,6 +20,13 @@ export function FolderPathField({
   files: File[]
   /** '' for path means "nothing derivable" -- keep the current value. */
   onSelect: (path: string, files: File[]) => void
+  /**
+   * The path, typed rather than picked. Separate from onSelect because
+   * an empty string means opposite things in the two cases: the picker
+   * yielding nothing must not wipe the path, but somebody clearing the
+   * box by hand must.
+   */
+  onPathChange?: (path: string) => void
   required?: boolean
   disabled?: boolean
   error?: string
@@ -87,11 +95,22 @@ export function FolderPathField({
         ) : null}
       </div>
 
-      {value ? (
-        <p className="truncate rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--background-secondary))] px-3 py-2 font-mono text-xs">
-          {value}
-        </p>
-      ) : null}
+      {/* Editable, because a browser will not tell us where the folder
+          it just handed over actually lives -- webkitRelativePath is the
+          folder's *name* and nothing above it. So the picker fills in
+          'samples' and whoever knows the rest can paste the full path
+          over it, which is what makes it findable by anyone reading it
+          later. */}
+      <input
+        type="text"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onPathChange?.(event.target.value)}
+        readOnly={!onPathChange}
+        placeholder="/data/intake/samples or \\\\server\\share\\samples"
+        aria-label={`${label} path`}
+        className="w-full truncate rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--background-secondary))] px-3 py-2 font-mono text-xs focus:border-[rgb(var(--primary))] focus:ring-1 focus:ring-[rgb(var(--primary))] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+      />
 
       {files.length > 0 ? (
         <>

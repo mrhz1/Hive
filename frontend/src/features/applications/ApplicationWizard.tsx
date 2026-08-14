@@ -313,6 +313,10 @@ export function ApplicationWizard({
                   setFolderFiles(files)
                   if (path || files.length) setFolderError(null)
                 }}
+                onPathChange={(path) => {
+                  setFolder(path)
+                  if (path) setFolderError(null)
+                }}
                 {...(folderError ? { error: folderError } : {})}
                 hint="Required. This application's own folder -- a later application for the same patient may use a different one. Anything selected here is uploaded in step 2."
               />

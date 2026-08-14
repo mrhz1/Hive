@@ -204,3 +204,44 @@ def test_assignment_survives_a_round_trip(as_admin, assignee):
 
     fetched = as_admin.get(f"/applications/{application_id}").json()
     assert fetched["assigned_to_id"] == assignee
+
+
+def test_the_email_links_to_the_application(
+    as_admin, storage_root, sent_emails, monkeypatch
+):
+    """An id alone means opening the dashboard, finding the list and
+    searching for eight characters of a uuid."""
+    monkeypatch.setenv("APP_BASE_URL", "https://patients.example.org/")
+    _, application_id = _patient_and_application(as_admin, assigned_to_id=VIEWER_ID)
+
+    _upload(as_admin, application_id)
+
+    body = sent_emails[0]["body"]
+    # The trailing slash on the setting must not become a double one.
+    assert f"https://patients.example.org/applications/{application_id}" in body
+
+
+def test_without_a_configured_address_the_email_still_names_the_application(
+    as_admin, storage_root, sent_emails, monkeypatch
+):
+    monkeypatch.delenv("APP_BASE_URL", raising=False)
+    _, application_id = _patient_and_application(as_admin, assigned_to_id=VIEWER_ID)
+
+    _upload(as_admin, application_id)
+
+    body = sent_emails[0]["body"]
+    assert application_id in body
+    assert "http" not in body
+
+
+def test_the_email_says_where_the_files_actually_went(
+    as_admin, storage_root, sent_emails
+):
+    """'Which samples folder?' is the question a bare folder name invites."""
+    _, application_id = _patient_and_application(as_admin, assigned_to_id=VIEWER_ID)
+
+    _upload(as_admin, application_id)
+
+    body = sent_emails[0]["body"]
+    assert "Stored in: " in body
+    assert str(storage_root) in body
