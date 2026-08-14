@@ -17,8 +17,8 @@ import {
 import { patientName, type Patient } from '@/schemas/patient'
 import {
   applicationTone,
+  canDelete,
   canReject,
-  isDeleted,
   type PatientApplication,
 } from '@/schemas/patientApplication'
 
@@ -192,7 +192,7 @@ function ApplicationsList() {
                   </Button>
                 </Can>
               ) : null}
-              {isDeleted(application.status) ? null : (
+              {canDelete(application.status) ? (
                 <Can permission="application:delete">
                   <Button
                     size="sm"
@@ -203,7 +203,7 @@ function ApplicationsList() {
                     Delete
                   </Button>
                 </Can>
-              )}
+              ) : null}
             </>
           ) : null
         }

@@ -364,3 +364,36 @@ def test_a_silent_control_plane_eventually_lets_the_row_decide(
     deid_queue.drain_once()
 
     assert polls["n"] == 3, "gave up too early or waited past the threshold"
+
+
+# ------------------------------------------------- a run CML would not start
+
+
+def test_a_skipped_run_is_treated_as_busy_not_as_started(table, monkeypatch):
+    """CML answers 200 and records the run as Skipped when one is already
+    active. Taking that as a dispatch is what filled the queue: each was
+    waited on, found finished, and followed by another that was skipped
+    in turn."""
+    table["a"] = Row("a", 1)
+
+    def start(environment=None):
+        raise ClouderaCapacityError("skipped: a run is already active")
+
+    monkeypatch.setattr(deid_queue, "start_deid_job_run", start)
+    monkeypatch.setattr(
+        deid_queue,
+        "get_job_run_status",
+        lambda run_id: pytest.fail("waited on a run that was never started"),
+    )
+
+    deid_queue.drain_once()
+
+    assert table["a"].deid_status == "queued", "the row must stay claimable"
+
+
+@pytest.mark.parametrize(
+    "status", ["ENGINE_SKIPPED", "skipped", "Skipped"]
+)
+def test_a_skipped_run_is_over_the_moment_it_is_recorded(status):
+    """It never starts, so waiting for it to finish waits for ever."""
+    assert is_terminal_run_status(status) is True

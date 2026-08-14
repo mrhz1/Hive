@@ -62,6 +62,10 @@ _TERMINAL_RUN_STATES = (
     "killed",
     "cancelled",
     "canceled",
+    # A skipped run never starts, so it is over the moment it is
+    # recorded. Without this, waiting on one that slipped through meant
+    # polling a run that would never move for the full run timeout.
+    "skipped",
 )
 
 
@@ -180,15 +184,18 @@ def start_deid_job_run(environment: Optional[Dict[str, str]] = None) -> str:
     status = str(body.get("status", "")) if isinstance(body, dict) else ""
 
     if "skip" in status.lower():
-        log.warning(
-            "cml_job_run_skipped",
-            job_id=config["job_id"],
-            run_id=run_id,
-            status=status,
-            detail="a run of this Job is already active; the row stays "
-            "queued for the active run or the sweep to pick up",
+        # CML accepted the request and refused the work: a run of this
+        # Job is already active, so this one was recorded as Skipped and
+        # will never execute. That is the busy answer wearing a 200, and
+        # treating it as a dispatch is what filled the queue with Skipped
+        # entries -- each one taken as started, waited on, found finished,
+        # and immediately followed by another request that was skipped
+        # in turn. Raised as capacity so the caller backs off and leaves
+        # the row queued for the run that is actually going.
+        raise ClouderaCapacityError(
+            f"Cloudera skipped the run for job {config['job_id']}: a run is "
+            f"already active (status {status!r}, run {run_id or 'unnumbered'})"
         )
-        return run_id
 
     log.info(
         "cml_job_run_started", job_id=config["job_id"], run_id=run_id, status=status
