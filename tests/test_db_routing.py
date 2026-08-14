@@ -1,9 +1,10 @@
 """Which engine runs which statement.
 
-Reads and inserts go to Impala, updates and deletes to Hive. Getting
-this wrong is quiet -- the statement still runs, just on the engine that
-was not meant to have it -- so the mapping is pinned rather than left to
-be noticed in a query log.
+Queries go to Impala; everything that writes goes to Hive, because these
+tables are full-ACID ORC and Impala will not write to those. Getting it
+wrong is quiet in one direction and loud in the other -- a query sent to
+Hive merely runs slower, while a write sent to Impala is refused -- so
+the mapping is pinned rather than left to be discovered in production.
 """
 import pytest
 
@@ -19,11 +20,10 @@ from app.errors import DatabaseError
         ("  \n SELECT 1", db.IMPALA),
         ("WITH recent AS (SELECT 1) SELECT * FROM recent", db.IMPALA),
         ("(SELECT 1) UNION ALL (SELECT 2)", db.IMPALA),
-        ("INSERT INTO TABLE patient (id) VALUES (%s)", db.IMPALA),
-        ("SHOW TABLES", db.IMPALA),
-        ("DESCRIBE patient", db.IMPALA),
-        ("REFRESH patient", db.IMPALA),
-        ("INVALIDATE METADATA patient", db.IMPALA),
+        # Not Impala: these tables are full-ACID ORC, and it will not
+        # write to those. Everything that writes belongs to Hive.
+        ("INSERT INTO TABLE patient (id) VALUES (%s)", db.HIVE),
+        ("insert into patient (id) values (%s)", db.HIVE),
         ("UPDATE patient SET fstname = %s WHERE id = %s", db.HIVE),
         ("update patient set fstname = %s", db.HIVE),
         ("DELETE FROM patient WHERE id = %s", db.HIVE),
@@ -31,6 +31,8 @@ from app.errors import DatabaseError
         ("CREATE TABLE t (a INT)", db.HIVE),
         ("ALTER TABLE t ADD COLUMNS (b INT)", db.HIVE),
         ("TRUNCATE TABLE t", db.HIVE),
+        ("SHOW TABLES", db.HIVE),
+        ("DESCRIBE patient", db.HIVE),
         # Nothing recognisable goes to the engine that can run everything.
         ("", db.HIVE),
         ("   ", db.HIVE),
@@ -110,7 +112,7 @@ def test_a_delete_only_request_never_opens_impala(engines):
 
 
 def test_one_request_can_use_both(engines):
-    """The ordinary shape: read the row, then write it."""
+    """The ordinary shape: read the row, write it, record what happened."""
     cursor = db.RoutingCursor()
 
     cursor.execute("SELECT * FROM patient WHERE id = %s", ("P1",))
@@ -119,10 +121,10 @@ def test_one_request_can_use_both(engines):
 
     assert engines[db.IMPALA].cursors[0].statements == [
         "SELECT * FROM patient WHERE id = %s",
-        "INSERT INTO TABLE audit_logs (id) VALUES (%s)",
     ]
     assert engines[db.HIVE].cursors[0].statements == [
-        "UPDATE patient SET fstname = %s WHERE id = %s"
+        "UPDATE patient SET fstname = %s WHERE id = %s",
+        "INSERT INTO TABLE audit_logs (id) VALUES (%s)",
     ]
 
 
