@@ -39,6 +39,7 @@ from app.logging_setup import get_logger
 from app.notifications import (
     notify_upload_failed,
     notify_upload_finished,
+    source_folder_for,
     upload_recipients,
 )
 from app.schemas import FileMetadataCreate, UploadJob, UploadJobFile
@@ -413,6 +414,7 @@ def _send_notice(job: UploadJob, application_id: str, actor_id: Optional[str]) -
     try:
         with hive_cursor() as cursor:
             recipients = upload_recipients(cursor, application_id, actor_id)
+            source_folder = source_folder_for(cursor, application_id)
     except Exception as exc:
         log.error("upload_notice_lookup_failed", job_id=job.id, error=str(exc))
         return
@@ -422,8 +424,8 @@ def _send_notice(job: UploadJob, application_id: str, actor_id: Optional[str]) -
 
     try:
         if job.status == "failed":
-            notify_upload_failed(recipients, job)
+            notify_upload_failed(recipients, job, source_folder)
         else:
-            notify_upload_finished(recipients, job)
+            notify_upload_finished(recipients, job, source_folder)
     except Exception as exc:  # pragma: no cover - mailer already swallows
         log.error("upload_notice_failed", job_id=job.id, error=str(exc))

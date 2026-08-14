@@ -4,8 +4,9 @@ import os
 import re
 import shutil
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from app.errors import ValidationError
 from app.ids import new_document_serial
@@ -100,6 +101,16 @@ def patient_dir(patient_id: str, received_at: datetime) -> Path:
     return STORAGE_ROOT / f"{patient_id}-{received_at.strftime(RECEIVED_FORMAT)}"
 
 
+def safe_path_segment(value: str) -> str:
+    """One directory name, with nothing in it that could climb the tree.
+
+    A patient id is generated here, not typed in, so this is a belt on
+    top of braces -- but it is what stands between an id and a path.
+    """
+    cleaned = _UNSAFE.sub("_", (value or "").strip()).strip("._-")
+    return cleaned[:_MAX_NAME] or "unknown"
+
+
 def document_type_for(extension: str) -> str:
     """'pdf' / 'dicom' / 'word' for the formats we know, else the extension."""
     known = METADATA_EXTENSIONS.get((extension or "").lower().lstrip("."))
@@ -110,11 +121,26 @@ def document_type_for(extension: str) -> str:
     return fallback or "file"
 
 
+DATE_FORMAT = "%Y%m%d"
+
+
 def document_name(
-    patient_id: str, document_type: str, serial: str, extension: str
+    patient_id: str,
+    document_type: str,
+    serial: str,
+    extension: str,
+    received_at: Optional[datetime] = None,
 ) -> str:
+    """`<patient>-<type>-<date>-<serial>.<ext>`.
+
+    The date is in the name because these are read by people, in a
+    directory listing, looking for the documents from a particular day.
+    The serial alone answers that only if you know it opens with epoch
+    milliseconds, which nobody does.
+    """
     suffix = f".{extension.lower()}" if extension else ""
-    return f"{patient_id}-{document_type}-{serial}{suffix}"
+    day = (received_at or datetime.now(timezone.utc)).strftime(DATE_FORMAT)
+    return f"{patient_id}-{document_type}-{day}-{serial}{suffix}"
 
 
 def _patient_document_target(
@@ -129,7 +155,7 @@ def _patient_document_target(
     for _ in range(_SERIAL_ATTEMPTS):
         serial = new_document_serial()
         target = directory / document_name(
-            patient_id, document_type, serial, extension
+            patient_id, document_type, serial, extension, received_at
         )
         if not target.exists():
             return target
@@ -262,10 +288,23 @@ def resolve_stored_path(stored: str) -> Path:
     raise ValidationError("Stored file path is outside the storage root")
 
 
-def file_deidentified_output(stored: str, extension: str) -> Path:
-    """Move a de-identified file from staging to its configured location."""
+def file_deidentified_output(
+    stored: str, extension: str, patient_id: str = ""
+) -> Path:
+    """Move a de-identified file from staging to its configured location.
+
+    Filed under the patient, not loose in the format's folder: a patient
+    with several applications has their redacted documents collected in
+    one place, which is how anyone actually looks for them. Without the
+    folder they are spread through a directory of everybody's, told
+    apart only by the patient id at the front of each name.
+    """
     source = resolve_stored_path(stored)
+
     destination_dir = deid_dir_for(extension)
+    if patient_id:
+        destination_dir = destination_dir / safe_path_segment(patient_id)
+
     destination = destination_dir / source.name
 
     if source.resolve() == destination.resolve():

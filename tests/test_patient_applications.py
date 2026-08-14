@@ -1,5 +1,12 @@
 """Patient application endpoints, end to end through permissions -> router -> CRUD."""
-from conftest import ADMIN_ID, NOBODY_USER, VIEWER_USER, minimal_patient
+from conftest import (
+    ADMIN_ID,
+    ADMIN_USER,
+    NOBODY_USER,
+    VIEWER_ID,
+    VIEWER_USER,
+    minimal_patient,
+)
 
 
 def _patient(client):
@@ -22,6 +29,9 @@ def test_model_exposes_every_requested_field(as_admin):
         "description", "created_by_id", "updated_by_id",
         "submitted_at", "created_at", "updated_at", "reviewed_at",
         "status_reason", "assigned_to_id", "original_file_path",
+        # Resolved by the router, not a column: whose work this is, for
+        # people who cannot read the users list.
+        "assigned_to_username",
     }
 
 
@@ -323,3 +333,37 @@ def test_writes_are_audited_as_patient_application(as_admin, store):
     ]
     assert [e["action"] for e in entries] == ["CREATE", "UPDATE", "DELETE"]
     assert all(e["entity_id"] == created["id"] for e in entries)
+
+
+def test_the_assignee_username_comes_back_with_the_application(as_admin):
+    """So somebody holding only `application:view` can see whose work an
+    application is. Reading it off the users list would need `user:view`,
+    which is a much larger grant than that question deserves."""
+    patient_id = _patient(as_admin)
+    _application(as_admin, patient_id, assigned_to_id=VIEWER_ID)
+
+    listed = as_admin.get("/applications").json()
+
+    assert [a["assigned_to_username"] for a in listed] == ["viewer"]
+
+
+def test_an_unassigned_application_has_no_username(as_admin):
+    patient_id = _patient(as_admin)
+    application_id = _application(as_admin, patient_id).json()["id"]
+
+    fetched = as_admin.get(f"/applications/{application_id}").json()
+
+    assert fetched["assigned_to_username"] is None
+
+
+def test_the_username_is_served_with_the_application_not_looked_up(client):
+    """Resolved server-side so the page needs nothing but the
+    applications endpoint to show whose work each one is."""
+    client.headers.update({"REMOTE-USER": ADMIN_USER})
+    patient_id = _patient(client)
+    _application(client, patient_id, assigned_to_id=VIEWER_ID)
+
+    client.headers.update({"REMOTE-USER": VIEWER_USER})
+
+    listed = client.get("/applications").json()
+    assert listed[0]["assigned_to_username"] == "viewer"

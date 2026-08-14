@@ -75,6 +75,14 @@ function ApplicationsList() {
         sortValue: (a) => a.status,
       },
       {
+        id: 'assigned_to',
+        header: 'Assigned to',
+        // Sorted and searchable, because the question it answers is
+        // "which of these are mine".
+        cell: (a) => <Muted value={a.assigned_to_username} />,
+        sortValue: (a) => a.assigned_to_username ?? '',
+      },
+      {
         id: 'description',
         header: 'Description',
         cell: (a) => <Muted value={a.description} />,
@@ -106,7 +114,13 @@ function ApplicationsList() {
     const term = search.trim().toLowerCase()
     if (!term) return data
     return (data ?? []).filter((application) =>
-      [labelFor(application), application.status, application.description]
+      [
+        labelFor(application),
+        application.status,
+        application.description,
+        // So "show me mine" is a matter of typing your username.
+        application.assigned_to_username,
+      ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()

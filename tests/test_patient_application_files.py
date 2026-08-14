@@ -8,8 +8,9 @@ from conftest import ADMIN_USER, VIEWER_USER, minimal_patient
 
 # <patient id>-<time received>
 FOLDER = re.compile(r"^[A-Z0-9]{6}-\d{8}T\d{6}Z$")
-# <patient id>-<document type>-<16-digit serial>.<ext>
-DOCUMENT = re.compile(r"^[A-Z0-9]{6}-[a-z0-9]+-\d{16}\.[a-z0-9]+$")
+# <patient>-<type>-<date>-<serial>.<ext>. The date is in the name so a
+# directory listing can be read by eye.
+DOCUMENT = re.compile(r"^[A-Z0-9]{6}-[a-z0-9]+-\d{8}-\d{16}\.[a-z0-9]+$")
 
 
 def _application(client):

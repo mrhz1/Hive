@@ -9,7 +9,11 @@ from app.db import hive_cursor
 from app.logging_setup import get_logger
 from app.schemas import PatientApplicationFileUpdate
 from app.stamp import StampError, stamp_pdf
-from app.storage import file_deidentified_output, resolve_stored_path
+from app.storage import (
+    delete_file as remove_from_disk,
+    file_deidentified_output,
+    resolve_stored_path,
+)
 
 log = get_logger(__name__)
 
@@ -59,7 +63,7 @@ def process_one(record, patient_id: str) -> bool:
             log.error("submission_stamp_failed", file_id=record.id, error=str(exc))
 
     try:
-        final = file_deidentified_output(str(staged), extension)
+        final = file_deidentified_output(str(staged), extension, patient_id)
     except Exception as exc:
         log.error("submission_file_failed", file_id=record.id, error=str(exc))
         return False
@@ -67,7 +71,32 @@ def process_one(record, patient_id: str) -> bool:
     if str(final) != record.de_identified_file_path:
         _set_path(record.id, str(final))
 
+    _discard_original(record)
     return True
+
+
+def _discard_original(record) -> None:
+    """Delete the identified copy, now that the redacted one is filed.
+
+    Only ever after the redacted copy has been moved into place: the
+    original is the thing that cannot be reconstructed, so it goes last
+    and only once there is something to replace it. Submitting is the
+    point at which the application no longer needs it, and keeping
+    identified documents past that point is the risk the whole
+    de-identification pass exists to remove.
+    """
+    if not record.file_path:
+        return
+
+    try:
+        remove_from_disk(record.file_path)
+    except Exception as exc:  # pragma: no cover - cleanup is best effort
+        log.warning(
+            "submission_original_not_removed", file_id=record.id, error=str(exc)
+        )
+        return
+
+    log.info("submission_original_removed", file_id=record.id)
 
 
 def finalise_submission(

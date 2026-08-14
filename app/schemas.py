@@ -443,6 +443,11 @@ class PatientApplication(BaseModel):
     status_reason: Optional[str] = None
     assigned_to_id: Optional[str] = None
     original_file_path: Optional[str] = None
+    # Resolved by the router, not stored on the row. It is here so that
+    # somebody holding only `application:view` can see who an application
+    # belongs to: reading it off the users list would need `user:view`,
+    # which is a much larger grant than "whose work is this".
+    assigned_to_username: Optional[str] = None
 
 
 class AuditLogCreate(BaseModel):
