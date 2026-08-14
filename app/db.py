@@ -20,6 +20,7 @@ anywhere outside a Cloudera workload, everything falls back to Hive and
 the application behaves as it did before this split existed.
 """
 import os
+import re
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -44,6 +45,19 @@ IMPALA = "impala"
 # The name of the Cloudera AI data connection that reaches Impala. Unset
 # means there is no Impala to reach, and everything goes to Hive.
 IMPALA_CONNECTION = (os.environ.get("CML_IMPALA_CONNECTION") or "").strip()
+
+# Which database a fresh Impala session should point at. The data
+# connection does not carry one -- unlike the Hive connection, which
+# takes it as a parameter -- so without this an unqualified `users`
+# resolves against `default`. The tables are not there, and Impala
+# reports that as a privilege error rather than a missing table, which
+# sends you looking for a grant that was never the problem.
+IMPALA_DB = (os.environ.get("IMPALA_DB") or os.environ.get("HIVE_DB") or "").strip()
+
+# A database name goes into the statement as an identifier, and an
+# identifier cannot be bound as a parameter. Since it comes from the
+# environment, it is checked rather than trusted.
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # What Impala runs. Everything else goes to Hive, which can run the lot:
 # an unrecognised statement then fails on its own merits rather than for
@@ -149,6 +163,25 @@ def _connect(engine: str):
         raise DatabaseError(f"Could not connect to {engine}: {exc}") from exc
 
 
+def use_database(cursor, database: str) -> None:
+    """Point a fresh session at the database the tables are actually in.
+
+    Run on the raw cursor rather than through the router: `USE` is a
+    session setting, so it has to land on this connection and not be
+    dispatched somewhere by its verb.
+    """
+    if not database:
+        return
+
+    if not _IDENTIFIER.match(database):
+        raise DatabaseError(
+            f"'{database}' is not a usable database name "
+            "(set IMPALA_DB or HIVE_DB to a plain identifier)"
+        )
+
+    cursor.execute(f"USE `{database}`")
+
+
 class RoutingCursor:
     """One cursor to the caller, an engine's worth of connection behind each.
 
@@ -170,7 +203,15 @@ class RoutingCursor:
         if engine not in self._cursors:
             connection = _connect(engine)
             self._connections[engine] = connection
-            self._cursors[engine] = connection.cursor()
+
+            cursor = connection.cursor()
+            # Hive takes the database as a connection parameter; Impala's
+            # data connection has nowhere to put one, so its session is
+            # pointed at the right database here.
+            if engine == IMPALA:
+                use_database(cursor, IMPALA_DB)
+
+            self._cursors[engine] = cursor
         return self._cursors[engine]
 
     def execute(self, sql, params=()):

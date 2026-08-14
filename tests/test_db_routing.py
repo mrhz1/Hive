@@ -85,6 +85,10 @@ def engines(monkeypatch):
 
     monkeypatch.setattr(db, "_connect", fake_connect)
     monkeypatch.setattr(db, "impala_available", lambda: True)
+    # No database by default, so the routing tests below assert on the
+    # statements they ran and nothing else. The tests that care about it
+    # set it themselves.
+    monkeypatch.setattr(db, "IMPALA_DB", "")
     return opened
 
 
@@ -185,3 +189,63 @@ def test_impala_is_unavailable_without_a_connection_name(monkeypatch):
     monkeypatch.setattr(db, "IMPALA_CONNECTION", "")
 
     assert db.impala_available() is False
+
+
+# ------------------------------------------------- pointing at a database
+
+
+def test_an_impala_session_is_pointed_at_the_database(engines, monkeypatch):
+    """The data connection carries no database, so an unqualified `users`
+    lands in `default` -- and Impala calls that a privilege error rather
+    than a missing table."""
+    monkeypatch.setattr(db, "IMPALA_DB", "hive_app")
+
+    cursor = db.RoutingCursor()
+    cursor.execute("SELECT * FROM users")
+
+    assert engines[db.IMPALA].cursors[0].statements == [
+        "USE `hive_app`",
+        "SELECT * FROM users",
+    ]
+
+
+def test_the_database_is_set_once_per_session_not_per_statement(engines, monkeypatch):
+    monkeypatch.setattr(db, "IMPALA_DB", "hive_app")
+
+    cursor = db.RoutingCursor()
+    cursor.execute("SELECT 1")
+    cursor.execute("SELECT 2")
+
+    uses = [s for s in engines[db.IMPALA].cursors[0].statements if s.startswith("USE")]
+    assert len(uses) == 1
+
+
+def test_hive_is_left_alone(engines, monkeypatch):
+    """It takes the database as a connection parameter already."""
+    monkeypatch.setattr(db, "IMPALA_DB", "hive_app")
+
+    cursor = db.RoutingCursor()
+    cursor.execute("DELETE FROM users WHERE id = %s", ("u1",))
+
+    assert engines[db.HIVE].cursors[0].statements == [
+        "DELETE FROM users WHERE id = %s"
+    ]
+
+
+def test_no_database_configured_changes_nothing(engines, monkeypatch):
+    monkeypatch.setattr(db, "IMPALA_DB", "")
+
+    cursor = db.RoutingCursor()
+    cursor.execute("SELECT 1")
+
+    assert engines[db.IMPALA].cursors[0].statements == ["SELECT 1"]
+
+
+@pytest.mark.parametrize(
+    "name", ["a; DROP TABLE users", "has space", "1leading", "back`tick", "-"]
+)
+def test_a_database_name_that_is_not_an_identifier_is_refused(name):
+    """It goes into the statement as an identifier, which cannot be bound
+    as a parameter -- so it is checked instead of trusted."""
+    with pytest.raises(DatabaseError):
+        db.use_database(FakeCursor("impala"), name)
