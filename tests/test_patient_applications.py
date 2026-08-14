@@ -243,13 +243,47 @@ def test_rejecting_twice_is_refused(as_admin):
     ] == "first"
 
 
-def test_deleting_a_patient_removes_their_applications(as_admin):
-    """Nothing else would: Hive has no cascading delete."""
+def test_a_patient_with_an_application_cannot_be_deleted(as_admin):
+    """Deleting a patient used to take their applications with them,
+    which is the one thing the soft delete exists to prevent: an
+    application is *kept* when it is deleted, as the record of what
+    happened to it. So the patient stays while anything refers to them."""
     patient_id = _patient(as_admin)
-    _application(as_admin, patient_id)
+    application_id = _application(as_admin, patient_id).json()["id"]
+
+    refused = as_admin.delete(f"/patients/{patient_id}")
+
+    assert refused.status_code == 409
+    assert "application" in refused.json()["error"]["detail"]
+
+    # Neither end of it was touched.
+    assert as_admin.get(f"/patients/{patient_id}").status_code == 200
+    assert as_admin.get(f"/applications/{application_id}").status_code == 200
+
+
+def test_an_application_that_was_deleted_still_holds_the_patient(as_admin):
+    """It is marked deleted, not removed -- the row is still there and
+    still names the patient, so the patient is still spoken for."""
+    patient_id = _patient(as_admin)
+    application_id = _application(as_admin, patient_id).json()["id"]
+
+    as_admin.request(
+        "DELETE",
+        f"/applications/{application_id}",
+        json={"reason": "filed against the wrong patient"},
+    )
+
+    refused = as_admin.delete(f"/patients/{patient_id}")
+
+    assert refused.status_code == 409
+    assert as_admin.get(f"/patients/{patient_id}").status_code == 200
+
+
+def test_a_patient_with_no_applications_is_deleted(as_admin):
+    patient_id = _patient(as_admin)
 
     assert as_admin.delete(f"/patients/{patient_id}").status_code == 204
-    assert as_admin.get("/applications").json() == []
+    assert as_admin.get(f"/patients/{patient_id}").status_code == 404
 
 
 # ----------------------------------------------------------- permissions
