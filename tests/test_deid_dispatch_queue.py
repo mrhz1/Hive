@@ -27,10 +27,16 @@ def table(monkeypatch):
     def list_files(_cursor, *a, **kw):
         return list(rows.values())
 
+    def oldest_with_status(_cursor, deid_status):
+        """As the query does it: oldest first, one row, filtered in SQL."""
+        waiting = [r for r in rows.values() if r.deid_status == deid_status]
+        return min(waiting, key=lambda r: r.created_at) if waiting else None
+
     def get_file(_cursor, file_id):
         return rows.get(file_id)
 
     monkeypatch.setattr(deid_queue.crud, "list_files", list_files)
+    monkeypatch.setattr(deid_queue.crud, "oldest_with_status", oldest_with_status)
     monkeypatch.setattr(deid_queue.crud, "get_file", get_file)
     monkeypatch.setattr(
         deid_queue, "hive_cursor", lambda: _null_context(), raising=True

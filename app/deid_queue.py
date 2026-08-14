@@ -96,12 +96,7 @@ def stop() -> None:
 def next_queued():
     """Oldest row in `queued`, or None."""
     with hive_cursor() as cursor:
-        every = crud.list_files(cursor)
-
-    waiting = [f for f in every if f.deid_status == "queued"]
-    if not waiting:
-        return None
-    return min(waiting, key=lambda f: f.created_at)
+        return crud.oldest_with_status(cursor, "queued")
 
 
 def _row_status(file_id: str) -> str:
