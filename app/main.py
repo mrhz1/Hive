@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app import access_log, cloudera, deid, deid_queue
+from app import access_log, cloudera, db, deid, deid_queue
 from app.errors import AppError, app_error_handler, unhandled_error_handler
 from app.logging_setup import configure_logging, get_logger
 from app.middleware import RequestContextMiddleware
@@ -78,6 +78,20 @@ async def lifespan(_app: FastAPI):
         "cors_origins_allowed",
         origins=CORS_ORIGINS,
         configured=bool(os.environ.get("CORS_ORIGINS")),
+    )
+
+    # Which engine is answering queries, said out loud. The difference is
+    # invisible from the outside until something is slow, and then it is
+    # the first thing worth knowing.
+    log.info(
+        "read_engine",
+        engine=db.READ_ENGINE,
+        impala_in_use=db.impala_available(),
+        detail=(
+            "queries go to Impala, writes to Hive"
+            if db.impala_available()
+            else "Hive is answering everything"
+        ),
     )
 
     if deid.DEID_BACKEND == "cml_job" and not cloudera.is_configured():

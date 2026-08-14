@@ -47,6 +47,32 @@ IMPALA = "impala"
 # means there is no Impala to reach, and everything goes to Hive.
 IMPALA_CONNECTION = (os.environ.get("CML_IMPALA_CONNECTION") or "").strip()
 
+
+def _read_engine() -> str:
+    """Which engine answers queries: Impala, or Hive doing everything.
+
+    The one switch worth having. Writes cannot move -- these tables are
+    full-ACID ORC and Impala will not write to them -- so reads are the
+    only thing there is a choice about, and this names that choice
+    rather than pretending to be a general engine setting.
+
+    An unrecognised value falls back to Hive, loudly. Hive can run
+    everything, so a typo costs speed rather than a broken application.
+    """
+    configured = (os.environ.get("READ_ENGINE") or IMPALA).strip().lower()
+    if configured in (IMPALA, HIVE):
+        return configured
+
+    log.error(
+        "read_engine_unknown",
+        configured=configured,
+        detail=f"expected '{IMPALA}' or '{HIVE}'; falling back to {HIVE}",
+    )
+    return HIVE
+
+
+READ_ENGINE = _read_engine()
+
 # Which database a fresh Impala session should point at. The data
 # connection does not carry one -- unlike the Hive connection, which
 # takes it as a parameter -- so without this an unqualified `users`
@@ -102,14 +128,19 @@ def engine_for(sql: str) -> str:
 
 
 def impala_available() -> bool:
-    """Whether an Impala connection could be opened at all.
+    """Whether Impala should and could answer a query.
 
-    False on a laptop -- `cml.data_v1` only exists inside a Cloudera
-    workload -- and false in any deployment that has not been given a
-    connection name. Both cases route everything to Hive rather than
-    failing, so local development needs no Impala and the tests do not
-    know this module is here.
+    False when READ_ENGINE says to leave it alone, which is the setting
+    that puts the application back on Hive for everything.
+
+    False also on a laptop -- `cml.data_v1` only exists inside a Cloudera
+    workload -- and in any deployment that has not been given a
+    connection name. Every case routes to Hive rather than failing, so
+    local development needs no Impala and the tests do not know this
+    module is here.
     """
+    if READ_ENGINE != IMPALA:
+        return False
     if not IMPALA_CONNECTION:
         return False
     try:
