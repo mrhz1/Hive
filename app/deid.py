@@ -1,5 +1,6 @@
 """De-identification orchestration."""
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -56,6 +57,38 @@ def deid_output_extension(extension: str) -> str:
 
 class DeidError(Exception):
     """Raised internally so every failure path marks the row 'failed'."""
+
+
+def _signal_name(returncode: int) -> str:
+    """The signal that killed the run, when one did.
+
+    subprocess reports a signal death as a negative return code, so -9
+    is SIGKILL. Nothing in the pipeline sends itself a signal, which
+    leaves the platform: SIGKILL almost always means the workload was
+    killed for using more memory than it was given.
+    """
+    if returncode >= 0:
+        return ""
+    try:
+        return signal.Signals(-returncode).name
+    except ValueError:
+        return f"signal {-returncode}"
+
+
+def _exit_description(returncode: int) -> str:
+    """How the run ended, in terms somebody can act on."""
+    name = _signal_name(returncode)
+    if not name:
+        return f"exit {returncode}"
+
+    if returncode == -9:
+        return (
+            "killed by SIGKILL -- almost always the platform stopping it for "
+            "running out of memory. OCR and the NLP models are the memory "
+            "cost here, so give the Job more, or feed it smaller documents"
+        )
+
+    return f"killed by {name}"
 
 
 def _failure_detail(stderr: str, stdout: str) -> str:
@@ -155,9 +188,13 @@ def _run_pipeline(source: Path, output_dir: Path) -> Path:
         log.error(
             "deid_subprocess_failed",
             returncode=completed.returncode,
+            signal=_signal_name(completed.returncode),
             detail=detail,
         )
-        raise DeidError(f"De-identification failed (exit {completed.returncode}): {detail}")
+        raise DeidError(
+            f"De-identification failed ({_exit_description(completed.returncode)})"
+            + (f": {detail}" if detail else "")
+        )
 
     produced = output_dir / f"{source.stem}{DEID_SUFFIX}{deid_output_extension(source.suffix)}"
     if not produced.is_file():

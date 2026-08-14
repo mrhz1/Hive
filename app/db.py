@@ -181,63 +181,104 @@ def _connect(engine: str):
         raise DatabaseError(f"Could not connect to {engine}: {exc}") from exc
 
 
-# Whether to keep an Impala connection open between requests.
-IMPALA_POOL = (os.environ.get("IMPALA_POOL", "true") or "").strip().lower() not in (
-    "0",
-    "false",
-    "no",
-    "off",
-)
+def _flag(name: str, default: str = "true") -> bool:
+    return (os.environ.get(name, default) or "").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+# Whether to keep a connection open between requests, per engine.
+#
+# Authenticating is not cheap -- a Kerberos handshake apiece -- and one
+# page is several requests. Opening a connection for each meant several
+# authentications in a row to fill one table, and a delete paid for two:
+# one to read the row and one to remove it. Both engines are pooled; the
+# difference between them is what happens when a parked session turns
+# out to be dead, which is decided in RoutingCursor.execute.
+IMPALA_POOL = _flag("IMPALA_POOL")
+HIVE_POOL = _flag("HIVE_POOL")
+
+# How long a parked session may sit unused before it is replaced rather
+# than trusted. Servers close idle sessions on their own schedule, and
+# finding out by having a request fail is worse than reconnecting on a
+# timer -- particularly for Hive, where a write cannot simply be retried.
+POOL_MAX_IDLE_SECONDS = float(os.environ.get("POOL_MAX_IDLE_SECONDS", "300"))
 
 _pool = threading.local()
 
 
-def _impala_session():
-    """The calling thread's Impala cursor, opened once and kept.
+def _pooled(engine: str) -> bool:
+    return IMPALA_POOL if engine == IMPALA else HIVE_POOL
 
-    Authenticating is not cheap -- a Kerberos handshake per connection --
-    and one page is several requests, so opening a connection for each
-    meant several authentications in a row to fill one table. That is
-    what the repeated 'using kerberos authentication' in the log was, and
-    most of the wait with it.
+
+def _sessions() -> dict:
+    found = getattr(_pool, "sessions", None)
+    if found is None:
+        found = {}
+        _pool.sessions = found
+    return found
+
+
+def _session(engine: str):
+    """The calling thread's cursor for one engine, opened once and kept.
 
     Parked on the thread rather than shared: FastAPI hands each request
     to a thread from its pool and a thread serves one request at a time,
     so a connection kept here is never used by two requests at once --
     which a DB-API connection would not survive.
 
-    Only Impala is pooled. Everything it runs is a read, so a session
-    found dead can be reopened and the query simply run again. The same
-    is not true of a write: a statement that reached the server before
-    the connection dropped would be applied a second time by the retry.
-
-    Returns the cursor and whether it was already open, because only a
-    reused session is worth retrying.
+    Returns the cursor and whether it was already open, because a reused
+    session is the only kind that can have gone stale while parked.
     """
-    session = getattr(_pool, "impala", None)
-    if session is not None:
-        return session[1], True
+    sessions = _sessions()
+    found = sessions.get(engine)
 
-    connection = _connect(IMPALA)
+    if found is not None:
+        connection, cursor, last_used = found
+        if time.monotonic() - last_used <= POOL_MAX_IDLE_SECONDS:
+            sessions[engine] = (connection, cursor, time.monotonic())
+            return cursor, True
+
+        log.debug("db_session_expired", engine=engine)
+        discard_session(engine)
+
+    connection = _connect(engine)
     cursor = connection.cursor()
-    use_database(cursor, IMPALA_DB)
+    # Hive takes the database as a connection parameter; Impala's data
+    # connection has nowhere to put one, so its session is pointed at the
+    # right database here.
+    if engine == IMPALA:
+        use_database(cursor, IMPALA_DB)
 
-    _pool.impala = (connection, cursor)
-    log.debug("impala_session_opened")
+    sessions[engine] = (connection, cursor, time.monotonic())
+    log.debug("db_session_opened", engine=engine)
     return cursor, False
 
 
-def discard_impala_session() -> None:
-    """Drop the thread's Impala session; the next use opens a fresh one."""
-    session = getattr(_pool, "impala", None)
-    _pool.impala = None
-
-    if session is None:
+def discard_session(engine: str) -> None:
+    """Drop the thread's session for one engine; the next use reopens it."""
+    found = _sessions().pop(engine, None)
+    if found is None:
         return
+
     try:
-        session[0].close()
+        found[0].close()
     except Exception as exc:  # pragma: no cover - closing a dead session
-        log.debug("impala_session_close_failed", error=str(exc))
+        log.debug("db_session_close_failed", engine=engine, error=str(exc))
+
+
+def discard_impala_session() -> None:
+    """Drop the thread's Impala session (shutdown, and between tests)."""
+    discard_session(IMPALA)
+
+
+def discard_sessions() -> None:
+    """Drop every session this thread is holding."""
+    for engine in list(_sessions()):
+        discard_session(engine)
 
 
 def use_database(cursor, database: str) -> None:
@@ -278,17 +319,17 @@ class RoutingCursor:
         self._connections: dict = {}
         self._cursors: dict = {}
         self._written: set = set()
-        self._reused_impala = False
+        self._reused: dict = {}
 
     def cursor_for(self, engine: str):
         if engine in self._cursors:
             return self._cursors[engine]
 
-        if engine == IMPALA and IMPALA_POOL:
+        if _pooled(engine):
             # Borrowed from the thread, not opened. Deliberately not
             # recorded in _connections: closing this request must leave
             # the session open for the next one.
-            cursor, self._reused_impala = _impala_session()
+            cursor, self._reused[engine] = _session(engine)
             self._cursors[engine] = cursor
             return cursor
 
@@ -333,18 +374,29 @@ class RoutingCursor:
         try:
             return cursor.execute(sql, params)
         except Exception as exc:
-            if not (engine == IMPALA and IMPALA_POOL and self._reused_impala):
+            reused = _pooled(engine) and self._reused.get(engine)
+            if not reused:
                 raise
 
             # A session parked between requests can be closed from the
-            # other end -- an idle timeout, a restarted daemon, a Kerberos
-            # ticket that has run out. Reopening and asking again is safe
-            # here and nowhere else: Impala only ever runs reads, so at
-            # worst the query is answered twice.
-            log.info("impala_session_retry", error=str(exc))
-            discard_impala_session()
-            self._cursors.pop(IMPALA, None)
+            # other end: an idle timeout, a restarted daemon, a Kerberos
+            # ticket that has run out. Either way this one is finished
+            # with, so it goes rather than being handed to the next
+            # request as well.
+            log.info("db_session_dropped", engine=engine, error=str(exc))
+            discard_session(engine)
+            self._cursors.pop(engine, None)
 
+            if engine != IMPALA:
+                # Hive is not retried. A write that reached the server
+                # before the connection dropped would be applied a second
+                # time by the retry, and a duplicated row is a worse
+                # outcome than an error the caller can act on. The next
+                # request gets a fresh session.
+                raise
+
+            # Impala only ever runs reads, so asking again is safe: at
+            # worst the query is answered twice.
             cursor = self.cursor_for(IMPALA)
             self._last = cursor
             return cursor.execute(sql, params)
