@@ -3,7 +3,7 @@ import uuid
 from typing import List, Optional
 
 from app.crud.roles import _parse_permissions
-from app.db import NOW_SQL, execute
+from app.db import NOW_SQL, authoritative, execute
 from app.errors import ConflictError, NotFoundError, ValidationError
 from app.logging_setup import get_logger
 from app.schemas import User, UserCreate, UserUpdate
@@ -48,6 +48,13 @@ def get_user(cursor, user_id: str) -> Optional[User]:
 
 def get_user_or_404(cursor, user_id: str) -> User:
     user = get_user(cursor, user_id)
+
+    if user is None:
+        # A miss may only mean the query engine has not caught up with a
+        # row written a moment ago. Ask the engine that owns it first.
+        with authoritative(cursor):
+            user = get_user(cursor, user_id)
+
     if user is None:
         raise NotFoundError(f"User '{user_id}' not found")
     return user
