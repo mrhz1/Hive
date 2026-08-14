@@ -59,6 +59,29 @@ IMPALA_DB = (os.environ.get("IMPALA_DB") or os.environ.get("HIVE_DB") or "").str
 # environment, it is checked rather than trusted.
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+# Whether to tell Impala about a table Hive has just written to. On by
+# default: without it the engine that answers every read carries on
+# serving what the table looked like before the write.
+REFRESH_AFTER_WRITE = (
+    os.environ.get("IMPALA_REFRESH_AFTER_WRITE", "true") or ""
+).strip().lower() not in ("0", "false", "no", "off")
+
+# The table a write lands on. Only has to understand the statements this
+# codebase generates, which are all of the form `INSERT INTO x`,
+# `INSERT INTO TABLE x`, `UPDATE x`, `DELETE FROM x` or `MERGE INTO x`.
+_WRITTEN_TABLE = re.compile(
+    r"^\s*(?:INSERT\s+(?:INTO|OVERWRITE)\s+(?:TABLE\s+)?"
+    r"|UPDATE\s+|DELETE\s+FROM\s+|MERGE\s+INTO\s+)"
+    r"`?([A-Za-z_][A-Za-z0-9_]*(?:`?\.`?[A-Za-z_][A-Za-z0-9_]*)?)`?",
+    re.IGNORECASE,
+)
+
+
+def written_table(sql: str) -> str:
+    """The table a write statement modifies, or '' if it is not a write."""
+    found = _WRITTEN_TABLE.match(sql or "")
+    return found.group(1) if found else ""
+
 # What Impala runs: queries, and nothing else.
 #
 # Not inserts. Every table here is full-ACID ORC, and Impala will not
@@ -192,6 +215,7 @@ class RoutingCursor:
     def __init__(self):
         self._connections: dict = {}
         self._cursors: dict = {}
+        self._written: set = set()
 
     def cursor_for(self, engine: str):
         if engine not in self._cursors:
@@ -210,12 +234,52 @@ class RoutingCursor:
 
     def execute(self, sql, params=()):
         engine = engine_for(sql)
+
         if engine == IMPALA and not impala_available():
+            engine = HIVE
+        elif engine == IMPALA and self._written:
+            # Read back what this request has already written, from the
+            # engine that wrote it. Impala is not told about a Hive write
+            # until it is refreshed, so a row inserted a millisecond ago
+            # is simply not there yet -- which is how creating a patient
+            # came back as 'patient not found' from the same call that
+            # had just created them.
             engine = HIVE
 
         cursor = self.cursor_for(engine)
         self._last = cursor
+
+        table = written_table(sql)
+        if table:
+            self._written.add(table)
+
         return cursor.execute(sql, params)
+
+    def _refresh_written(self) -> None:
+        """Tell Impala about the tables this request wrote.
+
+        At the end rather than after each statement, so a request that
+        writes five rows to one table refreshes it once. Failing to
+        refresh must not fail the request -- the write itself already
+        succeeded, and the cost of a miss is a stale read, not a lost
+        row.
+        """
+        if not self._written or not REFRESH_AFTER_WRITE:
+            return
+        if not impala_available():
+            return
+
+        try:
+            cursor = self.cursor_for(IMPALA)
+        except DatabaseError as exc:
+            log.warning("impala_refresh_unreachable", error=str(exc))
+            return
+
+        for table in sorted(self._written):
+            try:
+                cursor.execute(f"REFRESH {table}")
+            except Exception as exc:
+                log.warning("impala_refresh_failed", table=table, error=str(exc))
 
     def __getattr__(self, name):
         """fetchone / fetchall / description / rowcount, from the last engine used."""
@@ -224,6 +288,8 @@ class RoutingCursor:
         return getattr(self._last, name)
 
     def close(self):
+        self._refresh_written()
+
         for engine, connection in self._connections.items():
             try:
                 connection.close()

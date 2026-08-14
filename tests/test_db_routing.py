@@ -138,13 +138,11 @@ def test_each_engine_gets_one_cursor_not_one_per_statement(engines):
 
 
 def test_results_come_from_the_engine_that_ran_the_statement(engines):
-    """A fetchall() after a SELECT must not read from the Hive cursor
-    just because a write happened to open one first."""
+    """A fetch must read from the cursor that ran the statement, not from
+    whichever connection happened to be opened first."""
     cursor = db.RoutingCursor()
 
-    cursor.execute("DELETE FROM patient WHERE id = %s", ("P1",))
     cursor.execute("SELECT * FROM patient")
-
     assert cursor.fetchall() == [(db.IMPALA,)]
 
     cursor.execute("UPDATE patient SET fstname = %s", ("A",))
@@ -251,3 +249,129 @@ def test_a_database_name_that_is_not_an_identifier_is_refused(name):
     as a parameter -- so it is checked instead of trusted."""
     with pytest.raises(DatabaseError):
         db.use_database(FakeCursor("impala"), name)
+
+
+# ------------------------------------------- seeing what you just wrote
+
+
+@pytest.mark.parametrize(
+    "sql,table",
+    [
+        ("INSERT INTO `patient` (id) VALUES (%s)", "patient"),
+        ("insert into patient (id) values (%s)", "patient"),
+        ("INSERT INTO TABLE `access_logs` PARTITION (d = %s) (id) VALUES (%s)",
+         "access_logs"),
+        ("INSERT OVERWRITE TABLE t SELECT 1", "t"),
+        ("UPDATE `patient` SET fstname = %s", "patient"),
+        ("DELETE FROM `patient` WHERE id = %s", "patient"),
+        ("MERGE INTO patient USING x ON y", "patient"),
+        ("SELECT * FROM patient", ""),
+        ("", ""),
+    ],
+)
+def test_the_table_a_write_lands_on(sql, table):
+    assert db.written_table(sql) == table
+
+
+def test_a_row_can_be_read_back_in_the_call_that_wrote_it(engines):
+    """Creating a patient inserts, then reads the row back to return it.
+    Impala knows nothing of a Hive write until it is refreshed, so that
+    read came back empty and the API answered 404 for a patient it had
+    just created."""
+    cursor = db.RoutingCursor()
+
+    cursor.execute("INSERT INTO `patient` (id) VALUES (%s)", ("P1",))
+    cursor.execute("SELECT * FROM `patient` WHERE id = %s", ("P1",))
+
+    assert cursor.fetchone() == (db.HIVE,), "read back from the engine that wrote it"
+    assert db.IMPALA not in engines, "and without troubling Impala at all"
+
+
+def test_reads_before_any_write_still_go_to_impala(engines):
+    """The rule is read-your-own-write, not give-up-on-Impala."""
+    cursor = db.RoutingCursor()
+
+    cursor.execute("SELECT * FROM patient")
+    assert cursor.fetchone() == (db.IMPALA,)
+
+    cursor.execute("UPDATE patient SET fstname = %s", ("A",))
+    cursor.execute("SELECT * FROM patient")
+    assert cursor.fetchone() == (db.HIVE,)
+
+
+def test_impala_is_told_about_the_tables_that_were_written(engines, monkeypatch):
+    """Otherwise the next request -- the list the page reloads -- is
+    answered from what the table looked like before the write."""
+    monkeypatch.setattr(db, "REFRESH_AFTER_WRITE", True)
+    cursor = db.RoutingCursor()
+
+    cursor.execute("INSERT INTO `patient` (id) VALUES (%s)", ("P1",))
+    cursor.execute("INSERT INTO `audit_logs` (id) VALUES (%s)", ("a1",))
+    cursor.close()
+
+    assert engines[db.IMPALA].cursors[0].statements == [
+        "REFRESH audit_logs",
+        "REFRESH patient",
+    ]
+
+
+def test_a_table_written_repeatedly_is_refreshed_once(engines, monkeypatch):
+    monkeypatch.setattr(db, "REFRESH_AFTER_WRITE", True)
+    cursor = db.RoutingCursor()
+
+    for n in range(3):
+        cursor.execute("INSERT INTO `patient` (id) VALUES (%s)", (n,))
+    cursor.close()
+
+    assert engines[db.IMPALA].cursors[0].statements == ["REFRESH patient"]
+
+
+def test_a_read_only_request_refreshes_nothing(engines, monkeypatch):
+    monkeypatch.setattr(db, "REFRESH_AFTER_WRITE", True)
+    cursor = db.RoutingCursor()
+
+    cursor.execute("SELECT 1")
+    cursor.close()
+
+    assert engines[db.IMPALA].cursors[0].statements == ["SELECT 1"]
+
+
+def test_a_refresh_that_fails_does_not_fail_the_request(monkeypatch):
+    """The write already succeeded. A missed refresh costs a stale read,
+    not a lost row, so it must not turn a saved patient into an error."""
+
+    class ExplodingCursor(FakeCursor):
+        def execute(self, sql, params=()):
+            raise RuntimeError("catalog is unhappy")
+
+    class ExplodingConnection(FakeConnection):
+        def cursor(self):
+            return ExplodingCursor(self.engine)
+
+    monkeypatch.setattr(
+        db,
+        "_connect",
+        lambda engine: (
+            ExplodingConnection(engine)
+            if engine == db.IMPALA
+            else FakeConnection(engine)
+        ),
+    )
+    monkeypatch.setattr(db, "impala_available", lambda: True)
+    monkeypatch.setattr(db, "IMPALA_DB", "")
+    monkeypatch.setattr(db, "REFRESH_AFTER_WRITE", True)
+
+    cursor = db.RoutingCursor()
+    cursor.execute("INSERT INTO `patient` (id) VALUES (%s)", ("P1",))
+
+    cursor.close()  # must not raise
+
+
+def test_refresh_can_be_switched_off(engines, monkeypatch):
+    monkeypatch.setattr(db, "REFRESH_AFTER_WRITE", False)
+    cursor = db.RoutingCursor()
+
+    cursor.execute("DELETE FROM `patient` WHERE id = %s", ("P1",))
+    cursor.close()
+
+    assert db.IMPALA not in engines
