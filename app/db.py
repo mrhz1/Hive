@@ -1,9 +1,9 @@
 """Database connections, split across two engines.
 
-Reads and inserts go to Impala, updates and deletes to Hive. That is the
-division IT asked for, and it is not arbitrary: Impala is the fast query
-engine, Hive is the one that owns the ACID tables and can rewrite rows
-in them.
+Queries go to Impala; everything that writes goes to Hive. That is the
+division IT asked for, and it follows from what the two engines can do:
+Impala is the fast query engine, and Hive owns these tables -- they are
+full-ACID ORC, which Impala reads but will not write.
 
 Both speak HiveServer2, so both are DB-API connections and callers see
 one cursor either way. The routing is decided per *statement* rather
@@ -59,21 +59,15 @@ IMPALA_DB = (os.environ.get("IMPALA_DB") or os.environ.get("HIVE_DB") or "").str
 # environment, it is checked rather than trusted.
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
-# What Impala runs. Everything else goes to Hive, which can run the lot:
-# an unrecognised statement then fails on its own merits rather than for
-# having been sent somewhere that was never going to accept it.
-IMPALA_VERBS = frozenset(
-    {
-        "select",
-        "with",
-        "insert",
-        "show",
-        "describe",
-        "explain",
-        "refresh",
-        "invalidate",
-    }
-)
+# What Impala runs: queries, and nothing else.
+#
+# Not inserts. Every table here is full-ACID ORC, and Impala will not
+# write to those -- it reads them and refuses to modify them. So all
+# writing, inserts included, stays with Hive, which owns those tables.
+#
+# `with` is in the list because a CTE is still a query: it begins with
+# WITH and ends in a SELECT.
+IMPALA_VERBS = frozenset({"select", "with"})
 
 
 def engine_for(sql: str) -> str:
