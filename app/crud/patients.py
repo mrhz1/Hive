@@ -2,7 +2,7 @@
 from datetime import date, datetime
 from typing import List, Optional
 
-from app.db import execute
+from app.db import authoritative, execute
 from app.errors import ConflictError, NotFoundError, ValidationError
 from app.ids import new_patient_id
 from app.logging_setup import get_logger
@@ -97,6 +97,14 @@ def get_patient(cursor, patient_id: str) -> Optional[Patient]:
 
 def get_patient_or_404(cursor, patient_id: str) -> Patient:
     patient = get_patient(cursor, patient_id)
+
+    if patient is None:
+        # A miss may only mean the query engine has not caught up with a
+        # row written a moment ago, in this request or the one before it.
+        # Ask the engine that owns the row before saying it is not there.
+        with authoritative(cursor):
+            patient = get_patient(cursor, patient_id)
+
     if patient is None:
         raise NotFoundError(f"Patient '{patient_id}' not found")
     return patient

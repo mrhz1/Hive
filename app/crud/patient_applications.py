@@ -2,7 +2,7 @@
 import uuid
 from typing import Any, List, Optional
 
-from app.db import NOW_SQL, NULL_TIMESTAMP_SQL, execute
+from app.db import NOW_SQL, NULL_TIMESTAMP_SQL, authoritative, execute
 from app.errors import NotFoundError
 from app.logging_setup import get_logger
 from app.schemas import (
@@ -63,6 +63,13 @@ def get_application(cursor, application_id: str) -> Optional[PatientApplication]
 
 def get_application_or_404(cursor, application_id: str) -> PatientApplication:
     found = get_application(cursor, application_id)
+
+    if found is None:
+        # A miss may only mean the query engine has not caught up with a
+        # row written a moment ago. Ask the engine that owns it first.
+        with authoritative(cursor):
+            found = get_application(cursor, application_id)
+
     if found is None:
         raise NotFoundError(f"Application '{application_id}' not found")
     return found
