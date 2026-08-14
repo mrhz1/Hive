@@ -66,3 +66,17 @@ export function canReject(status: string): boolean {
 export function isDeleted(status: string): boolean {
   return status === 'deleted'
 }
+
+const UNDELETABLE = ['submitted', 'rejected', 'deleted']
+
+/**
+ * Whether deleting is still on the table.
+ *
+ * Once an application has been submitted or rejected it is a record of
+ * something that happened, and deleting is not the way to take that
+ * back -- a submitted application is under review by somebody else, and
+ * a rejected one already carries the reason it was turned down.
+ */
+export function canDelete(status: string): boolean {
+  return !UNDELETABLE.includes(status)
+}

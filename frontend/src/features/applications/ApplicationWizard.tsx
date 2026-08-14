@@ -397,9 +397,13 @@ export function ApplicationWizard({
           onConfirm={(reason) => {
             void reject
               .mutateAsync({ id: record.id, reason })
-              .then((updated) => {
-                setRecord(updated)
+              .then(async () => {
                 setRejecting(false)
+                // Rejecting finishes the application. Staying on the
+                // wizard left a Submit button under a decision that had
+                // already been made, which reads as a second step that
+                // is not one.
+                await navigate({ to: '/applications' })
               })
               .catch(() => undefined)
           }}
