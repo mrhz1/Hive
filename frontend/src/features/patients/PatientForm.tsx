@@ -280,6 +280,9 @@ export function PatientForm({
             onSelect={(path) =>
               setValue('original_file_path', path, { shouldDirty: true })
             }
+            onPathChange={(path) =>
+              setValue('original_file_path', path, { shouldDirty: true })
+            }
             error={errors.original_file_path?.message}
             hint="Optional. Where this patient's documents usually come from -- an application picks its own folder, which may be a different one."
           />

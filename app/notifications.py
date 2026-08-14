@@ -4,6 +4,7 @@ Kept apart from app/mailer.py on purpose: that module knows how to talk
 to an SMTP relay and nothing about this application; this one knows the
 domain and nothing about sockets.
 """
+import os
 from typing import List, Optional, Sequence
 
 from app.crud import patient_applications as applications_crud
@@ -13,6 +14,21 @@ from app.mailer import send_email
 from app.schemas import UploadJob, User
 
 log = get_logger(__name__)
+
+
+def application_link(application_id: str) -> Optional[str]:
+    """A link straight to the application, when the dashboard's address is known.
+
+    An id alone means finding the application by hand: open the
+    dashboard, go to the list, search for eight characters of a uuid.
+    APP_BASE_URL is what turns it into one click. Unset -- a laptop, or
+    a deployment nobody has told where it lives -- and the email falls
+    back to naming the id, which is what it did before.
+    """
+    base = (os.environ.get("APP_BASE_URL") or "").strip().rstrip("/")
+    if not base or not application_id:
+        return None
+    return f"{base}/applications/{application_id}"
 
 
 def _display_name(user: User) -> str:
@@ -70,9 +86,21 @@ def _file_lines(job: UploadJob, status: str, limit: int = 20) -> List[str]:
 def _body(job: UploadJob, greeting: str, headline: str) -> str:
     lines = [greeting, "", headline, ""]
     lines.append(f"Application: {job.application_id}")
+
+    link = application_link(job.application_id)
+    if link:
+        lines.append(f"Open it here: {link}")
+
     lines.append(f"Files received: {job.total}")
     lines.append(f"Stored: {job.stored}")
     lines.append(f"Failed: {job.failed}")
+
+    # The full path, so 'where did these actually go' has an answer that
+    # does not involve asking somebody. A folder name on its own -- which
+    # is all a browser can report about the folder they were picked from
+    # -- leaves the reader to guess which 'samples' was meant.
+    if job.folder:
+        lines.append(f"Stored in: {job.folder}")
 
     if job.error:
         lines += ["", f"Error: {job.error}"]

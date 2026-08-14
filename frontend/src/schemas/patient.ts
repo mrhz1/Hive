@@ -186,3 +186,27 @@ export function patientName(patient: Patient): string {
   const name = [patient.fstname, patient.lstname].filter(Boolean).join(' ').trim()
   return name || patient.ptemail || 'Unnamed patient'
 }
+
+/**
+ * Whether a patient answers to a search term.
+ *
+ * The id is in here as well as the name: it is what appears on the
+ * paperwork, so it is what somebody with a folder in front of them
+ * actually has to hand.
+ */
+export function patientMatches(patient: Patient, query: string): boolean {
+  const term = query.trim().toLowerCase()
+  if (!term) return true
+
+  return [
+    patient.id,
+    patient.fstname,
+    patient.lstname,
+    patient.ptemail,
+    patient.ptphone,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .includes(term)
+}

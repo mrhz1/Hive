@@ -3,15 +3,14 @@ import { useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { SelectField } from '@/components/ui/Field'
 import { Card } from '@/components/ui/Misc'
-import { patientHooks, useUploadDeidentifiedFile } from '@/hooks/useResources'
+import { PatientCombobox } from '@/features/patients/PatientCombobox'
+import { useUploadDeidentifiedFile } from '@/hooks/useResources'
 import { cn } from '@/lib/cn'
-import { patientName } from '@/schemas/patient'
 import type { DeidentifiedFile } from '@/schemas/deidentifiedFile'
 
 type Mode = 'new' | 'replace'
 
 export function DeidentifiedUpload({ files }: { files: DeidentifiedFile[] }) {
-  const { data: patients } = patientHooks.useList()
   const upload = useUploadDeidentifiedFile()
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -19,15 +18,6 @@ export function DeidentifiedUpload({ files }: { files: DeidentifiedFile[] }) {
   const [mode, setMode] = useState<Mode>('new')
   const [replacesFileId, setReplacesFileId] = useState('')
   const [file, setFile] = useState<File | null>(null)
-
-  const patientOptions = useMemo(
-    () =>
-      (patients ?? []).map((patient) => ({
-        value: patient.id,
-        label: `${patientName(patient)} (${patient.id})`,
-      })),
-    [patients]
-  )
 
   const replaceable = useMemo(
     () => files.filter((candidate) => candidate.patient_id === patientId),
@@ -72,18 +62,14 @@ export function DeidentifiedUpload({ files }: { files: DeidentifiedFile[] }) {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <SelectField
-          label="Patient"
-          required
+        <PatientCombobox
           value={patientId}
-          onChange={(event) => {
-            setPatientId(event.target.value)
+          required
+          onChange={(id) => {
+            setPatientId(id)
             // The replace target belongs to the old patient.
             setReplacesFileId('')
           }}
-          options={patientOptions}
-          placeholder="Choose a patient"
-          placeholderDisabled
         />
 
         <fieldset className="flex flex-col justify-end gap-2">
