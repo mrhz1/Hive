@@ -4,12 +4,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
 from app.access_log import READ, record_access
 from app.audit import record_audit
-from app.crud import file_metadata as metadata_crud
-from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as applications_crud
 from app.crud import patients as crud
-from app.storage import delete_file as remove_from_disk
 from app.db import get_cursor
+from app.errors import ConflictError
 from app.schemas import Patient, PatientCreate, PatientUpdate, User
 from app.security import require_permission
 
@@ -104,20 +102,22 @@ def delete_patient(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("patient:delete")),
 ):
-    orphaned = []
-    for application in applications_crud.list_applications(cursor, patient_id):
-        files = files_crud.delete_files_for_application(cursor, application.id)
-        metadata_crud.delete_metadata_for_files(cursor, [f.id for f in files])
-        orphaned.extend(files)
-
-    applications_crud.delete_applications_for_patient(cursor, patient_id)
+    # Refused rather than cascaded. Deleting an application does not
+    # remove it -- it is marked deleted and kept, with a reason, as the
+    # record of what happened to it. Taking the patient out from under
+    # those rows would leave them pointing at somebody who no longer
+    # exists, and would destroy the record the soft delete exists to
+    # preserve. So the patient goes only once nothing refers to them.
+    existing = applications_crud.list_applications(cursor, patient_id)
+    if existing:
+        raise ConflictError(
+            f"This patient has {len(existing)} "
+            f"application{'' if len(existing) == 1 else 's'} and cannot be "
+            "deleted. Applications are kept as a record even after they "
+            "are deleted, so the patient they belong to has to be kept too."
+        )
 
     deleted = crud.delete_patient(cursor, patient_id)
-
-    for record in orphaned:
-        remove_from_disk(record.file_path)
-        if record.de_identified_file_path:
-            remove_from_disk(record.de_identified_file_path)
 
     background.add_task(
         record_audit,

@@ -180,18 +180,3 @@ def delete_application(cursor, application_id: str) -> PatientApplication:
     return existing
 
 
-def delete_applications_for_patient(
-    cursor, patient_id: str
-) -> List[PatientApplication]:
-    """Used when a patient is removed, so their applications do not linger as rows pointing at a patient that no longer exists."""
-    existing = list_applications(cursor, patient_id)
-    if existing:
-        execute(
-            cursor,
-            "DELETE FROM `patient_applications` WHERE `patient_id` = %s",
-            (patient_id,),
-        )
-        log.info(
-            "applications_deleted", patient_id=patient_id, count=len(existing)
-        )
-    return existing

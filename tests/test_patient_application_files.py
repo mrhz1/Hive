@@ -211,8 +211,11 @@ def test_deleting_an_application_removes_its_documents(as_admin, storage_root):
     assert not on_disk.exists()
 
 
-def test_deleting_a_patient_removes_documents_two_levels_down(as_admin, storage_root):
-    """patient -> applications -> files."""
+def test_a_patient_with_documents_two_levels_down_is_not_deleted(
+    as_admin, storage_root
+):
+    """patient -> applications -> files. The refusal at the top is what
+    keeps the bottom: nothing is removed, and the bytes stay on disk."""
     patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
     application_id = as_admin.post(
         "/applications", json={"patient_id": patient_id}
@@ -220,11 +223,11 @@ def test_deleting_a_patient_removes_documents_two_levels_down(as_admin, storage_
     record = _upload(as_admin, application_id).json()[0]
     on_disk = pathlib.Path(record["file_path"])
 
-    assert as_admin.delete(f"/patients/{patient_id}").status_code == 204
+    assert as_admin.delete(f"/patients/{patient_id}").status_code == 409
 
-    assert as_admin.get(f"/files/{record['id']}").status_code == 404
-    assert as_admin.get(f"/applications/{application_id}").status_code == 404
-    assert not on_disk.exists()
+    assert as_admin.get(f"/files/{record['id']}").status_code == 200
+    assert as_admin.get(f"/applications/{application_id}").status_code == 200
+    assert on_disk.exists()
 
 
 def test_deleting_one_file_removes_its_bytes(as_admin, storage_root):
