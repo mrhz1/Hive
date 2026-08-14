@@ -660,3 +660,74 @@ def test_a_session_left_parked_too_long_is_replaced(monkeypatch):
         assert len(opened) == 2, "an expired session was handed out again"
     finally:
         db.discard_sessions()
+
+
+# ------------------------------------------------- the one engine switch
+
+
+@pytest.mark.parametrize(
+    "configured,expected",
+    [
+        (None, db.IMPALA),
+        ("impala", db.IMPALA),
+        ("IMPALA", db.IMPALA),
+        (" impala ", db.IMPALA),
+        ("hive", db.HIVE),
+        ("Hive", db.HIVE),
+        # A typo must not quietly leave the application unable to read.
+        # Hive can run everything, so it costs speed, not correctness.
+        ("impla", db.HIVE),
+        ("", db.IMPALA),
+    ],
+)
+def test_the_read_engine_setting(configured, expected, monkeypatch):
+    if configured is None:
+        monkeypatch.delenv("READ_ENGINE", raising=False)
+    else:
+        monkeypatch.setenv("READ_ENGINE", configured)
+
+    assert db._read_engine() == expected
+
+
+def test_choosing_hive_sends_queries_there_too(monkeypatch):
+    """The switch that puts everything back on one engine."""
+    opened = {}
+
+    def fake_connect(engine):
+        opened[engine] = opened.get(engine) or FakeConnection(engine)
+        return opened[engine]
+
+    monkeypatch.setattr(db, "_connect", fake_connect)
+    monkeypatch.setattr(db, "READ_ENGINE", db.HIVE)
+    monkeypatch.setattr(db, "IMPALA_CONNECTION", "some-connection")
+    monkeypatch.setattr(db, "IMPALA_POOL", False)
+    monkeypatch.setattr(db, "HIVE_POOL", False)
+    db.discard_sessions()
+
+    assert db.impala_available() is False
+
+    cursor = db.RoutingCursor()
+    cursor.execute("SELECT * FROM patient")
+    cursor.execute("DELETE FROM patient WHERE id = %s", ("P1",))
+
+    assert set(opened) == {db.HIVE}, "Impala was used despite READ_ENGINE=hive"
+
+
+def test_choosing_hive_also_stops_the_refresh(monkeypatch):
+    """Nothing to refresh: Impala is not answering anything."""
+    opened = {}
+
+    monkeypatch.setattr(
+        db, "_connect", lambda engine: opened.setdefault(engine, FakeConnection(engine))
+    )
+    monkeypatch.setattr(db, "READ_ENGINE", db.HIVE)
+    monkeypatch.setattr(db, "IMPALA_CONNECTION", "some-connection")
+    monkeypatch.setattr(db, "REFRESH_AFTER_WRITE", True)
+    monkeypatch.setattr(db, "HIVE_POOL", False)
+    db.discard_sessions()
+
+    cursor = db.RoutingCursor()
+    cursor.execute("INSERT INTO `patient` (id) VALUES (%s)", ("P1",))
+    cursor.close()
+
+    assert db.IMPALA not in opened
