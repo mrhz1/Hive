@@ -94,9 +94,10 @@ def engines(monkeypatch):
     # Pooling is thread-local and outlives a test, so it starts and ends
     # empty. The tests that are about pooling turn it on themselves.
     monkeypatch.setattr(db, "IMPALA_POOL", False)
-    db.discard_impala_session()
+    monkeypatch.setattr(db, "HIVE_POOL", False)
+    db.discard_sessions()
     yield opened
-    db.discard_impala_session()
+    db.discard_sessions()
 
 
 def test_a_read_only_request_never_opens_hive(engines):
@@ -387,11 +388,12 @@ def test_refresh_can_be_switched_off(engines, monkeypatch):
 
 @pytest.fixture
 def pooled(engines, monkeypatch):
-    """As `engines`, but with the connection kept between requests."""
+    """As `engines`, but with connections kept between requests."""
     monkeypatch.setattr(db, "IMPALA_POOL", True)
-    db.discard_impala_session()
+    monkeypatch.setattr(db, "HIVE_POOL", True)
+    db.discard_sessions()
     yield engines
-    db.discard_impala_session()
+    db.discard_sessions()
 
 
 def test_a_second_request_does_not_authenticate_again(pooled):
@@ -409,7 +411,7 @@ def test_a_second_request_does_not_authenticate_again(pooled):
 
 def test_the_database_is_set_once_for_the_whole_session(pooled, monkeypatch):
     monkeypatch.setattr(db, "IMPALA_DB", "hive_app")
-    db.discard_impala_session()
+    db.discard_sessions()
 
     for _ in range(3):
         cursor = db.RoutingCursor()
@@ -420,16 +422,17 @@ def test_the_database_is_set_once_for_the_whole_session(pooled, monkeypatch):
     assert statements.count("USE `hive_app`") == 1
 
 
-def test_hive_is_not_pooled(pooled):
-    """A write must not be retried on a dropped connection -- a statement
-    that arrived before the drop would be applied twice -- so Hive keeps
-    its connection per request."""
-    for _ in range(2):
+def test_hive_is_pooled_too(pooled):
+    """A delete reads the row and then removes it, so it pays for a
+    connection at both ends. Opening a Hive session per request is most
+    of why a delete took ten seconds."""
+    for _ in range(3):
         cursor = db.RoutingCursor()
         cursor.execute("DELETE FROM patient WHERE id = %s", ("P1",))
         cursor.close()
 
-    assert pooled[db.HIVE].closed is True
+    assert len(pooled[db.HIVE].cursors) == 1, "reopened the connection"
+    assert pooled[db.HIVE].closed is False
 
 
 def test_a_session_that_died_while_parked_is_reopened(monkeypatch):
@@ -463,7 +466,8 @@ def test_a_session_that_died_while_parked_is_reopened(monkeypatch):
     monkeypatch.setattr(db, "impala_available", lambda: True)
     monkeypatch.setattr(db, "IMPALA_DB", "")
     monkeypatch.setattr(db, "IMPALA_POOL", True)
-    db.discard_impala_session()
+    monkeypatch.setattr(db, "HIVE_POOL", False)
+    db.discard_sessions()
 
     try:
         first = db.RoutingCursor()
@@ -477,7 +481,7 @@ def test_a_session_that_died_while_parked_is_reopened(monkeypatch):
         assert len(opened) == 2, "did not reopen after the session died"
         assert second.fetchall() == [(db.IMPALA,)]
     finally:
-        db.discard_impala_session()
+        db.discard_sessions()
 
 
 def test_a_freshly_opened_session_is_not_retried(monkeypatch):
@@ -499,7 +503,8 @@ def test_a_freshly_opened_session_is_not_retried(monkeypatch):
     monkeypatch.setattr(db, "impala_available", lambda: True)
     monkeypatch.setattr(db, "IMPALA_DB", "")
     monkeypatch.setattr(db, "IMPALA_POOL", True)
-    db.discard_impala_session()
+    monkeypatch.setattr(db, "HIVE_POOL", False)
+    db.discard_sessions()
 
     try:
         cursor = db.RoutingCursor()
@@ -507,7 +512,7 @@ def test_a_freshly_opened_session_is_not_retried(monkeypatch):
             cursor.execute("SELECT nonsense")
         assert attempts["n"] == 1
     finally:
-        db.discard_impala_session()
+        db.discard_sessions()
 
 
 # ------------------------------------- not found, or merely not caught up
@@ -581,3 +586,77 @@ def test_a_row_impala_cannot_see_yet_is_still_found(monkeypatch):
     cursor = db.RoutingCursor()
 
     assert patients_crud.get_patient_or_404(cursor, "P1") == "patient from hive"
+
+
+def test_a_hive_write_is_not_retried_on_a_dropped_session(monkeypatch):
+    """Pooling is not retrying. A statement that reached the server just
+    before the connection dropped would be applied a second time, and a
+    duplicated row is worse than an error the caller can act on."""
+    attempts = {"n": 0}
+
+    class DeadOnReuse(FakeCursor):
+        def execute(self, sql, params=()):
+            attempts["n"] += 1
+            if attempts["n"] == 2:
+                raise RuntimeError("session expired")
+            return super().execute(sql, params)
+
+    class Connection(FakeConnection):
+        def cursor(self):
+            cursor = DeadOnReuse(self.engine)
+            self.cursors.append(cursor)
+            return cursor
+
+    monkeypatch.setattr(db, "_connect", lambda engine: Connection(engine))
+    monkeypatch.setattr(db, "impala_available", lambda: True)
+    monkeypatch.setattr(db, "IMPALA_DB", "")
+    monkeypatch.setattr(db, "HIVE_POOL", True)
+    monkeypatch.setattr(db, "IMPALA_POOL", False)
+    # Off, so the only statements counted here are the writes themselves.
+    monkeypatch.setattr(db, "REFRESH_AFTER_WRITE", False)
+    db.discard_sessions()
+
+    try:
+        first = db.RoutingCursor()
+        first.execute("DELETE FROM patient WHERE id = %s", ("P1",))
+        first.close()
+
+        second = db.RoutingCursor()
+        with pytest.raises(RuntimeError):
+            second.execute("DELETE FROM patient WHERE id = %s", ("P2",))
+
+        assert attempts["n"] == 2, "the write was run a second time"
+
+        # ...but the dead session is gone, so the next request is fine.
+        third = db.RoutingCursor()
+        third.execute("DELETE FROM patient WHERE id = %s", ("P3",))
+    finally:
+        db.discard_sessions()
+
+
+def test_a_session_left_parked_too_long_is_replaced(monkeypatch):
+    """Servers close idle sessions on their own schedule. Finding out by
+    having a request fail is worse than reconnecting on a timer."""
+    opened = []
+
+    def fake_connect(engine):
+        connection = FakeConnection(engine)
+        opened.append(connection)
+        return connection
+
+    monkeypatch.setattr(db, "_connect", fake_connect)
+    monkeypatch.setattr(db, "impala_available", lambda: True)
+    monkeypatch.setattr(db, "IMPALA_DB", "")
+    monkeypatch.setattr(db, "IMPALA_POOL", True)
+    monkeypatch.setattr(db, "POOL_MAX_IDLE_SECONDS", 0)
+    db.discard_sessions()
+
+    try:
+        for _ in range(2):
+            cursor = db.RoutingCursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
+
+        assert len(opened) == 2, "an expired session was handed out again"
+    finally:
+        db.discard_sessions()

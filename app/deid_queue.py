@@ -53,6 +53,13 @@ _stop = threading.Event()
 # again every ten seconds only adds a Skipped run to somebody's history.
 _deferrals = 0
 
+# How many times a file may be dispatched to a run that ends without
+# touching it, before it is called failed rather than tried again.
+MAX_ATTEMPTS = int(os.environ.get("DEID_DISPATCH_MAX_ATTEMPTS", "2"))
+
+# file id -> dispatches that came back with the row untouched.
+_attempts: dict = {}
+
 
 def _next_poll(interval: float) -> float:
     """The next wait in a run of polls, opening out towards the cap."""
@@ -156,6 +163,23 @@ def _wait_for_run(run_id: str, file_id: str) -> bool:
     return False
 
 
+def _fail_row(file_id: str, detail: str) -> None:
+    """Mark a file failed, so it stops being handed round the queue."""
+    from app.crud import patient_application_files as files_crud
+    from app.schemas import PatientApplicationFileUpdate
+
+    try:
+        with hive_cursor() as cursor:
+            files_crud.update_file(
+                cursor, file_id, PatientApplicationFileUpdate(deid_status="failed")
+            )
+    except Exception as exc:  # pragma: no cover - last-resort logging
+        log.error("deid_fail_write_failed", file_id=file_id, error=str(exc))
+        return
+
+    log.error("deid_abandoned", file_id=file_id, detail=detail)
+
+
 def _dispatch_one(record) -> None:
     """Start one run and wait it out."""
     global _deferrals
@@ -185,6 +209,30 @@ def _dispatch_one(record) -> None:
     _deferrals = 0
     log.info("deid_run_dispatched", file_id=record.id, run_id=run_id)
     _wait_for_run(run_id, record.id)
+
+    # The run is over. If the row is still queued, it ended without ever
+    # claiming this file -- which is what a run killed part way through
+    # looks like from here, and OCR being killed for memory is the usual
+    # reason. Left alone the file is picked up again on the next pass,
+    # dies the same way, and the queue turns into a loop that never
+    # empties. Two goes, then it is marked failed and somebody is told.
+    if _row_status(record.id) != "queued":
+        _attempts.pop(record.id, None)
+        return
+
+    attempts = _attempts.get(record.id, 0) + 1
+    _attempts[record.id] = attempts
+
+    if attempts >= MAX_ATTEMPTS:
+        _attempts.pop(record.id, None)
+        _fail_row(
+            record.id,
+            f"the run finished without processing this file, {attempts} times over",
+        )
+    else:
+        log.warning(
+            "deid_run_left_row_queued", file_id=record.id, attempts=attempts
+        )
 
 
 def drain_once() -> bool:

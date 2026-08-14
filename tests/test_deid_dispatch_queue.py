@@ -397,3 +397,49 @@ def test_a_skipped_run_is_treated_as_busy_not_as_started(table, monkeypatch):
 def test_a_skipped_run_is_over_the_moment_it_is_recorded(status):
     """It never starts, so waiting for it to finish waits for ever."""
     assert is_terminal_run_status(status) is True
+
+
+def test_a_run_that_never_touches_the_row_gives_up_eventually(table, monkeypatch):
+    """A run killed part way through -- OCR out of memory, usually --
+    leaves the row queued. Left alone it is picked up again, dies the
+    same way, and the queue becomes a loop that never empties."""
+    table["a"] = Row("a", 1)
+    monkeypatch.setattr(deid_queue, "MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(deid_queue, "_attempts", {})
+
+    starts = {"n": 0}
+
+    def start(environment=None):
+        starts["n"] += 1
+        return "run-a"
+
+    monkeypatch.setattr(deid_queue, "start_deid_job_run", start)
+    # The run ends, but the row is never claimed.
+    monkeypatch.setattr(deid_queue, "get_job_run_status", lambda r: "ENGINE_FAILED")
+
+    failed = []
+    monkeypatch.setattr(
+        deid_queue, "_fail_row", lambda file_id, detail: failed.append(file_id)
+    )
+
+    deid_queue.drain_once()
+    assert failed == [], "gave up after a single go"
+
+    deid_queue.drain_once()
+    assert failed == ["a"], "kept dispatching a file that never gets processed"
+
+
+def test_a_run_that_does_process_the_row_clears_the_count(table, monkeypatch):
+    table["a"] = Row("a", 1)
+    monkeypatch.setattr(deid_queue, "_attempts", {"a": 1})
+
+    def start(environment=None):
+        table["a"].deid_status = "done"
+        return "run-a"
+
+    monkeypatch.setattr(deid_queue, "start_deid_job_run", start)
+    monkeypatch.setattr(deid_queue, "get_job_run_status", lambda r: "ENGINE_SUCCEEDED")
+
+    deid_queue.drain_once()
+
+    assert "a" not in deid_queue._attempts
