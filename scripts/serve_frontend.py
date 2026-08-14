@@ -53,6 +53,21 @@ if API_PROXY_TARGET:
             if key.lower() not in _HOP_BY_HOP and key.lower() != "host"
         }
 
+        # Say who this is being forwarded for. Without it the API sees
+        # only this process connecting from 127.0.0.1, and every access
+        # record names the loopback address instead of the person -- an
+        # access log that cannot say where a read came from is most of
+        # the way to useless.
+        forwarded = request.headers.get("X-Forwarded-For")
+        client = request.remote_addr or ""
+        if client:
+            headers["X-Forwarded-For"] = (
+                f"{forwarded}, {client}" if forwarded else client
+            )
+        headers.setdefault(
+            "X-Forwarded-Proto", request.headers.get("X-Forwarded-Proto", request.scheme)
+        )
+
         try:
             upstream = httpx.request(
                 request.method,

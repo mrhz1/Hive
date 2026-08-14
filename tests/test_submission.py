@@ -80,7 +80,7 @@ def test_submitting_stamps_and_files_the_pdf(
 
     submission.finalise_submission(application_id)
 
-    final = deid_dirs["pdf"] / staged.name
+    final = deid_dirs["pdf"] / patient_id / staged.name
     assert final.is_file(), "output was not moved to the configured location"
     assert not staged.exists(), "the staging copy was left behind"
 
@@ -100,7 +100,7 @@ def test_submitting_stamps_and_files_the_pdf(
 def test_the_row_points_at_the_final_location(
     as_admin, storage_root, deid_dirs
 ):
-    _, application_id, record = _submitted_application(as_admin, storage_root)
+    patient_id, application_id, record = _submitted_application(as_admin, storage_root)
     staged = _stage_output(record, storage_root)
 
     as_admin.put(
@@ -111,7 +111,7 @@ def test_the_row_points_at_the_final_location(
     submission.finalise_submission(application_id)
 
     after = as_admin.get(f"/files/{record['id']}").json()
-    assert after["de_identified_file_path"] == str(deid_dirs["pdf"] / staged.name)
+    assert after["de_identified_file_path"] == str(deid_dirs["pdf"] / patient_id / staged.name)
 
 
 def test_dicom_goes_to_the_dicom_directory_and_is_not_stamped(
@@ -135,13 +135,13 @@ def test_dicom_goes_to_the_dicom_directory_and_is_not_stamped(
 
     submission.finalise_submission(application_id)
 
-    final = deid_dirs["dicom"] / staged.name
+    final = deid_dirs["dicom"] / patient_id / staged.name
     assert final.is_file()
     assert final.read_bytes() == b"redacted bytes", "a DICOM was rewritten"
 
 
 def test_files_that_are_not_done_are_left_alone(as_admin, storage_root, deid_dirs):
-    _, application_id, record = _submitted_application(as_admin, storage_root)
+    patient_id, application_id, record = _submitted_application(as_admin, storage_root)
     staged = _stage_output(record, storage_root)
 
     # Still processing: nothing to file yet.
@@ -153,7 +153,7 @@ def test_files_that_are_not_done_are_left_alone(as_admin, storage_root, deid_dir
     submission.finalise_submission(application_id)
 
     assert staged.is_file()
-    assert not (deid_dirs["pdf"] / staged.name).exists()
+    assert not (deid_dirs["pdf"] / patient_id / staged.name).exists()
 
 
 def test_a_missing_staged_file_does_not_raise(as_admin, storage_root, deid_dirs):
@@ -172,7 +172,9 @@ def test_a_missing_staged_file_does_not_raise(as_admin, storage_root, deid_dirs)
 
 def test_submitting_through_the_api_triggers_it(as_admin, storage_root, deid_dirs):
     """The whole point: the user presses Submit, this happens."""
-    _, application_id, record = _submitted_application(as_admin, storage_root)
+    patient_id, application_id, record = _submitted_application(
+        as_admin, storage_root
+    )
     staged = _stage_output(record, storage_root)
 
     as_admin.put(
@@ -185,7 +187,7 @@ def test_submitting_through_the_api_triggers_it(as_admin, storage_root, deid_dir
     )
 
     assert response.status_code == 200
-    assert (deid_dirs["pdf"] / staged.name).is_file()
+    assert (deid_dirs["pdf"] / patient_id / staged.name).is_file()
 
 
 def test_an_extensionless_dicom_is_filed_with_the_dicoms(
@@ -213,8 +215,8 @@ def test_an_extensionless_dicom_is_filed_with_the_dicoms(
 
     as_admin.put(f"/applications/{application_id}", json={"status": "submitted"})
 
-    assert (deid_dirs["dicom"] / staged.name).is_file()
-    assert not (deid_dirs["pdf"] / staged.name).exists()
+    assert (deid_dirs["dicom"] / patient_id / staged.name).is_file()
+    assert not (deid_dirs["pdf"] / patient_id / staged.name).exists()
 
 
 def test_re_saving_an_already_submitted_application_does_not_refile(
@@ -231,9 +233,52 @@ def test_re_saving_an_already_submitted_application_does_not_refile(
     as_admin.put(f"/applications/{application_id}", json={"status": "submitted"})
     as_admin.put(f"/applications/{application_id}", json={"status": "submitted"})
 
-    final = deid_dirs["pdf"] / staged.name
+    final = deid_dirs["pdf"] / patient_id / staged.name
     document = fitz.open(str(final))
     stamps = [w for w in document[0].get_text("words") if w[4] == patient_id]
     document.close()
 
     assert len(stamps) == 1, "the id was stamped more than once"
+
+
+def test_submitting_removes_the_identified_original(
+    as_admin, storage_root, deid_dirs
+):
+    """The redacted copy is what survives submission. Keeping the
+    identified one past that point is the risk the whole pass exists to
+    remove."""
+    patient_id, application_id, record = _submitted_application(
+        as_admin, storage_root
+    )
+    original = pathlib.Path(record["file_path"])
+    staged = _stage_output(record, storage_root)
+
+    as_admin.put(
+        f"/files/{record['id']}",
+        json={"deid_status": "done", "de_identified_file_path": str(staged)},
+    )
+    assert original.is_file()
+
+    submission.finalise_submission(application_id)
+
+    assert not original.exists(), "the identified copy is still on disk"
+    assert (deid_dirs["pdf"] / patient_id / staged.name).is_file()
+
+
+def test_an_original_without_a_redacted_copy_is_kept(
+    as_admin, storage_root, deid_dirs
+):
+    """The original is the thing that cannot be reconstructed, so it goes
+    only once there is something to replace it."""
+    _, application_id, record = _submitted_application(as_admin, storage_root)
+    original = pathlib.Path(record["file_path"])
+    staged = _stage_output(record, storage_root)
+
+    as_admin.put(
+        f"/files/{record['id']}",
+        json={"deid_status": "processing", "de_identified_file_path": str(staged)},
+    )
+
+    submission.finalise_submission(application_id)
+
+    assert original.is_file()

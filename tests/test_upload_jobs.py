@@ -8,16 +8,31 @@ from conftest import ADMIN_ID, VIEWER_ID, minimal_patient
 from app import uploads
 
 # <patient id>-<document type>-<16-digit serial>.<ext>
-DOCUMENT = re.compile(r"^[A-Z0-9]{6}-[a-z0-9]+-\d{16}\.[a-z0-9]+$")
+# <patient>-<type>-<date>-<serial>.<ext>. The date is in the name so a
+# directory listing can be read by eye.
+DOCUMENT = re.compile(r"^[A-Z0-9]{6}-[a-z0-9]+-\d{8}-\d{16}\.[a-z0-9]+$")
 
 
-def _patient_and_application(client, assigned_to_id=None):
+def _patient_and_application(client, assigned_to_id=None, original_file_path=None):
     patient_id = client.post("/patients", json=minimal_patient()).json()["id"]
     payload = {"patient_id": patient_id}
     if assigned_to_id is not None:
         payload["assigned_to_id"] = assigned_to_id
+    if original_file_path is not None:
+        payload["original_file_path"] = original_file_path
     application_id = client.post("/applications", json=payload).json()["id"]
     return patient_id, application_id
+
+
+def _upload_mail(sent_emails):
+    """The email about the batch, not the one about the assignment.
+
+    Creating an application with an assignee now emails them straight
+    away, so the upload notice is no longer whatever arrived first.
+    """
+    return [
+        mail for mail in sent_emails if "assigned to you" not in mail["subject"]
+    ]
 
 
 def _upload(client, application_id, files=None, **kwargs):
@@ -94,9 +109,10 @@ def test_the_assigned_user_is_told_when_the_batch_is_done(
 
     _upload(as_admin, application_id)
 
-    assert len(sent_emails) == 1
-    assert sent_emails[0]["to"] == ["viewer@example.com"]
-    assert "1 file" in sent_emails[0]["subject"]
+    batch = _upload_mail(sent_emails)
+    assert len(batch) == 1
+    assert batch[0]["to"] == ["viewer@example.com"]
+    assert "1 file" in batch[0]["subject"]
 
 
 def test_an_unassigned_batch_falls_back_to_whoever_uploaded_it(
@@ -126,10 +142,11 @@ def test_a_file_that_cannot_be_stored_emails_the_assigned_user(
     assert job["failed"] == 1
     assert job["files"][0]["error"] == "the volume went away"
 
-    assert len(sent_emails) == 1
-    assert sent_emails[0]["to"] == ["viewer@example.com"]
-    assert "failed" in sent_emails[0]["subject"].lower()
-    assert "the volume went away" in sent_emails[0]["body"]
+    batch = _upload_mail(sent_emails)
+    assert len(batch) == 1
+    assert batch[0]["to"] == ["viewer@example.com"]
+    assert "failed" in batch[0]["subject"].lower()
+    assert "the volume went away" in batch[0]["body"]
 
     # Nothing half-recorded: a file that never moved has no row either.
     assert as_admin.get(f"/applications/{application_id}/files").json() == []
@@ -167,7 +184,7 @@ def test_one_bad_file_does_not_cost_the_rest_of_the_batch(
     listed = as_admin.get(f"/applications/{application_id}/files").json()
     assert [record["original_file_name"] for record in listed] == ["second.pdf"]
 
-    assert "partly failed" in sent_emails[0]["subject"]
+    assert "partly failed" in _upload_mail(sent_emails)[0]["subject"]
 
 
 def test_empty_files_are_skipped_and_an_empty_batch_is_rejected(
@@ -234,14 +251,76 @@ def test_without_a_configured_address_the_email_still_names_the_application(
     assert "http" not in body
 
 
-def test_the_email_says_where_the_files_actually_went(
+def test_the_email_names_the_folder_it_was_uploaded_from(
     as_admin, storage_root, sent_emails
 ):
-    """'Which samples folder?' is the question a bare folder name invites."""
-    _, application_id = _patient_and_application(as_admin, assigned_to_id=VIEWER_ID)
+    """The folder they sent, not the one the platform put it in -- an
+    internal /home/cdsw path answers a question nobody is asking."""
+    _, application_id = _patient_and_application(
+        as_admin, assigned_to_id=VIEWER_ID, original_file_path="/network/x/y/z"
+    )
 
     _upload(as_admin, application_id)
 
-    body = sent_emails[0]["body"]
-    assert "Stored in: " in body
-    assert str(storage_root) in body
+    body = _upload_mail(sent_emails)[0]["body"]
+    assert "Uploaded from: /network/x/y/z" in body
+    assert str(storage_root) not in body, "leaked the platform's own path"
+
+
+def test_assigning_an_application_emails_the_assignee(as_admin, sent_emails, monkeypatch):
+    """Assignment used to be silent: the application appeared in a list
+    the assignee had no reason to reload."""
+    monkeypatch.setenv("APP_BASE_URL", "https://patients.example.org")
+    patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
+
+    application_id = as_admin.post(
+        "/applications", json={"patient_id": patient_id, "assigned_to_id": VIEWER_ID}
+    ).json()["id"]
+
+    assert [mail["to"] for mail in sent_emails] == [["viewer@example.com"]]
+    assert (
+        f"https://patients.example.org/applications/{application_id}"
+        in sent_emails[0]["body"]
+    )
+
+
+def test_reassigning_emails_the_new_assignee(as_admin, sent_emails):
+    patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
+    application_id = as_admin.post(
+        "/applications", json={"patient_id": patient_id}
+    ).json()["id"]
+    assert sent_emails == []
+
+    as_admin.put(
+        f"/applications/{application_id}", json={"assigned_to_id": VIEWER_ID}
+    )
+
+    assert [mail["to"] for mail in sent_emails] == [["viewer@example.com"]]
+
+
+def test_saving_an_application_again_does_not_re_email(as_admin, sent_emails):
+    """Only a change is news. Re-saving for some other reason must not
+    email somebody about work they already have."""
+    patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
+    application_id = as_admin.post(
+        "/applications", json={"patient_id": patient_id, "assigned_to_id": VIEWER_ID}
+    ).json()["id"]
+    assert len(sent_emails) == 1
+
+    as_admin.put(
+        f"/applications/{application_id}",
+        json={"assigned_to_id": VIEWER_ID, "description": "same person, new note"},
+    )
+
+    assert len(sent_emails) == 1
+
+
+def test_assigning_to_yourself_is_not_emailed(as_admin, sent_emails):
+    """You know: you just did it."""
+    patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
+
+    as_admin.post(
+        "/applications", json={"patient_id": patient_id, "assigned_to_id": ADMIN_ID}
+    )
+
+    assert sent_emails == []

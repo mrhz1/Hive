@@ -30,6 +30,12 @@ export const patientApplicationSchema = z.object({
   /** The user who has to work on it; upload notices go to them. */
   assigned_to_id: nullableText,
   /**
+   * Resolved by the API rather than looked up here: reading it off the
+   * users list would need `user:view`, and the point is that somebody
+   * with only `application:view` can find their own work.
+   */
+  assigned_to_username: nullableText,
+  /**
    * Where this application's documents came from. Per application, not
    * per patient: a second application for the same patient routinely
    * draws on a different folder.

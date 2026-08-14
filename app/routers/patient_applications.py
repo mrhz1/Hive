@@ -14,6 +14,7 @@ from app.storage import delete_file as remove_from_disk
 from app.submission import finalise_submission
 from app.errors import ValidationError
 from app.logging_setup import get_logger
+from app.notifications import notify_assigned
 from app.schemas import (
     PatientApplication,
     PatientApplicationCreate,
@@ -32,6 +33,35 @@ NON_REJECTABLE = ("submitted", "rejected", "deleted")
 
 def _snapshot(application: PatientApplication) -> dict:
     return application.model_dump(mode="json")
+
+
+def _notify_assignee(
+    background: BackgroundTasks,
+    cursor,
+    assigned_to_id: Optional[str],
+    application_id: str,
+    actor: User,
+) -> None:
+    """Email whoever the application has just been handed to.
+
+    The user is resolved here, on the request's cursor, and the sending
+    is what goes to the background: the email must not hold up the
+    response, and a mail relay having a bad day must not fail an
+    assignment that was recorded perfectly well.
+    """
+    if not assigned_to_id or assigned_to_id == actor.id:
+        return
+
+    assignee = users_crud.get_user(cursor, assigned_to_id)
+    if assignee is None:
+        return
+
+    background.add_task(
+        notify_assigned,
+        assignee=assignee,
+        application_id=application_id,
+        assigned_by=actor,
+    )
 
 
 def _assert_assignee_exists(cursor, user_id: Optional[str]) -> None:
@@ -70,6 +100,9 @@ def create_application(
     _assert_assignee_exists(cursor, payload.assigned_to_id)
 
     application = crud.create_application(cursor, payload, actor_id=actor.id)
+
+    _notify_assignee(background, cursor, application.assigned_to_id, application.id, actor)
+
     background.add_task(
         record_audit,
         action="CREATE",
@@ -83,13 +116,35 @@ def create_application(
     return application
 
 
+def _with_assignee_names(cursor, applications: List[PatientApplication]):
+    """Fill in each application's assignee username.
+
+    One pass over the users, not one lookup per row: a list of two
+    hundred applications assigned across a handful of people would
+    otherwise be two hundred queries to print a column.
+    """
+    wanted = {a.assigned_to_id for a in applications if a.assigned_to_id}
+    if not wanted:
+        return applications
+
+    names = {
+        user.id: user.username
+        for user in users_crud.list_users(cursor)
+        if user.id in wanted
+    }
+    for application in applications:
+        application.assigned_to_username = names.get(application.assigned_to_id)
+
+    return applications
+
+
 @router.get("", response_model=List[PatientApplication])
 def list_applications(
     patient_id: Optional[str] = None,
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    return crud.list_applications(cursor, patient_id)
+    return _with_assignee_names(cursor, crud.list_applications(cursor, patient_id))
 
 
 @router.get("/{application_id}", response_model=PatientApplication)
@@ -98,7 +153,8 @@ def get_application(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    return crud.get_application_or_404(cursor, application_id)
+    application = crud.get_application_or_404(cursor, application_id)
+    return _with_assignee_names(cursor, [application])[0]
 
 
 @router.put("/{application_id}", response_model=PatientApplication)
@@ -116,6 +172,11 @@ def update_application(
         _assert_assignee_exists(cursor, payload.assigned_to_id)
 
     after = crud.update_application(cursor, application_id, payload, actor_id=actor.id)
+
+    # Only on a change. Re-saving an application for some other reason
+    # must not email the assignee again about work they already have.
+    if after.assigned_to_id and after.assigned_to_id != before.assigned_to_id:
+        _notify_assignee(background, cursor, after.assigned_to_id, application_id, actor)
 
     if after.status == "submitted" and before.status != "submitted":
         background.add_task(
