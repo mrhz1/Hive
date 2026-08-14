@@ -105,6 +105,25 @@ def _run_stage(
         return json.load(fh)
 
 
+def ocr_batch_size() -> int:
+    """How many documents one OCR process handles at a time.
+
+    One by default. Rasterising and reading a page is where the memory
+    goes, so this is the dial between speed and surviving: raise it on a
+    workload with memory to spare, leave it alone on one that gets its
+    OCR process killed.
+    """
+    try:
+        return max(1, int(os.environ.get("DEID_OCR_BATCH_SIZE", "1")))
+    except ValueError:
+        return 1
+
+
+def _batched(items: List[Any], size: int):
+    for start in range(0, len(items), size):
+        yield items[start : start + size]
+
+
 def _fail_all(sources: List[str], stage: str, error: str) -> List[DocumentResult]:
     return [
         DocumentResult(
@@ -196,31 +215,48 @@ def _run(
 
     ocr_status: Dict[str, Any] = {}
 
+    ocr_failures: List[DocumentResult] = []
+
     if rasterisable:
-        ocr_manifest = str(work / "ocr-manifest.json")
-        write_manifest(
-            ocr_manifest,
-            [{"source": j["source"], "spans": j["spans"]} for j in rasterisable],
-        )
+        # In batches, because peak memory follows the batch. Rendering a
+        # page to an image and running OCR over it is the expensive part
+        # of this whole pipeline, and handing one process every document
+        # at once is what gets it killed -- exit -9, no result file, the
+        # whole batch lost. One application's worth of documents fitted;
+        # several did not. Smaller batches take marginally longer and
+        # survive, and a batch that does die costs only its own
+        # documents rather than all of them.
+        outcomes: List[dict] = []
 
-        try:
-            ocr_outcomes = _run_stage(
-                ocr_python(),
-                "stage_ocr.py",
-                ocr_manifest,
-                str(work / "ocr-result.json"),
-                "ocr",
+        for index, batch in enumerate(_batched(rasterisable, ocr_batch_size())):
+            manifest = str(work / f"ocr-manifest-{index:03d}.json")
+            write_manifest(
+                manifest,
+                [{"source": j["source"], "spans": j["spans"]} for j in batch],
             )
-        except StageError as exc:
-            log.error("OCR stage failed: %s", exc)
-            failures = _fail_all(
-                [j["source"] for j in rasterisable], "ocr", str(exc)
-            )
-            if not text_only:
-                return failures
-            return failures + _run_nlp(text_only, work)
 
-        ocr_status = {o["source"]: o for o in ocr_outcomes}
+            try:
+                outcomes.extend(
+                    _run_stage(
+                        ocr_python(),
+                        "stage_ocr.py",
+                        manifest,
+                        str(work / f"ocr-result-{index:03d}.json"),
+                        "ocr",
+                    )
+                )
+            except StageError as exc:
+                log.error(
+                    "OCR stage failed for %d of %d document(s): %s",
+                    len(batch),
+                    len(rasterisable),
+                    exc,
+                )
+                ocr_failures.extend(
+                    _fail_all([j["source"] for j in batch], "ocr", str(exc))
+                )
+
+        ocr_status = {o["source"]: o for o in outcomes}
 
     # --- stage 2: PII detection + redaction ---------------------------
     ready = [
@@ -229,6 +265,9 @@ def _run(
     results = _run_nlp(ready, work)
 
     by_source = {r.source_path: r for r in results}
+    # A batch that died takes its documents with it, and its error says
+    # how -- 'exit -9', which is the one detail worth keeping.
+    failed_batches = {r.source_path: r for r in ocr_failures}
 
     # Reassemble in input order, filling in the files stage 1 rejected.
     ordered: List[DocumentResult] = []
@@ -236,6 +275,10 @@ def _run(
         source = job["source"]
         if source in by_source:
             ordered.append(by_source[source])
+            continue
+
+        if source in failed_batches:
+            ordered.append(failed_batches[source])
             continue
 
         outcome = ocr_status.get(source, {})

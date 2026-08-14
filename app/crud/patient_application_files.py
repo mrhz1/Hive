@@ -104,6 +104,25 @@ def list_files(
     return [_row_to_file(r) for r in cursor.fetchall()]
 
 
+def oldest_with_status(cursor, deid_status: str) -> Optional[PatientApplicationFile]:
+    """The longest-waiting file in one de-identification state.
+
+    Asked of the database rather than answered in Python. The dispatcher
+    runs this on every pass, and reading every document row ever stored
+    in order to find the one that has waited longest is a table scan for
+    a single row -- which is most of the delay between clicking
+    de-identify and the job actually starting.
+    """
+    execute(
+        cursor,
+        f"SELECT {_COLS} FROM `patient_application_files` "
+        "WHERE `deid_status` = %s ORDER BY `created_at` ASC LIMIT 1",
+        (deid_status,),
+    )
+    row = cursor.fetchone()
+    return _row_to_file(row) if row else None
+
+
 def get_file(cursor, file_id: str) -> Optional[PatientApplicationFile]:
     execute(
         cursor,
