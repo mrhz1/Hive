@@ -13,6 +13,7 @@ from deid import model_store
 from deid.config import load_config
 from deid.results import DocumentResult
 from deid.documents import needs_ocr, output_extension
+from deid.progress import writer as progress_writer
 from deid.spans import write_manifest
 
 log = logging.getLogger(__name__)
@@ -138,8 +139,14 @@ def run_pipeline(
     output_dir: str,
     suffix: str = "_deid",
     work_dir: Optional[str] = None,
+    progress_path: Optional[str] = None,
 ) -> List[DocumentResult]:
-    """De-identify every PDF in `sources`, writing results to `output_dir`."""
+    """De-identify every PDF in `sources`, writing results to `output_dir`.
+
+    `progress_path` is a file the stages rewrite as they advance. It must
+    live somewhere the caller can read -- the work dir will not do, that
+    is this container's /tmp. See deid/progress.py.
+    """
     if not sources:
         return []
 
@@ -162,7 +169,7 @@ def run_pipeline(
         owned = True
 
     try:
-        return _run(sources, output_root, suffix, work)
+        return _run(sources, output_root, suffix, work, progress_path)
     finally:
         if owned and not keep_work_dir:
             shutil.rmtree(work, ignore_errors=True)
@@ -195,7 +202,11 @@ def _run_nlp(jobs: List[Dict[str, Any]], work: Path) -> List[DocumentResult]:
 
 
 def _run(
-    sources: List[str], output_root: Path, suffix: str, work: Path
+    sources: List[str],
+    output_root: Path,
+    suffix: str,
+    work: Path,
+    progress_path: Optional[str] = None,
 ) -> List[DocumentResult]:
     plan: List[Dict[str, Any]] = []
     for index, source in enumerate(sources):
@@ -207,6 +218,12 @@ def _run(
                 "output_pdf": str(output_root / f"{stem}{output_extension(source)}"),
                 "output_text": str(output_root / f"{stem}.txt"),
                 "output_report": str(output_root / f"{stem}.report.json"),
+                # Carried into both manifests: a stage subprocess has no
+                # other way to learn where to report, and `index`/`total`
+                # are what keep the bar continuous across a batch.
+                "progress": progress_path,
+                "index": index,
+                "file_total": len(sources),
             }
         )
 
@@ -232,7 +249,16 @@ def _run(
             manifest = str(work / f"ocr-manifest-{index:03d}.json")
             write_manifest(
                 manifest,
-                [{"source": j["source"], "spans": j["spans"]} for j in batch],
+                [
+                    {
+                        "source": j["source"],
+                        "spans": j["spans"],
+                        "progress": j["progress"],
+                        "index": j["index"],
+                        "file_total": j["file_total"],
+                    }
+                    for j in batch
+                ],
             )
 
             try:
@@ -291,6 +317,17 @@ def _run(
                 duration_seconds=float(outcome.get("duration_seconds", 0.0)),
             )
         )
+
+    # The stages cannot write the terminal state themselves: a stage that
+    # is killed (exit -9) writes nothing at all, and the reader would sit
+    # on a stale "ocr, page 41 of 100" forever. The orchestrator outlives
+    # both, so it is what closes the file out.
+    progress = progress_writer(progress_path, file_total=len(plan)).adopt()
+    failures = [r for r in ordered if r.status != "ok"]
+    if failures and len(failures) == len(ordered):
+        progress.fail(failures[0].error or "de-identification failed")
+    else:
+        progress.finish()
 
     return ordered
 

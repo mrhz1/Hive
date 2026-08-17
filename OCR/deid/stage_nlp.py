@@ -19,6 +19,7 @@ from deid.documents import (
     save_document,
     scrub_metadata,
 )
+from deid.progress import writer as progress_writer
 from deid.results import DocumentResult, PageResult
 from deid.spans import OcrDocument, PageSpans
 
@@ -350,6 +351,19 @@ def run_stage(jobs: List[Dict[str, Any]], config: Config) -> List[DocumentResult
     """Process a batch."""
     deidentifier = Deidentifier(config)
     results: List[DocumentResult] = []
+
+    # One transition, not per-page: this stage took 15s of a 606s run,
+    # so there is nothing here worth a progress bar of its own. It marks
+    # the point where OCR is over and the redacted file is being written.
+    # Adopted, not fresh: stage 1 wrote the page counts and this is a
+    # different process, so starting clean would blank "58 of 64" the
+    # moment redaction began -- and that is the number a stalled run is
+    # diagnosed from.
+    first = jobs[0] if jobs else {}
+    progress = progress_writer(
+        first.get("progress"), file_total=int(first.get("file_total") or len(jobs) or 1)
+    ).adopt()
+    progress.stage("redacting")
 
     for job in jobs:
         source = job["source"]

@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, Up
 from fastapi import Response
 from fastapi.responses import FileResponse
 
+from app import deid_progress
 from app import uploads
 from app.crud import file_metadata as metadata_crud
 from app.crud import patient_application_files as crud
@@ -30,6 +31,8 @@ from app.logging_setup import get_logger
 from app.preview import read_word_document, render_dicom_png
 from app.schemas import (
     BulkResult,
+    DeidProgress,
+    DeidProgressList,
     FileMetadata,
     FileReview,
     PatientApplicationFile,
@@ -676,6 +679,89 @@ def deidentify_application_file(
 
     log.info("deid_queued", file_id=file_id, application_id=record.application_id)
     return updated
+
+
+@router.get(
+    "/applications/{application_id}/files/deid-progress",
+    response_model=DeidProgressList,
+)
+def application_deid_progress(
+    application_id: str,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("application:view")),
+):
+    """How far along every currently-running file on this application is.
+
+    One request for the whole list, deliberately. The page polls this
+    every few seconds, and a 100-page document takes the better part of
+    an hour -- asking per file would put a request per file per tick on
+    an API sized at one core.
+
+    Only files the database says are running are looked up: a stale
+    progress file left by a killed Job is then never read at all.
+    """
+    applications_crud.get_application_or_404(cursor, application_id)
+    records = crud.list_files(cursor, application_id)
+
+    running = [r.id for r in records if r.deid_status in ("queued", "processing")]
+    if not running:
+        return DeidProgressList(items=[])
+
+    found = deid_progress.read_many(running)
+
+    return DeidProgressList(
+        items=[
+            DeidProgress(
+                file_id=file_id,
+                stage=str(state.get("stage") or "starting"),
+                page=int(state.get("page") or 0),
+                page_total=int(state.get("page_total") or 0),
+                percent=float(state.get("percent") or 0.0),
+                file_index=int(state.get("file_index") or 0),
+                file_total=int(state.get("file_total") or 1),
+                updated_at=float(state.get("updated_at") or 0.0),
+                error=state.get("error"),
+            )
+            for file_id, state in found.items()
+        ]
+    )
+
+
+@router.get("/files/{file_id}/deid-progress", response_model=DeidProgress)
+def file_deid_progress(
+    file_id: str,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("application:view")),
+):
+    """Progress for one file, for a detail view watching a single run."""
+    record = crud.get_file_or_404(cursor, file_id)
+
+    state = deid_progress.read(file_id) or {}
+
+    # No progress file is not an error: the run may not have written one
+    # yet, or may be over. Answer from deid_status so the caller always
+    # gets a shape it can render.
+    stage = state.get("stage")
+    if not stage:
+        stage = "done" if record.deid_status == "done" else (
+            "failed" if record.deid_status == "failed" else "starting"
+        )
+
+    return DeidProgress(
+        file_id=file_id,
+        stage=str(stage),
+        page=int(state.get("page") or 0),
+        page_total=int(state.get("page_total") or 0),
+        percent=float(
+            state.get("percent")
+            if state.get("percent") is not None
+            else (100.0 if record.deid_status == "done" else 0.0)
+        ),
+        file_index=int(state.get("file_index") or 0),
+        file_total=int(state.get("file_total") or 1),
+        updated_at=float(state.get("updated_at") or 0.0),
+        error=state.get("error"),
+    )
 
 
 @router.post(

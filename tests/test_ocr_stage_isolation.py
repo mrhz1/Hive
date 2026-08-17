@@ -15,6 +15,9 @@ SHARED_MODULES = [
     "deid.results",
     "deid.mapping",
     "deid.model_store",
+    # Written by both stages and by the orchestrator, so it has to load
+    # under all three interpreters -- it is stdlib only for that reason.
+    "deid.progress",
 ]
 
 # (module, forbidden import prefixes)
@@ -29,6 +32,8 @@ STAGE_BOUNDARIES = [
     ("deid/pdf_io.py", ("deid.analyzer", "deid.ocr_engine", "deid.recognizers")),
     ("deid/pipeline.py", ("deid.analyzer", "deid.ocr_engine", "deid.stage_ocr",
                           "deid.stage_nlp", "deid.recognizers")),
+    ("deid/progress.py", ("deid.analyzer", "deid.ocr_engine", "deid.recognizers",
+                          "deid.stage_ocr", "deid.stage_nlp")),
     ("deid/model_store.py", ("deid.analyzer", "deid.ocr_engine",
                              "deid.recognizers", "deid.stage_ocr",
                              "deid.stage_nlp")),
@@ -74,6 +79,7 @@ def test_stage_modules_do_not_import_across_the_split(module_path, forbidden):
         ("deid/results.py", PADDLE_PACKAGES + NLP_PACKAGES),
         ("deid/mapping.py", PADDLE_PACKAGES + NLP_PACKAGES),
         ("deid/pipeline.py", PADDLE_PACKAGES + NLP_PACKAGES),
+        ("deid/progress.py", PADDLE_PACKAGES + NLP_PACKAGES),
         ("deid/model_store.py", PADDLE_PACKAGES + NLP_PACKAGES),
         ("scripts/run_deid.py", PADDLE_PACKAGES + NLP_PACKAGES),
         ("deid/stage_ocr.py", NLP_PACKAGES),

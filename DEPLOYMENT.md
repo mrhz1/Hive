@@ -745,7 +745,7 @@ have it.
 | `DEID_PYTHON` | this interpreter | Runs the stdlib-only orchestrator |
 | `DEID_MODELS_DIR` | `OCR/models` | The local model store; read-only is fine |
 | `DEID_OFFLINE` | `true` | Load models by path only, never download |
-| `DEID_TIMEOUT_SECONDS` | `1800` | Per file |
+| `DEID_TIMEOUT_SECONDS` | `5400` | Per file. ~31s/page, so this carries ~175 pages |
 | `DEID_BATCH_LIMIT` | `0` (no limit) | Cap files per job run |
 | `DEID_RETRY_STALE_MINUTES` | `0` (off) | Re-claim rows stuck in `processing` |
 | `DEID_FILE_ID` | — | Set per run by the API; scopes a run to one file |
