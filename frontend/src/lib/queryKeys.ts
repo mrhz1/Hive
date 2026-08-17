@@ -60,11 +60,6 @@ export const queryKeys = {
     // One background batch, polled while it runs.
     uploadJob: (jobId: string) =>
       [...queryKeys.applicationFiles.all, 'upload-job', jobId] as const,
-    // Every running de-identification on the application, in one request.
-    // Per file would be a request per row per tick against an API on one
-    // core -- see the endpoint's own note.
-    deidProgress: (applicationId: string) =>
-      [...queryKeys.applicationFiles.all, 'deid-progress', applicationId] as const,
   },
 
   fileMetadata: {
