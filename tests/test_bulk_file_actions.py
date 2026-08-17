@@ -174,3 +174,70 @@ def test_bulk_actions_on_an_unknown_application_are_404(as_admin):
     assert (
         as_admin.post("/applications/nope/files/deidentify-all").status_code == 404
     )
+
+
+# ---------------------------------------------------- statement economy
+
+def _updates_of(cursor, table):
+    """Every UPDATE issued against `table`, as normalised SQL."""
+    return [
+        sql
+        for sql, _ in cursor.statements
+        if sql.startswith(f"UPDATE `{table}`")
+    ]
+
+
+def test_approve_all_writes_once_however_many_files(as_admin, storage_root, cursor):
+    """The whole reason this endpoint exists is that a per-file loop does not scale.
+
+    update_file is three statements -- an existence check, the UPDATE, and
+    a read-back -- so a loop over an application holding a thousand
+    documents is three thousand, every UPDATE of them a Hive ACID delta
+    write costing seconds. One statement does the same work, and this
+    pins that it stays one.
+    """
+    application_id = _application(as_admin)
+    for name in ("a.pdf", "b.pdf", "c.pdf", "d.pdf"):
+        _upload(as_admin, application_id, name)
+
+    before = len(_updates_of(cursor, "patient_application_files"))
+    response = as_admin.post(f"/applications/{application_id}/files/approve-all")
+    assert response.status_code == 200, response.text
+    assert response.json()["changed"] == 4
+
+    issued = _updates_of(cursor, "patient_application_files")[before:]
+    assert len(issued) == 1, issued
+    assert "IN (" in issued[0]
+
+
+def test_deidentify_all_writes_once_however_many_files(
+    as_admin, storage_root, cursor, monkeypatch
+):
+    monkeypatch.setattr(
+        "app.routers.patient_application_files.dispatch_deidentification",
+        lambda **kwargs: None,
+    )
+
+    application_id = _application(as_admin)
+    for name in ("a.pdf", "b.pdf", "c.pdf"):
+        _upload(as_admin, application_id, name)
+
+    before = len(_updates_of(cursor, "patient_application_files"))
+    response = as_admin.post(f"/applications/{application_id}/files/deidentify-all")
+    assert response.status_code == 200, response.text
+    assert response.json()["changed"] == 3
+
+    issued = _updates_of(cursor, "patient_application_files")[before:]
+    assert len(issued) == 1, issued
+
+
+def test_nothing_to_do_writes_nothing(as_admin, storage_root, cursor):
+    """An empty batch must not issue an UPDATE with an empty IN list."""
+    application_id = _application(as_admin)
+
+    before = len(_updates_of(cursor, "patient_application_files"))
+    response = as_admin.post(f"/applications/{application_id}/files/approve-all")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["changed"] == 0
+    assert _updates_of(cursor, "patient_application_files")[before:] == []

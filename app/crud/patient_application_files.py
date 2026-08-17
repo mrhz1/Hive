@@ -167,6 +167,47 @@ def update_file(
     return get_file_or_404(cursor, file_id)
 
 
+def update_files(
+    cursor, file_ids: List[str], payload: PatientApplicationFileUpdate
+) -> int:
+    """Set the same fields on many files, in one statement.
+
+    The bulk endpoints used to call update_file in a loop, which is three
+    statements each -- an existence check, the UPDATE, and a read-back
+    for the return value. On an application holding a thousand documents
+    that is three thousand statements, every UPDATE of them a Hive ACID
+    delta write costing seconds. One statement does the same work.
+
+    Returns how many ids were asked for. Nothing is read back: the
+    callers report counts, not rows, and the count is known before the
+    write from the list they already hold.
+    """
+    if not file_ids:
+        return 0
+
+    fields = payload.model_dump(exclude_unset=True)
+    if not fields:
+        return 0
+
+    set_clause = ", ".join(f"`{col}` = %s" for col in fields)
+    placeholders = ", ".join("%s" for _ in file_ids)
+    execute(
+        cursor,
+        f"UPDATE `patient_application_files` SET {set_clause} "
+        f"WHERE `id` IN ({placeholders})",
+        tuple(fields.values()) + tuple(file_ids),
+    )
+    # One line for the batch rather than one per file, but carrying the
+    # ids, so the trail still says exactly which rows moved.
+    log.info(
+        "application_files_updated",
+        count=len(file_ids),
+        fields=sorted(fields),
+        file_ids=file_ids,
+    )
+    return len(file_ids)
+
+
 def delete_file(cursor, file_id: str) -> PatientApplicationFile:
     existing = get_file_or_404(cursor, file_id)
     execute(

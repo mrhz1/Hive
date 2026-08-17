@@ -12,7 +12,7 @@ from app import uploads
 from app.crud import file_metadata as metadata_crud
 from app.crud import patient_application_files as crud
 from app.crud import patient_applications as applications_crud
-from app.db import get_cursor
+from app.db import get_cursor, hive_cursor
 from app.deid import (
     DEID_SUFFIX,
     DEIDENTIFIABLE_LABEL,
@@ -785,7 +785,7 @@ def deidentify_all_application_files(
     records = crud.list_files(cursor, application_id)
 
     reasons: dict = {}
-    queued = 0
+    claimable: List[str] = []
 
     for record in records:
         if isinstance(record.file_extension, str) and not is_deidentifiable(
@@ -797,17 +797,21 @@ def deidentify_all_application_files(
             reasons["already running"] = reasons.get("already running", 0) + 1
             continue
 
-        crud.update_file(
-            cursor,
-            record.id,
-            PatientApplicationFileUpdate(deid_status=queued_status()),
-        )
+        claimable.append(record.id)
+
+    # One statement for the whole batch rather than three per file. The
+    # rows have to be marked before anything is dispatched: 'queued' is
+    # what stops a second request claiming the same file.
+    queued = crud.update_files(
+        cursor, claimable, PatientApplicationFileUpdate(deid_status=queued_status())
+    )
+
+    for file_id in claimable:
         background.add_task(
             dispatch_deidentification,
-            file_id=record.id,
+            file_id=file_id,
             request_id=request.headers.get("X-Request-ID"),
         )
-        queued += 1
 
     log.info(
         "deid_queued_in_bulk",
@@ -841,7 +845,7 @@ def approve_all_application_files(
     records = crud.list_files(cursor, application_id)
 
     reasons: dict = {}
-    approved = 0
+    undecided: List[str] = []
 
     for record in records:
         if record.review_status == "approved":
@@ -853,12 +857,12 @@ def approve_all_application_files(
             )
             continue
 
-        crud.update_file(
-            cursor,
-            record.id,
-            PatientApplicationFileUpdate(review_status="approved"),
-        )
-        approved += 1
+        undecided.append(record.id)
+
+    # One statement, not three per file -- see crud.update_files.
+    approved = crud.update_files(
+        cursor, undecided, PatientApplicationFileUpdate(review_status="approved")
+    )
 
     log.info(
         "files_approved_in_bulk", application_id=application_id, approved=approved
@@ -908,21 +912,51 @@ def review_application_file(
 @router.delete("/files/{file_id}", status_code=204)
 def delete_application_file(
     file_id: str,
+    background: BackgroundTasks,
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:update")),
 ):
+    # The row goes synchronously: it is what every listing reads, so the
+    # document has to be gone before the response says it is.
     record = crud.delete_file(cursor, file_id)
-    metadata_crud.delete_metadata_for_files(cursor, [file_id])
 
-    # The run's own leftovers first, while the original's path is still
-    # the way to find them -- they sit in a folder beside it and are
-    # named after it. See app/deid.py: only the redacted document itself
-    # is recorded on the row, so the text and the report went nowhere.
-    remove_deid_artifacts(record.file_path)
+    # Everything after it is cleanup of things nothing can reach any
+    # more -- the row that named them is gone, so no endpoint can serve
+    # them and no listing can show them. Deferring it takes an ACID
+    # DELETE and four filesystem walks off the request.
+    background.add_task(
+        _purge_deleted_file,
+        file_id=file_id,
+        file_path=record.file_path,
+        deidentified_path=record.de_identified_file_path,
+    )
 
-    remove_from_disk(record.file_path)
-    if record.de_identified_file_path:
-        remove_from_disk(record.de_identified_file_path)
 
-    # And the upload folder, if that was the last document in it.
-    prune_stored_folders(record.file_path, record.de_identified_file_path)
+def _purge_deleted_file(
+    file_id: str, file_path: str, deidentified_path: Optional[str]
+) -> None:
+    """Metadata row and bytes for a file whose row has already gone."""
+    try:
+        with hive_cursor() as cursor:
+            metadata_crud.delete_metadata_for_files(cursor, [file_id])
+    except Exception as exc:
+        # Orphan metadata is unreachable rather than wrong: the file it
+        # names no longer exists. Worth knowing about, not worth failing.
+        log.error("file_metadata_purge_failed", file_id=file_id, error=str(exc))
+
+    try:
+        # The run's own leftovers first, while the original's path is
+        # still the way to find them -- they sit in a folder beside it
+        # and are named after it. See app/deid.py: only the redacted
+        # document itself is recorded on the row, so the text and the
+        # report went nowhere.
+        remove_deid_artifacts(file_path)
+
+        remove_from_disk(file_path)
+        if deidentified_path:
+            remove_from_disk(deidentified_path)
+
+        # And the upload folder, if that was the last document in it.
+        prune_stored_folders(file_path, deidentified_path)
+    except Exception as exc:
+        log.error("file_bytes_purge_failed", file_id=file_id, error=str(exc))

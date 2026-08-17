@@ -81,6 +81,13 @@ _INSERT_PARTITIONED = re.compile(
     re.S,
 )
 _UPDATE = re.compile(r"^UPDATE `(?P<table>\w+)` SET (?P<sets>.+?) WHERE `(?P<key>\w+)` = %s$", re.S)
+# The bulk endpoints set the same fields on many rows in one statement,
+# so the key arrives as an IN list rather than a single value.
+_UPDATE_IN = re.compile(
+    r"^UPDATE `(?P<table>\w+)` SET (?P<sets>.+?) "
+    r"WHERE `(?P<key>\w+)` IN \((?P<slots>[%s, ]+)\)$",
+    re.S,
+)
 _DELETE = re.compile(r"^DELETE FROM `(?P<table>\w+)` WHERE `(?P<key>\w+)` = %s$", re.S)
 _DELETE_IN = re.compile(r"^DELETE FROM `(?P<table>\w+)` WHERE `(?P<key>\w+)` IN \((?P<slots>[%s, ]+)\)$", re.S)
 # Comparisons, not just equality: the log filters bound by date, and a
@@ -223,8 +230,15 @@ class FakeHiveCursor:
 
     def _update(self, sql, params):
         match = _UPDATE.match(sql)
-        assert match, f"unparsed UPDATE: {sql}"
-        key = params.pop()
+        if match:
+            keys = {params.pop()}
+        else:
+            match = _UPDATE_IN.match(sql)
+            assert match, f"unparsed UPDATE: {sql}"
+            # SET values bind first, then one id per slot in the IN list.
+            slots = match.group("slots").count("%s")
+            keys = set(params[-slots:])
+            del params[-slots:]
 
         assignments = {}
         for part in _split_values(match.group("sets")):
@@ -233,7 +247,7 @@ class FakeHiveCursor:
         assert not params, f"UPDATE binds {len(params)} params too many: {sql}"
 
         for row in self._rows(match.group("table")):
-            if row.get(match.group("key")) == key:
+            if row.get(match.group("key")) in keys:
                 row.update(assignments)
         return []
 
@@ -342,6 +356,11 @@ def client(cursor, monkeypatch):
     monkeypatch.setattr("app.submission.hive_cursor", fake_hive_cursor)
     monkeypatch.setattr("app.uploads.hive_cursor", fake_hive_cursor)
     monkeypatch.setattr("app.access_log.hive_cursor", fake_hive_cursor)
+    # Post-delete cleanup runs after the response, so it opens its own
+    # connection rather than borrowing the request's.
+    monkeypatch.setattr(
+        "app.routers.patient_application_files.hive_cursor", fake_hive_cursor
+    )
 
     app.dependency_overrides[get_cursor] = lambda: cursor
     with TestClient(app) as test_client:
