@@ -31,6 +31,7 @@ import {
   applicationFileListSchema,
   applicationFileSchema,
   bulkResultSchema,
+  deidProgressListSchema,
   fileMetadataSchema,
   uploadJobSchema,
   wordPreviewSchema,
@@ -323,6 +324,18 @@ export const applicationFilesApi = {
 
   deidentify: (fileId: string) =>
     request(applicationFileSchema, () => api.post(`/files/${fileId}/deidentify`)),
+
+  /**
+   * Live progress for every running de-identification on the application.
+   *
+   * Read off a file the Job writes to shared storage, not the database --
+   * a Hive write per page would cost seconds against a page that takes
+   * twenty. Files that are not running are simply absent.
+   */
+  deidProgress: (applicationId: string) =>
+    request(deidProgressListSchema, () =>
+      api.get(`/applications/${applicationId}/files/deid-progress`)
+    ),
 
   /**
    * One request for the whole application. An application can hold

@@ -29,6 +29,7 @@ import {
   useBackgroundUpload,
   useDeidentifyAllFiles,
   useDeidentifyFile,
+  useDeidProgress,
   useDeleteApplicationFile,
   useReviewApplicationFile,
 } from '@/hooks/useResources'
@@ -36,6 +37,7 @@ import { ApiError } from '@/lib/api/client'
 import { applicationFilesApi } from '@/lib/api/resources'
 import {
   canDeidentify,
+  deidProgressLabel,
   deidTone,
   fileHaystack,
   formatFileSize,
@@ -75,6 +77,13 @@ export function FileReviewPanel({
   readOnly?: boolean
 }) {
   const filesQuery = useApplicationFiles(applicationId)
+  // Live page counts for whatever is running, polled off shared storage
+  // rather than the database. Empty for an application with nothing in
+  // flight, in which case nothing is polled at all.
+  const deidProgress = useDeidProgress(
+    applicationId,
+    (filesQuery.data ?? []).map((file) => file.deid_status)
+  )
   const deidentify = useDeidentifyFile(applicationId)
   const review = useReviewApplicationFile(applicationId)
   const remove = useDeleteApplicationFile(applicationId)
@@ -337,7 +346,9 @@ export function FileReviewPanel({
       header: 'De-identified',
       cell: (file) => (
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge tone={deidTone(file.deid_status)}>{file.deid_status}</Badge>
+          <Badge tone={deidTone(file.deid_status)}>
+            {deidProgressLabel(file.deid_status, deidProgress.get(file.id))}
+          </Badge>
           {file.is_deidentified ? (
             <Badge tone="success">redacted</Badge>
           ) : (
