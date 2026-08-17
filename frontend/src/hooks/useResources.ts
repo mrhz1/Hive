@@ -14,6 +14,11 @@ import {
   usersApi,
   type ApplicationPayload,
 } from '@/lib/api/resources'
+import {
+  DEID_LIST_REFRESH_MS,
+  DEID_PROGRESS_POLL_MS,
+  progressPollingEnabled,
+} from '@/lib/deidProgress'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AccessLogFilters } from '@/schemas/accessLog'
 import type { AuditLogFilters } from '@/schemas/log'
@@ -159,13 +164,6 @@ export function useReviewApplicationFile(applicationId: string) {
   })
 }
 
-// While something is de-identifying, the row's own status has to catch up
-// on its own -- otherwise a finished file sits at 'processing' until the
-// page is reloaded by hand. Slower than the progress poll on purpose:
-// this one is a Hive query, and the only thing it is waiting for is a
-// status flipping to done at the very end of a run.
-const DEID_LIST_REFRESH_MS = 10000
-
 export function useApplicationFiles(
   applicationId: string | undefined,
   enabled = true
@@ -174,7 +172,13 @@ export function useApplicationFiles(
     queryKey: queryKeys.applicationFiles.list(applicationId ?? ''),
     queryFn: () => applicationFilesApi.list(applicationId as string),
     enabled: Boolean(applicationId) && enabled,
+    // While something is de-identifying, the row's own status has to
+    // catch up on its own -- otherwise a finished file sits at
+    // 'processing' until the page is reloaded by hand. Configurable
+    // because it is a Hive query; VITE_DEID_LIST_REFRESH_MS=0 turns it
+    // back into a manual refresh.
     refetchInterval: (query) =>
+      DEID_LIST_REFRESH_MS !== false &&
       (query.state.data ?? []).some((file) => isDeidInFlight(file.deid_status))
         ? DEID_LIST_REFRESH_MS
         : false,
@@ -313,11 +317,6 @@ export function useUploadFilesForApplication() {
   })
 }
 
-// A page of OCR takes 20-30 seconds, so the bar only ever moves that
-// often. Three seconds is frequent enough to feel live without putting a
-// request per second on an API sized at one core.
-const DEID_PROGRESS_POLL_MS = 3000
-
 /**
  * Live per-page progress for the files currently being de-identified.
  *
@@ -325,15 +324,18 @@ const DEID_PROGRESS_POLL_MS = 3000
  * running: a table of finished documents makes no requests at all. The
  * caller passes the statuses it already has rather than this fetching
  * them again.
+ *
+ * Off entirely when VITE_DEID_PROGRESS_ENABLED is false, in which case
+ * the badge falls back to the plain status and nothing is requested.
  */
 export function useDeidProgress(applicationId: string, statuses: string[]) {
-  const running = statuses.some(isDeidInFlight)
+  const polling = progressPollingEnabled() && statuses.some(isDeidInFlight)
 
   const query = useQuery({
     queryKey: queryKeys.applicationFiles.deidProgress(applicationId),
     queryFn: () => applicationFilesApi.deidProgress(applicationId),
-    enabled: Boolean(applicationId) && running,
-    refetchInterval: running ? DEID_PROGRESS_POLL_MS : false,
+    enabled: Boolean(applicationId) && polling,
+    refetchInterval: polling ? DEID_PROGRESS_POLL_MS : false,
     staleTime: 0,
     // A progress read is decoration; failing it must not surface an error
     // over a run that is otherwise fine.
