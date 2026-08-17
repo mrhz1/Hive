@@ -1,0 +1,824 @@
+=== PAGE 1 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+PATIENT FACE SHEET / REGISTRATION RECORD
+Patient Name: Whitfield, Grace Eleanor   Medical Record No.: 40-77-1592
+Also Known As: Gracie Whitfield   Account Number: 8891274430
+Date of Birth: 03/14/1951   Age / Sex: 67 y / Female
+Social Security No.: 512-84-9037   Marital Status: Widowed
+Race / Ethnicity: White, Non-Hispanic   Preferred Language: English
+Religion: Lutheran   Advance Directive: On file, DPOA-HC
+CONTACT INFORMATION
+Street Address: 1427 Birchwood Terrace, Apt 3B   City / State / ZIP: Cedar Falls, IA 50613
+County: Black Hawk   Home Telephone: (319) 555-0148
+Mobile Telephone: (319) 555-0192   Electronic Mail: g.whitfield51@mailhaven.example.com
+Employer: Cedar Falls Public Library   Occupation: Reference Librarian, retired 2016
+EMERGENCY CONTACTS
+Name | Relationship | Telephone | Address
+Daniel R. Whitfield | Son | (319) 555-0192 | 884 Ridgeline Dr, Waterloo, IA 50702
+Priscilla Vance | Sister | (563) 555-0771 | 12 Quarry Ln, Dubuque, IA 52001
+GUARANTOR AND INSURANCE
+Guarantor: Self   Primary Payer: Meridian Blue PPO
+Policy Number: MBP-448120977   Group Number: 30514
+Secondary Payer: Medicare Part B   Medicare Beneficiary ID: 4QW7-GH2-KL86
+Prior Authorization: PA-2018-77412   Copay Collected: $250.00
+ENCOUNTER
+Admission Date/Time: 04/06/2018 14:22   Admission Type: Emergency, via ED
+Attending Physician: Harold T. Nakamura, MD   Attending NPI: 1487302956
+Referring Physician: Yvette Okonkwo, MD   Referring Practice: Cedar Falls Family Practice
+Admitting Diagnosis: Community-acquired pneumonia   Nursing Unit / Bed: 5 North, Room 512-A
+This document contains protected health information. Unauthorized disclosure is prohibited under 45 CFR Parts 160 and 164.
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 1 of 20
+
+=== PAGE 2 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+HISTORY AND PHYSICAL EXAMINATION
+Date of Service: April 6, 2018   Dictated By: Harold T. Nakamura, MD
+Transcribed: 04/06/2018 19:41   Service: Internal Medicine
+CHIEF COMPLAINT
+Shortness of breath and productive cough for five days.
+HISTORY OF PRESENT ILLNESS
+Grace Eleanor Whitfield is a 67-year-old widowed white female with a history of chronic obstructive
+pulmonary disease, type 2 diabetes mellitus and paroxysmal atrial fibrillation who presents to the emergency
+department at Saint Bartholomew Regional Medical Center on April 6, 2018 with a five-day history of
+progressive dyspnea and cough productive of thick yellow-green sputum. The patient states that symptoms
+began on or about April 1 with rhinorrhea and low-grade fever, which she treated at home with acetaminophen
+and an over-the-counter antitussive without relief.
+Over the subsequent three days she noted increasing exertional breathlessness, initially with climbing the
+single flight of stairs to her apartment at 1427 Birchwood Terrace and, by the morning of presentation, with
+ambulation across a single room. She reports subjective fevers with rigors on the night of April 5, right-sided
+pleuritic chest discomfort rated 6 out of 10, and two episodes of near-syncope. Her son, Daniel R. Whitfield,
+contacted the office of Yvette Okonkwo, MD at Cedar Falls Family Practice, who advised immediate
+evaluation.
+She denies hemoptysis, orthopnea, paroxysmal nocturnal dyspnea, lower extremity edema, recent
+long-distance travel, sick contacts other than a grandchild with an upper respiratory infection two weeks prior,
+or known tuberculosis exposure. She has not received an influenza vaccination this season. Pneumococcal
+vaccination status is unknown to the patient; records from Cedar Falls Family Practice have been requested by
+facsimile to (319) 555-0148.
+PAST MEDICAL HISTORY
+Chronic obstructive pulmonary disease, GOLD stage II, diagnosed 2009
+Type 2 diabetes mellitus, diagnosed 2003, most recent HbA1c 7.8% (01/2018)
+Paroxysmal atrial fibrillation, diagnosed 2014, CHA2DS2-VASc score 4
+Essential hypertension
+Hyperlipidemia
+Osteoarthritis, bilateral knees
+Diverticulosis, incidental on colonoscopy 2015
+PAST SURGICAL HISTORY
+Cholecystectomy, laparoscopic, 1998, Mercy Medical Center
+Total abdominal hysterectomy with bilateral salpingo-oophorectomy, 1994
+Cataract extraction with intraocular lens, right eye, 2016
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 2 of 20
+
+=== PAGE 3 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+HISTORY AND PHYSICAL EXAMINATION (CONTINUED)
+MEDICATIONS PRIOR TO ADMISSION
+Medication | Dose | Route | Frequency
+Tiotropium bromide | 18 mcg | INH | Daily
+Albuterol sulfate HFA | 90 mcg/actuation | INH | Q4H PRN
+Metformin hydrochloride | 1000 mg | PO | BID with meals
+Apixaban | 5 mg | PO | BID
+Metoprolol succinate ER | 50 mg | PO | Daily
+Lisinopril | 20 mg | PO | Daily
+Atorvastatin calcium | 40 mg | PO | Nightly
+Cholecalciferol | 2000 units | PO | Daily
+ALLERGIES
+SULFAMETHOXAZOLE-TRIMETHOPRIM - diffuse morbilliform rash, 1997. CODEINE - nausea and
+vomiting, intolerance rather than true allergy. No known latex or food allergies. Allergy list reconciled with
+the patient and with her son by Oluwaseun Adeyemi, PharmD.
+SOCIAL HISTORY
+The patient is a widow; her husband died in 2011. She lives alone in a second-floor apartment and remains
+independent in all activities of daily living. She retired in 2016 after thirty-one years as a reference librarian
+with the Cedar Falls Public Library. She has a 35-pack-year smoking history, having quit in 2009. She reports
+two to three glasses of wine per week and denies illicit substance use. She drives, and has one indoor cat.
+FAMILY HISTORY
+Mother deceased at age 74 of myocardial infarction. Father deceased at age 81 of complications of prostate
+carcinoma. One sister, Priscilla Vance, age 63, living, with hypothyroidism. One son, Daniel R. Whitfield, age
+41, living and well.
+REVIEW OF SYSTEMS
+Constitutional: positive for fever, chills, fatigue, anorexia; four pounds of unintentional weight loss. Eyes:
+negative. ENT: positive for sore throat and rhinorrhea. Cardiovascular: positive for palpitations, negative for
+chest pressure at rest. Respiratory: as in the history of present illness. Gastrointestinal: negative for nausea,
+vomiting, diarrhea or melena. Genitourinary: negative for dysuria. Musculoskeletal: chronic bilateral knee pain
+at baseline. Neurologic: positive for lightheadedness. All other systems reviewed and negative.
+PHYSICAL EXAMINATION
+Temperature: 38.9 C oral   Heart Rate: 112 bpm, irregularly irregular
+Blood Pressure: 104/62 mmHg   Respiratory Rate: 26 breaths/min
+SpO2: 88% on room air, 94% on 3 L nasal cannula   Weight / Height: 71.4 kg / 163 cm
+Body Mass Index: 26.9 kg/m2   Pain Score: 6/10 right chest, pleuritic
+General: ill-appearing elderly female in mild respiratory distress, able to speak in short phrases. HEENT:
+mucous membranes dry, oropharynx without exudate. Neck: supple, no lymphadenopathy, jugular venous
+pressure not elevated. Chest: decreased breath sounds at the right base with coarse inspiratory crackles and
+egophony; no wheeze. Cardiac: irregularly irregular, tachycardic, no murmur, rub or gallop. Abdomen: soft,
+nontender, well-healed laparoscopic scars. Extremities: no edema, no calf tenderness. Skin: warm, no rash.
+Neurologic: alert and fully oriented, no focal deficit.
+Harold T. Nakamura, MD  —  NPI 1487302956  —  04/06/2018 19:41
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 3 of 20
+
+=== PAGE 4 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+MEDICATION RECONCILIATION AND INPATIENT ORDERS
+Reconciled By: Oluwaseun Adeyemi, PharmD   Date: 04/06/2018 21:05
+Verified With: Patient and Daniel R. Whitfield   Pharmacy of Record: Birchwood Drug, (319) 555-0148
+INPATIENT MEDICATION ORDERS
+Medication | Dose / Route | Schedule | Ordered By | Start
+Ceftriaxone sodium | 1 g IV | Q24H | H. Nakamura, MD | 04/06
+Azithromycin | 500 mg IV | Q24H | H. Nakamura, MD | 04/06
+Methylprednisolone | 40 mg IV | Q12H | R. Achebe, MD | 04/07
+Ipratropium-albuterol | 3 mL NEB | Q6H | R. Achebe, MD | 04/07
+Apixaban | 5 mg PO | BID | S. Kaufmann, MD | 04/06
+Metoprolol tartrate | 12.5 mg PO | Q6H | S. Kaufmann, MD | 04/07
+Insulin lispro | Sliding scale SC | AC/HS | I. Solberg, MD | 04/07
+Insulin glargine | 14 units SC | Nightly | I. Solberg, MD | 04/07
+Enoxaparin | 40 mg SC | Daily | H. Nakamura, MD | 04/06
+Acetaminophen | 650 mg PO | Q6H PRN | B. Ruiz-Alvarado, PA-C | 04/06
+Ondansetron | 4 mg IV | Q8H PRN | B. Ruiz-Alvarado, PA-C | 04/06
+Pantoprazole | 40 mg PO | Daily | H. Nakamura, MD | 04/06
+MEDICATIONS HELD ON ADMISSION
+Medication | Reason Held | Resume Plan
+Metformin hydrochloride | Acute illness, contrast exposure | Resume 48 h post-contrast if creatinine stable
+Lisinopril | Hypotension, SBP 104 | Resume when SBP > 110 sustained
+Metoprolol succinate ER | Converted to short-acting | Convert back at discharge
+PHARMACY NOTES
+Renal dosing reviewed; estimated creatinine clearance 58 mL/min by Cockcroft-Gault using an admission
+weight of 71.4 kg. Apixaban dose confirmed appropriate: the patient meets none of the reduction criteria.
+Azithromycin and metoprolol both prolong the QT interval; baseline QTc of 441 ms noted and telemetry
+monitoring requested. The patient's documented sulfonamide reaction was reviewed and no
+sulfonamide-containing agent has been ordered.
+Discharge prescriptions are to be routed to Birchwood Drug per the patient's preference. A ninety-day supply
+was requested by the patient's son on April 9, 2018; this requires confirmation with Meridian Blue PPO under
+policy MBP-448120977.
+Oluwaseun Adeyemi, PharmD  —  04/06/2018 21:05
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 4 of 20
+
+=== PAGE 5 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+LABORATORY REPORT
+Patient: Whitfield, Grace E.   MRN: 40-77-1592
+Collected: 04/06/2018 15:10   Received: 04/06/2018 15:28
+Ordering Provider: Harold T. Nakamura, MD   Performing Lab: Saint Bartholomew Core Laboratory
+Lab Director: Tomasz Wieczorek, MD   Accession: L18-0406-44192
+COMPLETE BLOOD COUNT WITH DIFFERENTIAL
+Analyte | Result | Flag | Reference Range | Units
+White blood cell count | 18.4 | H | 4.0 - 11.0 | K/uL
+Red blood cell count | 4.12 |  | 3.90 - 5.20 | M/uL
+Hemoglobin | 11.8 | L | 12.0 - 16.0 | g/dL
+Hematocrit | 35.6 | L | 36.0 - 46.0 | %
+Mean corpuscular volume | 86.4 |  | 80.0 - 100.0 | fL
+Platelet count | 398 |  | 150 - 400 | K/uL
+Neutrophils | 84 | H | 40 - 70 | %
+Bands | 9 | H | 0 - 5 | %
+Lymphocytes | 5 | L | 20 - 45 | %
+Monocytes | 2 |  | 2 - 10 | %
+COMPREHENSIVE METABOLIC PANEL
+Analyte | Result | Flag | Reference Range | Units
+Sodium | 131 | L | 136 - 145 | mmol/L
+Potassium | 3.4 | L | 3.5 - 5.1 | mmol/L
+Chloride | 96 | L | 98 - 107 | mmol/L
+Carbon dioxide | 22 |  | 22 - 29 | mmol/L
+Blood urea nitrogen | 28 | H | 7 - 20 | mg/dL
+Creatinine | 1.34 | H | 0.50 - 1.10 | mg/dL
+Glucose | 246 | H | 70 - 99 | mg/dL
+Calcium | 8.4 | L | 8.6 - 10.2 | mg/dL
+Albumin | 3.1 | L | 3.5 - 5.0 | g/dL
+Total bilirubin | 0.9 |  | 0.2 - 1.2 | mg/dL
+Alkaline phosphatase | 118 |  | 38 - 126 | U/L
+Aspartate aminotransferase | 41 | H | 10 - 35 | U/L
+Alanine aminotransferase | 36 |  | 10 - 40 | U/L
+Critical values, if any, are telephoned to the ordering provider and the read-back is documented. No critical value was reported for this
+accession.
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 5 of 20
+
+=== PAGE 6 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+LABORATORY REPORT (CONTINUED)
+ADDITIONAL CHEMISTRY AND SEROLOGY
+Analyte | Result | Flag | Reference Range | Units
+Lactic acid | 2.8 | H | 0.5 - 2.2 | mmol/L
+Procalcitonin | 3.44 | H | < 0.50 | ng/mL
+C-reactive protein | 186 | H | < 8 | mg/L
+Brain natriuretic peptide | 212 | H | < 100 | pg/mL
+Troponin I, high sensitivity | 14 |  | < 18 | ng/L
+Hemoglobin A1c | 8.1 | H | 4.0 - 5.6 | %
+Thyroid stimulating hormone | 2.14 |  | 0.45 - 4.50 | uIU/mL
+Magnesium | 1.6 | L | 1.7 - 2.4 | mg/dL
+Phosphorus | 2.9 |  | 2.5 - 4.5 | mg/dL
+ARTERIAL BLOOD GAS, ROOM AIR
+Analyte | Result | Reference Range | Units
+pH | 7.47 | 7.35 - 7.45 | 
+pCO2 | 31 | 35 - 45 | mmHg
+pO2 | 56 | 80 - 100 | mmHg
+Bicarbonate | 22.4 | 22 - 26 | mmol/L
+Oxygen saturation | 88 | 95 - 100 | %
+MICROBIOLOGY
+Specimen: Expectorated sputum   Collected: 04/06/2018 16:40
+Accession: M18-0406-1177   Gram Stain: Many WBC, few epithelial cells, gram-positive diplococci in pairs
+CULTURE, FINAL 04/09/2018: Heavy growth of Streptococcus pneumoniae. No other pathogen isolated.
+Blood cultures x2 drawn 04/06/2018 at 15:05 and 15:20: no growth at five days, final. Urine pneumococcal
+antigen: POSITIVE. Legionella urinary antigen: NEGATIVE. Respiratory viral panel by PCR: NEGATIVE
+for influenza A, influenza B and respiratory syncytial virus. SARS testing not indicated at this encounter.
+SUSCEPTIBILITIES - STREPTOCOCCUS PNEUMONIAE
+Antimicrobial | MIC (ug/mL) | Interpretation
+Penicillin | 0.03 | Susceptible
+Ceftriaxone | 0.12 | Susceptible
+Erythromycin | > 4 | Resistant
+Levofloxacin | 1 | Susceptible
+Vancomycin | 0.5 | Susceptible
+Trimethoprim-sulfamethoxazole | > 4 | Resistant
+Reviewed by Tomasz Wieczorek, MD, Clinical Pathology  —  04/09/2018
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 6 of 20
+
+=== PAGE 7 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+DIAGNOSTIC IMAGING REPORT
+Examination: CT Angiography, Chest, With Contrast   Date of Service: 04/06/2018 17:52
+Accession: R18-114872   Referring Provider: Harold T. Nakamura, MD
+Interpreting Radiologist: Marcus Delacroix, MD   Practice: Blackhawk County Imaging Associates
+NPI: 1629480371   Contrast: Iohexol 350, 90 mL intravenous
+CLINICAL INDICATION
+Sixty-seven-year-old female with dyspnea, tachycardia, hypoxemia and leukocytosis. Rule out pulmonary
+embolism. Evaluate for pneumonia.
+TECHNIQUE
+Helical acquisition of the chest was performed from the lung apices through the adrenal glands following the
+intravenous administration of iodinated contrast material timed to the pulmonary arterial phase. Axial images
+were reconstructed at 1.25 mm and 3 mm; coronal and sagittal multiplanar reformations were generated.
+Dose-length product 412 mGy-cm.
+COMPARISON
+Chest radiograph, two views, from earlier the same day. Prior chest CT from October 12, 2015 performed at
+Blackhawk County Imaging Associates.
+FINDINGS
+Pulmonary arteries: no filling defect is identified within the main, lobar, segmental or visualized subsegmental
+pulmonary arteries. Contrast opacification is adequate. No evidence of acute pulmonary embolism.
+Lungs and pleura: there is dense consolidation of the right lower lobe with air bronchograms, measuring
+approximately 9.4 x 7.1 cm in the axial plane. Patchy ground-glass opacity involves the posterior right middle
+lobe. A small right pleural effusion is present, layering dependently to a depth of 1.8 cm, without loculation or
+pleural enhancement to suggest empyema. Centrilobular and paraseptal emphysema is again noted in the upper
+lobes, unchanged from 2015. No pneumothorax.
+Mediastinum and hila: several subcentimeter right hilar and subcarinal lymph nodes are present, likely
+reactive. The heart is normal in size. No pericardial effusion. The thoracic aorta is of normal caliber with
+scattered atherosclerotic calcification.
+Upper abdomen: surgically absent gallbladder. Liver, spleen, adrenal glands and visualized kidneys are
+unremarkable. Osseous structures: no acute fracture. Mild thoracic spondylosis.
+IMPRESSION
+No acute pulmonary embolism.
+Dense right lower lobe consolidation with adjacent right middle lobe ground-glass opacity, consistent with
+the clinical diagnosis of community-acquired pneumonia.
+Small simple-appearing right pleural effusion; no imaging feature of empyema. Recommend clinical
+correlation and follow-up radiography.
+Background emphysema, stable since 2015.
+Electronically signed by Marcus Delacroix, MD  —  04/06/2018 18:36
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 7 of 20
+
+=== PAGE 8 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+TRANSTHORACIC ECHOCARDIOGRAM
+Date of Service: 04/07/2018 10:15   Accession: E18-00931
+Sonographer: Karen Fitzsimmons, RN, RDCS   Interpreting Cardiologist: Steven Kaufmann, MD
+Indication: Atrial fibrillation with rapid ventricular response   Study Quality: Adequate; limited subcostal windows
+MEASUREMENTS
+Parameter | Value | Normal Range | Units
+Left ventricular ejection fraction | 55 - 60 | > 55 | %
+LV internal diameter, diastole | 4.7 | 3.9 - 5.3 | cm
+Interventricular septum | 1.2 | 0.6 - 0.9 | cm
+Left atrial volume index | 41 | < 34 | mL/m2
+E/e' ratio, septal | 15 | < 8 | 
+Tricuspid regurgitant velocity | 3.1 | < 2.8 | m/s
+Estimated PA systolic pressure | 44 | < 35 | mmHg
+Aortic valve area | 2.4 | > 2.0 | cm2
+FINDINGS
+The left ventricle is normal in size with mildly increased wall thickness and preserved global systolic function.
+No regional wall motion abnormality is identified. Diastolic parameters are consistent with grade II diastolic
+dysfunction with elevated filling pressures. The left atrium is moderately dilated. The right ventricle is normal
+in size with preserved systolic function. There is mild tricuspid regurgitation permitting estimation of a mildly
+elevated pulmonary artery systolic pressure. The aortic valve is trileaflet with mild sclerosis and no stenosis.
+The mitral valve shows mild annular calcification with trace regurgitation. No pericardial effusion. No
+intracardiac thrombus is seen, although the left atrial appendage is not well visualized on transthoracic
+imaging.
+IMPRESSION
+Preserved left ventricular ejection fraction, 55 to 60 percent.
+Mild concentric left ventricular hypertrophy with grade II diastolic dysfunction.
+Moderate left atrial enlargement, consistent with the history of paroxysmal atrial fibrillation.
+Mildly elevated estimated pulmonary artery systolic pressure at 44 mmHg.
+No transthoracic evidence of intracardiac thrombus; transesophageal imaging would be required for
+definitive appendage assessment.
+PORTABLE CHEST RADIOGRAPH, SINGLE VIEW
+Date of Service: 04/07/2018 06:05   Interpreting Radiologist: Colette Beauchamp, MD
+Right lower lobe airspace opacity is unchanged in extent from the computed tomography of April 6. The small
+right effusion persists. Cardiomediastinal silhouette is stable. The right internal jugular central line terminates
+at the cavoatrial junction; no pneumothorax.
+Steven Kaufmann, MD  —  Cardiology  —  04/07/2018 11:02
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 8 of 20
+
+=== PAGE 9 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+HOSPITAL DAY 1 — PROGRESS NOTE
+Date of Service: April 7, 2018   Author: Rosalind Achebe, MD
+Service: Pulmonary and Critical Care   Location: 5 North, Room 512-A
+SUBJECTIVE
+The patient reports that her breathing is modestly improved overnight but she remains dyspneic with minimal
+exertion and required an increase to 4 L by nasal cannula at 03:00. She had a temperature of 38.4 C at 04:00
+which responded to acetaminophen. She slept poorly and describes the right-sided pleuritic pain as unchanged
+at 5 out of 10. Appetite is poor; she took approximately 20 percent of her breakfast tray.
+OBJECTIVE
+Afebrile at present. Heart rate 98 and irregular, blood pressure 108/64, respiratory rate 24, SpO2 93 percent on
+4 L. Right basilar crackles with dullness to percussion and reduced tactile fremitus. No accessory muscle use
+at rest. Cardiac exam irregularly irregular without murmur. No peripheral edema. Point-of-care glucose values
+246, 198 and 217 mg/dL over the past 24 hours.
+ASSESSMENT AND PLAN
+1. Community-acquired pneumonia, right lower lobe, Streptococcus pneumoniae isolated from sputum with
+a positive urinary antigen. Continue ceftriaxone and azithromycin; narrow to a single agent once
+susceptibilities are final. Add scheduled ipratropium-albuterol nebulization and a short course of
+methylprednisolone given the COPD background.
+2. Hypoxemic respiratory failure, acute. Titrate oxygen to a saturation target of 90 to 94 percent. Incentive
+spirometry every hour while awake. Out of bed to chair with physical therapy consultation.
+3. Atrial fibrillation with rapid ventricular response, rate now improved on short-acting metoprolol. Continue
+apixaban; the CHA2DS2-VASc score is 4. Cardiology, Dr. Steven Kaufmann, following.
+4. Hyperglycemia in the setting of steroid administration. Endocrinology, Dr. Ingrid Solberg, has adjusted
+the basal insulin. Metformin remains held.
+5. Hyponatremia, mild, likely hypovolemic. Continue gentle isotonic fluid and recheck the basic metabolic
+panel in the morning.
+Rosalind Achebe, MD  —  04/07/2018 08:22
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 9 of 20
+
+=== PAGE 10 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+HOSPITAL DAY 2 — PROGRESS NOTE
+Date of Service: April 8, 2018   Author: Peter Vandermolen, DO
+Service: Internal Medicine (Cross-cover)   Location: 5 North, Room 512-A
+SUBJECTIVE
+Overnight the patient was noted to have an episode of confusion at approximately 02:30, calling for her late
+husband and attempting to climb out of bed. Ms. Lucille Marchetti, RN, applied a bed alarm and the
+cross-covering physician was notified. The episode resolved by 05:00 without pharmacologic intervention.
+This morning she is fully oriented and has no recollection of the event. Her son, Daniel R. Whitfield, was
+telephoned at (319) 555-0192 and updated at 07:15.
+OBJECTIVE
+Temperature 37.4 C, heart rate 88, blood pressure 116/70, respiratory rate 20, SpO2 94 percent on 2 L.
+Crackles persist at the right base but the aeration is improved. Mini-mental status screening is at baseline. No
+focal neurologic deficit.
+ASSESSMENT AND PLAN
+1. Hyperactive delirium, resolved. Likely multifactorial from infection, hypoxemia, corticosteroid exposure
+and sleep disruption. Non-pharmacologic protocol initiated: sleep hygiene, daytime mobilization, hearing
+aid and spectacles at the bedside, orientation cues. Avoid anticholinergics and benzodiazepines.
+Deliriogenic medication review completed with Oluwaseun Adeyemi, PharmD.
+2. Pneumonia, improving. Oxygen requirement down from 4 L to 2 L. Repeat inflammatory markers ordered
+for the morning.
+3. Hypokalemia and hypomagnesemia repleted overnight with 40 mEq of potassium chloride orally and 2 g
+of magnesium sulfate intravenously.
+4. Deep venous thrombosis prophylaxis is provided by therapeutic apixaban; enoxaparin has been
+discontinued to avoid duplication.
+5. Goals of care: the patient reiterates that she wishes full treatment at this time. Her durable power of
+attorney for health care names her son.
+Peter Vandermolen, DO  —  04/08/2018 08:40
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 10 of 20
+
+=== PAGE 11 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+HOSPITAL DAY 3 — PROGRESS NOTE
+Date of Service: April 9, 2018   Author: Harold T. Nakamura, MD
+Service: Internal Medicine   Location: 5 North, Room 512-A
+SUBJECTIVE
+The patient states this is the best she has felt since admission. She walked the length of the hallway twice with
+physical therapy yesterday afternoon and maintained saturations above 92 percent on room air during
+ambulation. Cough is now loose and less frequent. She ate most of her dinner and all of her breakfast. She asks
+when she may go home and whether she will need oxygen at the apartment.
+OBJECTIVE
+Afebrile for 36 hours. Heart rate 76 and now regular on telemetry review, blood pressure 124/74, respiratory
+rate 18, SpO2 94 percent on room air at rest and 92 percent with ambulation. Right basilar crackles are
+substantially reduced. No edema.
+ASSESSMENT AND PLAN
+1. Community-acquired pneumonia, responding. Sputum culture final with penicillin-susceptible
+Streptococcus pneumoniae; azithromycin discontinued and therapy narrowed. Plan to transition to oral
+amoxicillin to complete a total seven-day course.
+2. Corticosteroid taper: methylprednisolone reduced and to be converted to oral prednisone 20 mg daily for
+three additional days.
+3. Atrial fibrillation, now in sinus rhythm since 04/08 at 22:00. Resume metoprolol succinate 50 mg daily at
+discharge. Continue apixaban indefinitely.
+4. Diabetes mellitus: glycemic control improving as steroids taper. Metformin may resume tomorrow given a
+creatinine of 1.02 mg/dL, now 72 hours from contrast exposure.
+5. Disposition: anticipate discharge home on 04/13/2018 pending an ambulatory oxygen saturation study and
+the completion of care-management arrangements. Home health referral placed to Willow Creek Skilled
+Nursing Facility outpatient services.
+Harold T. Nakamura, MD  —  04/09/2018 09:05
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 11 of 20
+
+=== PAGE 12 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+NURSING FLOWSHEET — VITAL SIGNS AND INTAKE/OUTPUT
+Unit: 5 North   Room / Bed: 512-A
+Charge Nurse: Karen Fitzsimmons, RN   Primary Nurse, Days: Lucille Marchetti, RN
+VITAL SIGNS
+Date/Time | Temp C | HR | BP | RR | SpO2 / O2 | Pain
+04/06 14:30 | 38.9 | 112 | 104/62 | 26 | 88% RA | 6
+04/06 20:00 | 38.6 | 108 | 108/66 | 24 | 94% 3L | 5
+04/07 00:00 | 38.1 | 104 | 110/68 | 22 | 93% 3L | 4
+04/07 04:00 | 38.4 | 110 | 102/60 | 24 | 91% 4L | 5
+04/07 08:00 | 37.6 | 98 | 108/64 | 24 | 93% 4L | 5
+04/07 16:00 | 37.2 | 92 | 114/70 | 20 | 94% 3L | 3
+04/08 00:00 | 37.5 | 96 | 112/68 | 20 | 94% 2L | 3
+04/08 08:00 | 37.4 | 88 | 116/70 | 20 | 94% 2L | 2
+04/08 16:00 | 36.9 | 84 | 118/72 | 18 | 95% 2L | 2
+04/09 08:00 | 36.8 | 76 | 124/74 | 18 | 94% RA | 1
+04/09 20:00 | 36.7 | 78 | 122/76 | 18 | 95% RA | 1
+04/10 08:00 | 36.6 | 74 | 126/78 | 17 | 95% RA | 1
+INTAKE AND OUTPUT, 24-HOUR TOTALS
+Date | PO (mL) | IV (mL) | Total In | Urine (mL) | Total Out | Net
+04/06 | 400 | 1200 | 1600 | 950 | 950 | +650
+04/07 | 760 | 1000 | 1760 | 1420 | 1420 | +340
+04/08 | 1100 | 500 | 1600 | 1680 | 1680 | -80
+04/09 | 1350 | 0 | 1350 | 1510 | 1510 | -160
+POINT-OF-CARE GLUCOSE
+Date/Time | Glucose (mg/dL) | Insulin Given | Nurse
+04/07 07:30 | 246 | 6 units lispro | L. Marchetti, RN
+04/07 11:45 | 198 | 4 units lispro | L. Marchetti, RN
+04/07 17:00 | 217 | 5 units lispro | E. Hargrove, RN
+04/07 21:30 | 184 | 14 units glargine | E. Hargrove, RN
+04/08 07:30 | 163 | 3 units lispro | L. Marchetti, RN
+04/09 07:30 | 138 | 0 units | L. Marchetti, RN
+Falls risk: Morse score 55, high. Braden score 18, mild risk. Bed alarm active 04/08 02:30 through 04/09 08:00.
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 12 of 20
+
+=== PAGE 13 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+CONSULTATION REPORT — CARDIOLOGY
+Date of Service: April 7, 2018   Consultant: Steven Kaufmann, MD
+Requested By: Harold T. Nakamura, MD   Reason for Consultation: Atrial fibrillation with rapid ventricular response
+REASON FOR CONSULTATION
+Thank you for the kind referral of Ms. Grace Eleanor Whitfield, a 67-year-old woman admitted with
+community-acquired pneumonia, for evaluation of atrial fibrillation with a rapid ventricular response.
+CARDIAC HISTORY
+Paroxysmal atrial fibrillation was first documented in June 2014 during an episode of palpitations evaluated at
+Cedar Falls Family Practice. She was started on apixaban at that time and has remained adherent. A prior
+transthoracic echocardiogram in 2015 demonstrated normal systolic function. She has never undergone
+cardioversion or ablation. There is no history of coronary artery disease, and a stress test in 2013 was normal.
+ELECTROCARDIOGRAM
+The tracing from 04/06/2018 at 14:35 demonstrates atrial fibrillation at a ventricular rate of 118 beats per
+minute with a narrow QRS complex, nonspecific ST-T changes in the lateral leads and a corrected QT interval
+of 441 ms. A repeat tracing on 04/09/2018 at 06:20 shows normal sinus rhythm at 74 beats per minute with
+resolution of the ST-T changes.
+ASSESSMENT
+The arrhythmia is most consistent with a paroxysm of atrial fibrillation provoked by acute infection,
+hypoxemia, electrolyte derangement and adrenergic stress rather than by primary progression of atrial disease.
+The patient converted spontaneously to sinus rhythm on hospital day 2 following correction of hypokalemia
+and hypomagnesemia and treatment of the underlying pneumonia.
+RECOMMENDATIONS
+1. Continue apixaban 5 mg twice daily indefinitely. The CHA2DS2-VASc score is 4 and the HAS-BLED
+score is 2; the net clinical benefit favors continued anticoagulation.
+2. Resume metoprolol succinate 50 mg daily at discharge in place of the short-acting formulation.
+3. Maintain serum potassium above 4.0 mmol/L and magnesium above 2.0 mg/dL for the remainder of the
+admission.
+4. No antiarrhythmic agent is indicated at present. Should recurrent symptomatic episodes occur after
+recovery, outpatient consideration of flecainide or ablation would be reasonable.
+5. Outpatient follow-up in the cardiology clinic in four weeks. An appointment has been arranged for May
+11, 2018 at 10:30 with this consultant.
+6. A fourteen-day ambulatory rhythm monitor will be dispensed at discharge; the patient should return it to
+the address printed on the device kit.
+I appreciate the opportunity to participate in the care of Ms. Whitfield. Please contact me at (319) 555-0148,
+extension 4471, with any question. Cardiology will follow while she remains an inpatient.
+Steven Kaufmann, MD, FACC  —  Cardiology  —  04/07/2018 13:20
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 13 of 20
+
+=== PAGE 14 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+CONSULTATION REPORT — ENDOCRINOLOGY AND NEPHROLOGY
+Date of Service: April 8, 2018   Endocrinology Consultant: Ingrid Solberg, MD
+Nephrology Consultant: Devendra Ramaswamy, MD   Requested By: Rosalind Achebe, MD
+ENDOCRINOLOGY — STEROID-ASSOCIATED HYPERGLYCEMIA
+Ms. Whitfield has type 2 diabetes mellitus of fifteen years' duration, previously managed with metformin
+monotherapy and an outpatient hemoglobin A1c of 7.8 percent in January 2018. The inpatient value of 8.1
+percent suggests modest deterioration predating this admission. Glucose values rose to a peak of 246 mg/dL
+after the initiation of methylprednisolone.
+A basal-bolus regimen has been substituted for sliding-scale coverage alone. Insulin glargine 14 units nightly
+with insulin lispro before meals has produced values in the 130 to 180 mg/dL range by hospital day 3. As the
+corticosteroid is tapered the basal dose should be reduced by approximately 20 percent per step to avoid
+hypoglycemia.
+Resume metformin 1000 mg twice daily once 72 hours have elapsed from iodinated contrast and the
+creatinine has returned to baseline.
+Discontinue insulin at discharge if glucose values remain below 180 mg/dL off corticosteroid.
+Arrange outpatient diabetes education; a referral has been sent to the certified diabetes educator at Cedar
+Falls Family Practice.
+Repeat hemoglobin A1c in three months, approximately July 2018.
+NEPHROLOGY — ACUTE KIDNEY INJURY, RESOLVED
+The admission creatinine of 1.34 mg/dL represents a rise from a baseline of 0.94 mg/dL recorded in January
+2018, meeting criteria for stage 1 acute kidney injury. The pattern of a bland urinary sediment, a fractional
+excretion of sodium below one percent and prompt response to volume resuscitation is consistent with a
+prerenal insult from sepsis and poor oral intake. Contrast nephropathy is an additional consideration given the
+computed tomography of April 6, although the temporal course favors the prerenal mechanism.
+Date | Creatinine (mg/dL) | BUN (mg/dL) | eGFR (mL/min/1.73m2)
+01/22/2018 | 0.94 | 16 | 62
+04/06/2018 | 1.34 | 28 | 41
+04/07/2018 | 1.21 | 24 | 46
+04/08/2018 | 1.08 | 19 | 53
+04/09/2018 | 1.02 | 17 | 57
+Avoid nonsteroidal anti-inflammatory drugs indefinitely.
+Hold lisinopril until the outpatient visit; Dr. Yvette Okonkwo may resume it once the creatinine is
+confirmed stable.
+Recheck a basic metabolic panel within seven days of discharge.
+No indication for renal ultrasound or nephrology follow-up at this time.
+Ingrid Solberg, MD  —  Endocrinology  —  04/08/2018 14:10
+Devendra Ramaswamy, MD  —  Nephrology  —  04/08/2018 16:45
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 14 of 20
+
+=== PAGE 15 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+OPERATIVE REPORT
+Date of Procedure: April 10, 2018   Surgeon: Ahmad Farhadi, MD
+Assistant: Bethany Ruiz-Alvarado, PA-C   Anesthesiologist: Colette Beauchamp, MD
+Preoperative Diagnosis: Persistent right pleural effusion   Postoperative Diagnosis: Same; loculated parapneumonic effusion
+Procedure: Ultrasound-guided thoracentesis, right, with pigtail catheter placement   Anesthesia: Local, 1% lidocaine; moderate sedation
+Estimated Blood Loss: Less than 5 mL   Specimens: Pleural fluid, 750 mL, to cytology and microbiology
+Complications: None
+INDICATION
+Ms. Grace E. Whitfield is a 67-year-old woman on hospital day 4 for pneumococcal pneumonia whose right
+pleural effusion enlarged on follow-up radiography despite appropriate antimicrobial therapy. Diagnostic and
+therapeutic drainage was recommended. Risks including bleeding, infection, pneumothorax, re-expansion
+pulmonary edema and the possible need for a larger tube or surgical decortication were discussed with the
+patient and with her son by telephone. Written informed consent was obtained and placed in the record.
+DESCRIPTION OF PROCEDURE
+The patient was positioned upright at the edge of the bed with her arms supported on a bedside table. A
+time-out was performed with the bedside nurse, Ms. Karen Fitzsimmons, RN, confirming patient identity by
+two identifiers, the procedure, the laterality and the availability of consent. Ultrasound survey of the right
+hemithorax demonstrated a moderate effusion with internal septations at the eighth intercostal space in the
+posterior axillary line.
+The skin was prepared with chlorhexidine and draped in a sterile fashion. The skin, subcutaneous tissue and
+parietal pleura were infiltrated with 8 mL of one percent lidocaine. Under direct ultrasound guidance an
+18-gauge introducer needle was advanced over the superior margin of the ninth rib until pleural fluid was
+freely aspirated. A guidewire was passed without resistance, the tract was dilated, and a 12 French pigtail
+catheter was advanced over the wire and secured at the skin with a drain-fix device and a 2-0 nylon suture.
+Seven hundred fifty milliliters of turbid amber fluid were drained slowly with intermittent clamping to limit
+the risk of re-expansion edema. The patient tolerated the procedure well without cough or chest discomfort.
+The catheter was connected to a water-seal drainage system at minus 20 centimeters of water. A
+post-procedure chest radiograph confirmed appropriate catheter position, a substantial reduction in the effusion
+and no pneumothorax.
+DISPOSITION
+The patient returned to Room 512-A in stable condition. Pleural fluid studies were sent for cell count,
+chemistry, Gram stain, culture and cytology. Vital signs are to be recorded every fifteen minutes for one hour
+and the drainage output charted every shift.
+Ahmad Farhadi, MD  —  Interventional Pulmonology  —  04/10/2018 15:12
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 15 of 20
+
+=== PAGE 16 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+MODERATE SEDATION RECORD
+Date: 04/10/2018   Location: Bedside, 5 North 512-A
+Sedation Provider: Colette Beauchamp, MD   Monitoring Nurse: Karen Fitzsimmons, RN
+ASA Classification: III   Mallampati: II
+NPO Since: 04/10/2018 06:00
+PRE-PROCEDURE ASSESSMENT
+Airway examination unremarkable with adequate mouth opening and thyromental distance. Dentition intact.
+No history of adverse reaction to sedation or anesthesia. Cardiopulmonary status optimized. Consent verified.
+Reversal agents naloxone and flumazenil confirmed available at the bedside.
+MEDICATIONS ADMINISTERED
+Time | Agent | Dose | Route | Given By
+14:32 | Midazolam | 1 mg | IV | C. Beauchamp, MD
+14:34 | Fentanyl citrate | 50 mcg | IV | C. Beauchamp, MD
+14:46 | Midazolam | 1 mg | IV | C. Beauchamp, MD
+14:47 | Lidocaine 1% | 8 mL | SC/Local | A. Farhadi, MD
+INTRA-PROCEDURE MONITORING
+Time | HR | BP | RR | SpO2 | Sedation Score
+14:30 | 78 | 126/76 | 18 | 95% | 0 - alert
+14:35 | 74 | 120/72 | 16 | 96% | 1 - drowsy
+14:40 | 72 | 118/70 | 14 | 97% | 2 - eyes closed
+14:45 | 70 | 114/68 | 13 | 96% | 2 - eyes closed
+14:50 | 72 | 116/70 | 14 | 97% | 2 - eyes closed
+15:00 | 76 | 122/74 | 16 | 96% | 1 - drowsy
+15:10 | 78 | 124/76 | 18 | 95% | 0 - alert
+RECOVERY
+The patient met discharge-from-sedation criteria at 15:40 with an Aldrete score of 10. She was alert and fully
+oriented, maintained her airway without support, had stable vital signs within ten percent of baseline and
+reported no nausea. Oxygen was weaned to room air with a saturation of 95 percent. Post-sedation instructions
+were reviewed with the patient and with Ms. Lucille Marchetti, RN.
+Total Sedation Time: 38 minutes   Complications: None
+Reversal Agents Used: None   Aldrete Score at Discharge: 10 of 10
+Colette Beauchamp, MD  —  04/10/2018 15:44
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 16 of 20
+
+=== PAGE 17 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+SURGICAL PATHOLOGY AND CYTOLOGY REPORT
+Accession: S18-6640   Collected: 04/10/2018 14:55
+Received: 04/10/2018 16:20   Reported: 04/11/2018 11:30
+Pathologist: Tomasz Wieczorek, MD   Submitting Physician: Ahmad Farhadi, MD
+SPECIMEN
+A. Pleural fluid, right, 750 mL, submitted fresh in a sterile container, labeled with the patient's name and
+medical record number.
+PLEURAL FLUID ANALYSIS
+Analyte | Result | Reference / Criterion | Units
+Appearance | Turbid, amber | Clear, straw | 
+Nucleated cell count | 8,400 | < 1,000 | cells/uL
+Neutrophils | 78 | < 50 | %
+Lymphocytes | 16 |  | %
+Protein, fluid | 4.2 |  | g/dL
+Protein, fluid/serum ratio | 0.68 | > 0.5 exudative | 
+LDH, fluid | 412 |  | U/L
+LDH, fluid/serum ratio | 0.71 | > 0.6 exudative | 
+Glucose, fluid | 48 | < 60 complicated | mg/dL
+pH, fluid | 7.18 | < 7.20 complicated | 
+Adenosine deaminase | 18 | < 40 | U/L
+MICROSCOPIC DESCRIPTION
+Cytospin preparations show abundant neutrophils with degenerative changes admixed with reactive
+mesothelial cells and scattered lymphocytes and histiocytes. No fungal or acid-fast organisms are identified on
+special stains. There is no evidence of malignancy. Occasional gram-positive cocci in pairs are identified on
+the concurrent Gram stain.
+DIAGNOSIS
+A. PLEURAL FLUID, RIGHT: Acute inflammatory exudate with reactive mesothelial cells.
+NEGATIVE FOR MALIGNANT CELLS.
+Biochemical profile meets Light's criteria for an exudate and the thresholds for a complicated
+parapneumonic effusion.
+COMMENT
+The combination of a fluid pH below 7.20, a fluid glucose below 60 mg/dL and a positive Gram stain supports
+the classification of a complicated parapneumonic effusion for which continued catheter drainage is
+appropriate. Correlation with the culture result, reported separately under accession M18-0410-2043, is
+recommended. This case was reviewed in intradepartmental consultation with Dr. Colette Beauchamp on April
+11, 2018.
+Tomasz Wieczorek, MD  —  Anatomic and Clinical Pathology  —  04/11/2018 11:30
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 17 of 20
+
+=== PAGE 18 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+PHYSICAL THERAPY EVALUATION AND CARE MANAGEMENT NOTE
+Date of Service: April 11, 2018   Physical Therapist: Bethany Ruiz-Alvarado, PA-C, on behalf of Rehabilitation Services
+Case Manager: Karen Fitzsimmons, RN, CCM   Referring Provider: Harold T. Nakamura, MD
+PHYSICAL THERAPY EVALUATION
+Prior level of function: independent in all basic and instrumental activities of daily living. The patient drove,
+managed her own medications and finances, shopped independently and climbed one flight of stairs to reach
+her apartment without assistive device.
+Measure | Result | Interpretation
+6-minute walk distance | 218 m | Reduced for age and sex
+Lowest SpO2 on ambulation | 91% on room air | No supplemental O2 needed
+Borg dyspnea score | 4 of 10 | Moderate
+Five times sit-to-stand | 16.2 s | Elevated fall risk
+Gait speed | 0.71 m/s | Below community ambulation threshold
+Berg Balance Scale | 44 of 56 | Moderate fall risk
+Assessment: deconditioning superimposed on chronic obstructive pulmonary disease and bilateral knee
+osteoarthritis, with a moderate fall risk. The patient is safe to return home provided that stair training is
+completed and a rolling walker is dispensed for community distances.
+Home exercise program issued in large print and reviewed with the patient.
+Rolling walker with seat dispensed 04/12/2018; the patient demonstrated safe use on level ground and on
+stairs with a rail.
+Home health physical therapy, two visits per week for three weeks, arranged through Willow Creek Skilled
+Nursing Facility outpatient services.
+Referral to outpatient pulmonary rehabilitation; the patient is to telephone (563) 555-0771 to schedule an
+intake appointment.
+CARE MANAGEMENT AND DISCHARGE PLANNING
+Ms. Whitfield lives alone at 1427 Birchwood Terrace, Apartment 3B, Cedar Falls, Iowa. Her son, Daniel R.
+Whitfield, has arranged to stay with her for the first five days after discharge and will transport her to
+follow-up appointments. Her sister, Priscilla Vance, will assist thereafter.
+Service | Vendor / Agency | Status | Contact
+Home health PT | Willow Creek SNF Outpatient | Authorized | (319) 555-0148
+Durable medical equipment | Blackhawk Home Medical | Delivered 04/12 | (319) 555-0192
+Pulmonary rehabilitation | Saint Bartholomew Rehab | Pending intake | (563) 555-0771
+Meal delivery, 14 days | Cedar Valley Meals | Confirmed | (319) 555-0148
+Insurance authorization for home health services was obtained from Meridian Blue PPO on April 11, 2018
+under prior authorization number PA-2018-77412. No patient financial responsibility is anticipated beyond the
+standard copayment.
+Karen Fitzsimmons, RN, CCM  —  04/11/2018 16:05
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 18 of 20
+
+=== PAGE 19 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+DISCHARGE SUMMARY
+Patient: Whitfield, Grace Eleanor   MRN: 40-77-1592
+Date of Birth: 03/14/1951   Date of Admission: April 6, 2018
+Date of Discharge: April 13, 2018   Length of Stay: 7 days
+Attending Physician: Harold T. Nakamura, MD   Discharge Disposition: Home with home health services
+DISCHARGE DIAGNOSES
+1. Community-acquired pneumonia, right lower lobe, due to Streptococcus pneumoniae, with complicated
+parapneumonic effusion (principal).
+2. Acute hypoxemic respiratory failure, resolved.
+3. Paroxysmal atrial fibrillation with rapid ventricular response, converted to sinus rhythm.
+4. Acute kidney injury, stage 1, prerenal, resolved.
+5. Steroid-associated hyperglycemia in type 2 diabetes mellitus.
+6. Hyperactive delirium, resolved.
+7. Chronic obstructive pulmonary disease, GOLD stage II.
+8. Essential hypertension.
+9. Hyponatremia, hypokalemia and hypomagnesemia, corrected.
+PROCEDURES PERFORMED
+Computed tomographic angiography of the chest, 04/06/2018.
+Transthoracic echocardiogram, 04/07/2018.
+Ultrasound-guided thoracentesis with pigtail catheter placement, right, 04/10/2018, by Ahmad Farhadi,
+MD.
+Catheter removal, 04/12/2018, without complication.
+HOSPITAL COURSE
+Ms. Whitfield presented to the emergency department on April 6, 2018 with five days of dyspnea and
+productive cough and was found to be febrile, tachycardic and hypoxemic with a saturation of 88 percent on
+room air. Chest computed tomography excluded pulmonary embolism and demonstrated dense right lower
+lobe consolidation with a small effusion. She was admitted to the medical floor and begun on ceftriaxone and
+azithromycin.
+Sputum culture grew penicillin-susceptible Streptococcus pneumoniae with a positive urinary antigen, and
+therapy was narrowed on hospital day 3. She required up to 4 L of supplemental oxygen on hospital day 1 and
+was weaned to room air by hospital day 3. A course of methylprednisolone was given for the obstructive
+component and tapered to oral prednisone.
+Her presenting atrial fibrillation with a ventricular rate of 118 was managed with rate control and electrolyte
+repletion; she converted spontaneously to sinus rhythm on the evening of April 8. Cardiology, Dr. Steven
+Kaufmann, recommended continuation of apixaban and a return to long-acting metoprolol at discharge. An
+episode of hyperactive delirium on the night of April 7 to 8 resolved with non-pharmacologic measures alone.
+A persistent right effusion enlarged on follow-up imaging and was drained on April 10 by Dr. Ahmad Farhadi,
+yielding 750 mL of an exudate meeting criteria for a complicated parapneumonic effusion. The catheter
+drained a further 340 mL over 48 hours and was removed on April 12 after output fell below 50 mL per day.
+Post-removal radiography showed no reaccumulation and no pneumothorax.
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 19 of 20
+
+=== PAGE 20 ===
+SAINT BARTHOLOMEW REGIONAL MEDICAL CENTER
+Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951
+DISCHARGE SUMMARY (CONTINUED)
+CONDITION AT DISCHARGE
+The patient is afebrile, ambulating with a rolling walker, saturating 94 percent on room air at rest and 92
+percent with ambulation, tolerating a regular carbohydrate-modified diet and fully oriented. Her white blood
+cell count has fallen to 8.9 K/uL and her creatinine is 0.98 mg/dL.
+DISCHARGE MEDICATIONS
+Medication | Dose | Route | Frequency | Duration
+Amoxicillin | 875 mg | PO | BID | Through 04/16/2018
+Prednisone | 20 mg | PO | Daily | Through 04/15/2018
+Apixaban | 5 mg | PO | BID | Continuous
+Metoprolol succinate ER | 50 mg | PO | Daily | Continuous
+Metformin hydrochloride | 1000 mg | PO | BID | Continuous
+Atorvastatin calcium | 40 mg | PO | Nightly | Continuous
+Tiotropium bromide | 18 mcg | INH | Daily | Continuous
+Albuterol HFA | 90 mcg | INH | Q4H PRN | Continuous
+Pantoprazole | 40 mg | PO | Daily | Through 04/20/2018
+Acetaminophen | 650 mg | PO | Q6H PRN | As needed
+STOPPED AT DISCHARGE: lisinopril, held pending outpatient reassessment of renal function; azithromycin
+and ceftriaxone, course complete; all inpatient insulin.
+FOLLOW-UP APPOINTMENTS
+Provider | Specialty | Date / Time | Location
+Yvette Okonkwo, MD | Primary Care | 04/18/2018 09:00 | Cedar Falls Family Practice
+Steven Kaufmann, MD | Cardiology | 05/11/2018 10:30 | Saint Bartholomew Cardiology
+Rosalind Achebe, MD | Pulmonary | 05/04/2018 14:15 | Saint Bartholomew Pulmonary
+Ingrid Solberg, MD | Endocrinology | 07/09/2018 11:00 | Saint Bartholomew Endocrine
+PENDING RESULTS AT DISCHARGE
+Pleural fluid culture, accession M18-0410-2043: no growth at 48 hours; the final result will be routed to Dr.
+Harold T. Nakamura and Dr. Yvette Okonkwo. The fourteen-day rhythm monitor was applied 04/13/2018.
+PATIENT INSTRUCTIONS
+1. Complete the full course of amoxicillin even if you feel entirely well.
+2. Return to the emergency department for fever above 38.3 C, worsening shortness of breath, chest pain,
+coughing up blood, or confusion.
+3. Check your blood sugar twice daily and record the values; bring the log to your appointment on April 18.
+4. Use the incentive spirometer ten times each hour while awake for two weeks.
+5. Do not take ibuprofen, naproxen or other anti-inflammatory medicines.
+6. Obtain a repeat chest radiograph in six weeks; the order has been placed with Blackhawk County Imaging
+Associates.
+7. Telephone (319) 555-0148 with any question about your medicines.
+Instructions were reviewed with the patient and her son, Daniel R. Whitfield, who verbalized understanding by
+teach-back.
+Harold T. Nakamura, MD  —  Attending Physician  —  04/13/2018 11:47
+Whitfield, Grace E.   MRN 40-77-1592   DOB 03/14/1951
+CONFIDENTIAL - PHI
+Page 20 of 20
+
