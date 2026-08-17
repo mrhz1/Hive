@@ -37,6 +37,7 @@ import { applicationFilesApi } from '@/lib/api/resources'
 import {
   canDeidentify,
   deidTone,
+  fileTally,
   fileHaystack,
   formatFileSize,
   hasExtractableMetadata,
@@ -47,6 +48,7 @@ import {
   type ApplicationFile,
   type UploadJob,
 } from '@/schemas/applicationFile'
+import { FileTallyBar } from './FileTallyBar'
 import { UploadProgress } from './UploadProgress'
 
 export function FileReviewPanel({
@@ -136,6 +138,11 @@ export function FileReviewPanel({
   }, [files, search])
 
   const undecided = undecidedCount(files)
+
+  // Over every document, not the filtered view: the question it answers
+  // is whether the batch is finished, which a search term must not
+  // change the answer to.
+  const tally = useMemo(() => fileTally(files), [files])
 
   /**
    * Only a PDF needs its bytes up front -- the modal renders it in an
@@ -375,6 +382,8 @@ export function FileReviewPanel({
           ) : null}
         </>
       )}
+
+      <FileTallyBar tally={tally} />
 
       <div className="flex flex-wrap items-end justify-between gap-4 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4">
         <div className="min-w-64 flex-1">

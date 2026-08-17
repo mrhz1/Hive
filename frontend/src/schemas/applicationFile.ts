@@ -83,6 +83,70 @@ export type ApplicationFile = z.infer<typeof applicationFileSchema>
 
 export const applicationFileListSchema = z.array(applicationFileSchema)
 
+// ------------------------------------------------------------- tally
+
+export type FileTally = {
+  total: number
+  /** Documents with a redacted copy on disk. */
+  deidentified: number
+  /** Queued or running right now. */
+  deidRunning: number
+  /** Tried and failed -- the ones that need somebody to look. */
+  deidFailed: number
+  /** Never attempted, and not running. */
+  deidPending: number
+  approved: number
+  rejected: number
+  undecided: number
+}
+
+/**
+ * One pass over the documents for the counts the header shows.
+ *
+ * An application can hold a thousand files, at which point "is every one
+ * of these redacted?" is not answerable by scrolling. The failed and
+ * pending counts matter most: a single file that failed hours ago is
+ * invisible in a list that long, and it is the one thing that stops the
+ * batch being finished.
+ */
+export function fileTally(files: ApplicationFile[]): FileTally {
+  const tally: FileTally = {
+    total: files.length,
+    deidentified: 0,
+    deidRunning: 0,
+    deidFailed: 0,
+    deidPending: 0,
+    approved: 0,
+    rejected: 0,
+    undecided: 0,
+  }
+
+  for (const file of files) {
+    // is_deidentified, not deid_status: the question is whether a
+    // redacted copy exists, and that flag is what says one does.
+    if (file.is_deidentified) tally.deidentified += 1
+    else if (isDeidInFlight(file.deid_status)) tally.deidRunning += 1
+    else if (file.deid_status === 'failed') tally.deidFailed += 1
+    else tally.deidPending += 1
+
+    if (file.review_status === 'approved') tally.approved += 1
+    else if (file.review_status === 'rejected') tally.rejected += 1
+    else tally.undecided += 1
+  }
+
+  return tally
+}
+
+/** Every document redacted, with nothing still running or failed. */
+export function isFullyDeidentified(tally: FileTally): boolean {
+  return tally.total > 0 && tally.deidentified === tally.total
+}
+
+/** Every document decided, one way or the other. */
+export function isFullyReviewed(tally: FileTally): boolean {
+  return tally.total > 0 && tally.undecided === 0
+}
+
 /** Colour the de-identification state so progress is scannable. */
 export function deidTone(
   status: string
