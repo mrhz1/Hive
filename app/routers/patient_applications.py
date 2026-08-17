@@ -10,7 +10,8 @@ from app.crud import patient_applications as crud
 from app.crud import patients as patients_crud
 from app.crud import users as users_crud
 from app.db import get_cursor
-from app.storage import delete_file as remove_from_disk
+from app.deid import remove_deid_artifacts
+from app.storage import delete_file as remove_from_disk, prune_stored_folders
 from app.submission import finalise_submission
 from app.errors import ValidationError
 from app.logging_setup import get_logger
@@ -28,7 +29,10 @@ log = get_logger(__name__)
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
-NON_REJECTABLE = ("submitted", "rejected", "deleted")
+# An already-rejected application is *not* in here: fixing what was
+# wrong and finding the next thing wrong is the normal shape of this
+# work, and each rejection has to be able to carry its own reason.
+NON_REJECTABLE = ("submitted", "deleted")
 
 
 def _snapshot(application: PatientApplication) -> dict:
@@ -116,14 +120,28 @@ def create_application(
     return application
 
 
-def _with_assignee_names(cursor, applications: List[PatientApplication]):
-    """Fill in each application's assignee username.
+# The id on the row, and the field the username it resolves to goes in.
+_NAMED_IDS = (
+    ("assigned_to_id", "assigned_to_username"),
+    ("created_by_id", "created_by_username"),
+    ("submitted_by_id", "submitted_by_username"),
+    ("reviewed_by_id", "reviewed_by_username"),
+)
+
+
+def _with_user_names(cursor, applications: List[PatientApplication]):
+    """Put a username against every user id an application carries.
 
     One pass over the users, not one lookup per row: a list of two
-    hundred applications assigned across a handful of people would
-    otherwise be two hundred queries to print a column.
+    hundred applications handled by a handful of people would otherwise
+    be hundreds of queries to print a few columns.
     """
-    wanted = {a.assigned_to_id for a in applications if a.assigned_to_id}
+    wanted = {
+        getattr(application, id_field)
+        for application in applications
+        for id_field, _ in _NAMED_IDS
+        if getattr(application, id_field)
+    }
     if not wanted:
         return applications
 
@@ -133,7 +151,12 @@ def _with_assignee_names(cursor, applications: List[PatientApplication]):
         if user.id in wanted
     }
     for application in applications:
-        application.assigned_to_username = names.get(application.assigned_to_id)
+        for id_field, name_field in _NAMED_IDS:
+            setattr(
+                application,
+                name_field,
+                names.get(getattr(application, id_field)),
+            )
 
     return applications
 
@@ -144,7 +167,7 @@ def list_applications(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    return _with_assignee_names(cursor, crud.list_applications(cursor, patient_id))
+    return _with_user_names(cursor, crud.list_applications(cursor, patient_id))
 
 
 @router.get("/{application_id}", response_model=PatientApplication)
@@ -154,7 +177,7 @@ def get_application(
     _actor: User = Depends(require_permission("application:view")),
 ):
     application = crud.get_application_or_404(cursor, application_id)
-    return _with_assignee_names(cursor, [application])[0]
+    return _with_user_names(cursor, [application])[0]
 
 
 @router.put("/{application_id}", response_model=PatientApplication)
@@ -259,9 +282,14 @@ def delete_application(
     metadata_crud.delete_metadata_for_files(cursor, [f.id for f in orphaned])
 
     for record in orphaned:
+        # Including what the de-identification run left beside the
+        # original -- its extracted text and report, which nothing on
+        # the row points at. See app/deid.py.
+        remove_deid_artifacts(record.file_path)
         remove_from_disk(record.file_path)
         if record.de_identified_file_path:
             remove_from_disk(record.de_identified_file_path)
+        prune_stored_folders(record.file_path, record.de_identified_file_path)
 
     after = crud.update_application(
         cursor,

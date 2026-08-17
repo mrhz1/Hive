@@ -16,12 +16,19 @@ export type MetadataSubject = {
 
 export function FileMetadataModal({
   file,
+  deidentified = false,
   onClose,
 }: {
   file: MetadataSubject
+  /**
+   * Read the redacted copy's metadata instead of the original's. The
+   * two are different questions: what the document arrived carrying,
+   * against what is left in the copy that leaves here.
+   */
+  deidentified?: boolean
   onClose: () => void
 }) {
-  const { data, isLoading, error } = useFileMetadata(file.id)
+  const { data, isLoading, error } = useFileMetadata(file.id, deidentified)
   const [query, setQuery] = useState('')
   const [isExporting, setIsExporting] = useState(false)
 
@@ -51,12 +58,13 @@ export function FileMetadataModal({
     try {
       const blob = await applicationFilesApi.exportMetadata(
         file.id,
-        query.trim() ? entries.map(([name]) => name) : undefined
+        query.trim() ? entries.map(([name]) => name) : undefined,
+        deidentified
       )
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `metadata-${file.original_file_name}.xlsx`
+      link.download = `${deidentified ? 'deid-metadata' : 'metadata'}-${file.original_file_name}.xlsx`
       link.click()
       URL.revokeObjectURL(url)
     } catch (caught) {
@@ -73,7 +81,9 @@ export function FileMetadataModal({
       className="fixed inset-0 z-50 flex flex-col bg-[rgb(var(--background))]/80 p-4 backdrop-blur-sm sm:p-8"
       role="dialog"
       aria-modal="true"
-      aria-label={`Metadata for ${file.original_file_name}`}
+      aria-label={`${
+        deidentified ? 'De-identified metadata' : 'Metadata'
+      } for ${file.original_file_name}`}
     >
       <div className="mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] shadow-xl">
         <div className="flex items-center justify-between gap-4 border-b border-[rgb(var(--border))] px-5 py-3">
@@ -82,7 +92,11 @@ export function FileMetadataModal({
               {file.original_file_name}
             </p>
             <p className="flex items-center gap-2 text-xs text-[rgb(var(--foreground-muted))]">
-              <span>Document metadata</span>
+              <span>
+                {deidentified
+                  ? 'De-identified copy metadata'
+                  : 'Document metadata'}
+              </span>
               {data ? (
                 <>
                   <Badge tone="neutral">{data.file_type}</Badge>
@@ -146,7 +160,13 @@ export function FileMetadataModal({
             </div>
           ) : error ? (
             <p className="text-sm text-[rgb(var(--foreground-muted))]">
-              No metadata was recorded for this file.
+              {/* The redacted copy's is read on demand, so a failure
+                  here has a reason worth passing on -- 'not been
+                  de-identified yet' is a different problem from an
+                  original that carried nothing. */}
+              {error instanceof ApiError
+                ? error.message
+                : 'No metadata was recorded for this file.'}
             </p>
           ) : data?.status === 'unsupported' ? (
             <p className="text-sm text-[rgb(var(--foreground-muted))]">

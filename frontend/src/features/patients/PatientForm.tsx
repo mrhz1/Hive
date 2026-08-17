@@ -33,12 +33,22 @@ function Section({ title, hint }: { title: string; hint?: ReactNode }) {
 export function PatientForm({
   patient,
   onSaved,
+  onBeforeSubmit,
   cancelTo = '/patients',
   submitLabel,
   showFilePath = true,
+  readOnly = false,
 }: {
   patient?: Patient
   onSaved?: (patient: Patient) => void | Promise<void>
+  /**
+   * A last word from the owner of this form before anything is written.
+   * Returning false stops the save. The wizard uses it to refuse a
+   * patient whose application has nowhere to draw documents from --
+   * without it the patient was created and the application was not,
+   * which left a record of somebody nobody had asked to create.
+   */
+  onBeforeSubmit?: () => boolean
   cancelTo?: string
   submitLabel?: string
   /**
@@ -47,6 +57,8 @@ export function PatientForm({
    * application and is required there.
    */
   showFilePath?: boolean
+  /** Show the details without offering to change them. */
+  readOnly?: boolean
 }) {
   const mode = patient ? 'edit' : 'create'
   const navigate = useNavigate()
@@ -70,6 +82,10 @@ export function PatientForm({
   const isSubmitting = create.isPending || update.isPending
 
   const onSubmit = handleSubmit(async (values) => {
+    // Before the mutation, not after: whatever else has to be true is
+    // still true while nothing has been written.
+    if (onBeforeSubmit && !onBeforeSubmit()) return
+
     let saved: Patient
 
     try {
@@ -96,10 +112,13 @@ export function PatientForm({
       submitLabel={submitLabel}
       isSubmitting={isSubmitting}
       onSubmit={onSubmit}
+      readOnly={readOnly}
       footerNote={
-        patient
-          ? `Editing ${patientName(patient)}`
-          : 'An original file path and at least one of first name, last name or email are required. The patient email and phone must be unique.'
+        readOnly
+          ? `${patient ? patientName(patient) : 'This patient'}'s details, as they stand. They cannot be changed from here.`
+          : patient
+            ? `Editing ${patientName(patient)}`
+            : 'An original file path and at least one of first name, last name or email are required. The patient email and phone must be unique.'
       }
     >
       <Section

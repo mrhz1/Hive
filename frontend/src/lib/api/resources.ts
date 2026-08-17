@@ -347,19 +347,52 @@ export const applicationFilesApi = {
       })
     ),
 
-  metadata: (fileId: string) =>
-    request(fileMetadataSchema, () => api.get(`/files/${fileId}/metadata`)),
+  /** The original's stored metadata, or the redacted copy's, read live. */
+  metadata: (fileId: string, deidentified = false) =>
+    request(fileMetadataSchema, () =>
+      api.get(`/files/${fileId}/metadata`, {
+        params: deidentified ? { deidentified: true } : undefined,
+      })
+    ),
 
-  exportMetadata: async (fileId: string, fields?: string[]): Promise<Blob> => {
+  exportMetadata: async (
+    fileId: string,
+    fields?: string[],
+    deidentified = false
+  ): Promise<Blob> => {
     try {
       const response = await api.get(`/files/${fileId}/metadata/export`, {
         responseType: 'blob',
-        params: fields?.length ? { fields: fields.join(',') } : undefined,
+        params: {
+          ...(fields?.length ? { fields: fields.join(',') } : {}),
+          ...(deidentified ? { deidentified: true } : {}),
+        },
       })
       return response.data as Blob
     } catch (error) {
       throw toApiError(error)
     }
+  },
+
+  /**
+   * A document that is already redacted, attached as it stands. There is
+   * no original behind it and nothing to run over it, so it arrives
+   * done -- see the endpoint in app/routers/patient_application_files.py.
+   */
+  uploadDeidentified: (
+    applicationId: string,
+    file: File,
+    description?: string
+  ) => {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    if (description) form.append('description', description)
+
+    return request(applicationFileSchema, () =>
+      api.post(`/applications/${applicationId}/files/deidentified`, form, {
+        headers: { 'Content-Type': undefined },
+      })
+    )
   },
 
   /**

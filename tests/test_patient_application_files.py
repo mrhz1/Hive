@@ -241,6 +241,77 @@ def test_deleting_one_file_removes_its_bytes(as_admin, storage_root):
     assert as_admin.get(f"/applications/{application_id}/files").json() == []
 
 
+def _fake_deid_run(record) -> dict:
+    """The three files a de-identification run leaves on disk.
+
+    Written by hand rather than by running the pipeline: the OCR stack
+    is not installed in this suite, and what is being tested is what
+    happens to the outputs afterwards, not how they were produced.
+    """
+    source = pathlib.Path(record["file_path"])
+    output_dir = source.parent / "deidentified"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    produced = {
+        name: output_dir / f"{source.stem}_deid{name}"
+        for name in (".pdf", ".txt", ".report.json")
+    }
+    for path in produced.values():
+        path.write_bytes(b"output")
+
+    return produced
+
+
+def test_deleting_a_file_takes_the_whole_de_identification_run_with_it(
+    as_admin, storage_root
+):
+    """The redacted document is one of three the pipeline writes. The
+    other two -- the text it read out of the file, and the report of
+    what it redacted -- are recorded nowhere, so deleting a document
+    used to leave the document's contents in the clear on disk with
+    nothing pointing at them."""
+    application_id = _application(as_admin)
+    record = _upload(as_admin, application_id).json()[0]
+    produced = _fake_deid_run(record)
+
+    assert as_admin.delete(f"/files/{record['id']}").status_code == 204
+
+    for name, path in produced.items():
+        assert not path.exists(), f"{name} survived the delete"
+
+
+def test_deleting_a_file_leaves_another_document_s_outputs_alone(
+    as_admin, storage_root
+):
+    """A batch shares one output folder, so the sweep has to be by name."""
+    application_id = _application(as_admin)
+    uploaded = _upload(as_admin, application_id).json()[0]
+    other = _upload(as_admin, application_id, name="second.pdf").json()[0]
+
+    _fake_deid_run(uploaded)
+    survivors = _fake_deid_run(other)
+
+    as_admin.delete(f"/files/{uploaded['id']}")
+
+    for name, path in survivors.items():
+        assert path.exists(), f"{name} was taken with the other document"
+
+
+def test_deleting_the_application_takes_the_run_outputs_too(
+    as_admin, storage_root
+):
+    application_id = _application(as_admin)
+    record = _upload(as_admin, application_id).json()[0]
+    produced = _fake_deid_run(record)
+
+    as_admin.delete(
+        f"/applications/{application_id}", params={"reason": "wrong patient"}
+    )
+
+    for name, path in produced.items():
+        assert not path.exists(), f"{name} survived the delete"
+
+
 def test_deleting_a_file_removes_its_metadata_row(as_admin, storage_root, store):
     application_id = _application(as_admin)
     record = _upload(as_admin, application_id).json()[0]
@@ -605,3 +676,125 @@ def test_review_needs_application_update(client, storage_root):
     )
 
     assert response.status_code == 403
+
+
+# ------------------------------------------- uploading an already-redacted file
+
+def _upload_deidentified(
+    client, application_id, name="clean.pdf", data=None, **kwargs
+):
+    # `is None`, not `or`: b'' is a case one of these tests is about.
+    content = _pdf_with_metadata() if data is None else data
+    return client.post(
+        f"/applications/{application_id}/files/deidentified",
+        files=[("file", (name, content, "application/pdf"))],
+        **kwargs,
+    )
+
+
+# <patient>-<type>-<date>-<serial>_deid.<ext>, as the pipeline names its own.
+REDACTED_DOCUMENT = re.compile(r"^[A-Z0-9]{6}-[a-z0-9]+-\d{8}-\d{16}_deid\.[a-z0-9]+$")
+
+
+def test_an_uploaded_redacted_file_arrives_finished(as_admin, storage_root):
+    """Nothing is left to run over it, so it must not sit in 'pending'
+    waiting for a pass that would only redact what is already redacted."""
+    patient_id, application_id = _patient_and_application(as_admin)
+
+    response = _upload_deidentified(as_admin, application_id)
+    assert response.status_code == 201, response.text
+
+    record = response.json()
+    assert record["deid_status"] == "done"
+    assert record["is_deidentified"] is True
+    assert record["de_identified_file_path"]
+    assert pathlib.Path(record["de_identified_file_path"]).is_file()
+
+
+def test_an_uploaded_redacted_file_is_named_like_a_produced_one(as_admin, storage_root):
+    patient_id, application_id = _patient_and_application(as_admin)
+
+    record = _upload_deidentified(as_admin, application_id).json()
+    name = record["deidentified_file_name"]
+
+    assert REDACTED_DOCUMENT.match(name), name
+    assert name.startswith(f"{patient_id}-")
+    # The name it was uploaded under is kept, but only as the label.
+    assert record["original_file_name"] == "clean.pdf"
+    assert record["sanitized_file_name"] == name
+
+
+def test_an_uploaded_redacted_file_shows_up_in_the_library(as_admin, storage_root):
+    _, application_id = _patient_and_application(as_admin)
+    record = _upload_deidentified(as_admin, application_id).json()
+
+    listed = as_admin.get("/files-library").json()
+
+    assert [row["id"] for row in listed] == [record["id"]]
+    assert listed[0]["name"] == record["deidentified_file_name"]
+
+
+def test_a_format_that_cannot_be_redacted_is_refused(as_admin, storage_root):
+    _, application_id = _patient_and_application(as_admin)
+
+    response = _upload_deidentified(
+        as_admin, application_id, name="notes.txt", data=b"plain text"
+    )
+
+    assert response.status_code == 422
+    assert "not handled here" in response.json()["error"]["detail"]
+
+
+def test_an_empty_redacted_upload_is_refused(as_admin, storage_root):
+    _, application_id = _patient_and_application(as_admin)
+
+    response = _upload_deidentified(as_admin, application_id, data=b"")
+
+    assert response.status_code == 422
+
+
+# --------------------------------------- the redacted copy's own metadata
+
+def test_the_redacted_copy_has_its_metadata_read_on_demand(as_admin, storage_root):
+    """Read from the file each time rather than stored: the point of
+    looking is to check what the redaction actually left behind."""
+    _, application_id = _patient_and_application(as_admin)
+    record = _upload_deidentified(as_admin, application_id).json()
+
+    response = as_admin.get(
+        f"/files/{record['id']}/metadata", params={"deidentified": True}
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["file_id"] == record["id"]
+    assert body["file_type"] == "pdf"
+    assert body["status"] == "ok"
+
+
+def test_asking_for_redacted_metadata_without_a_redacted_copy_is_refused(
+    as_admin, storage_root
+):
+    application_id = _application(as_admin)
+    record = _upload(as_admin, application_id).json()[0]
+
+    response = as_admin.get(
+        f"/files/{record['id']}/metadata", params={"deidentified": True}
+    )
+
+    assert response.status_code == 422
+    assert "not been de-identified" in response.json()["error"]["detail"]
+
+
+def test_the_original_and_the_redacted_copy_report_different_metadata(
+    as_admin, storage_root
+):
+    application_id = _application(as_admin)
+    record = _upload(as_admin, application_id, data=_pdf_with_metadata()).json()[0]
+
+    original = as_admin.get(f"/files/{record['id']}/metadata").json()
+
+    assert original["metadata"]["title"] == "Discharge Summary"
+    # The stored row is the original's, and asking for it must not have
+    # been quietly answered from the file on disk.
+    assert original["id"] != f"{record['id']}:deid"

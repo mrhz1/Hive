@@ -115,10 +115,36 @@ def test_the_assigned_user_is_told_when_the_batch_is_done(
     assert "1 file" in batch[0]["subject"]
 
 
-def test_an_unassigned_batch_falls_back_to_whoever_uploaded_it(
-    as_admin, storage_root, sent_emails
+def _set_creator(store, application_id, user_id):
+    """Rewrite who filed it. No endpoint does this -- created_by_id is
+    stamped from the caller -- but the two users have to differ for the
+    fallback order to be worth asserting at all."""
+    for row in store["patient_applications"]:
+        if row["id"] == application_id:
+            row["created_by_id"] = user_id
+
+
+def test_an_unassigned_batch_goes_to_whoever_filed_the_application(
+    as_admin, storage_root, sent_emails, store
 ):
+    """Explicitly asked for: with nobody assigned, the person waiting on
+    these documents is the one who filed the application -- not
+    necessarily whoever pushed the folder up on their behalf."""
     _, application_id = _patient_and_application(as_admin)
+    _set_creator(store, application_id, VIEWER_ID)
+
+    _upload(as_admin, application_id)
+
+    assert [mail["to"] for mail in sent_emails] == [["viewer@example.com"]]
+
+
+def test_an_unassigned_batch_falls_back_to_whoever_uploaded_it(
+    as_admin, storage_root, sent_emails, store
+):
+    """Nobody assigned and no creator on the row -- an old application,
+    or one filed by an account since removed. Somebody still hears."""
+    _, application_id = _patient_and_application(as_admin)
+    _set_creator(store, application_id, None)
 
     _upload(as_admin, application_id)
 

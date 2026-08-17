@@ -154,7 +154,10 @@ def update_application(
     if status == "submitted" and existing.status != "submitted":
         fields["submitted_by_id"] = actor_id
         fields["submitted_at"] = NOW
-    elif status in ("approved", "rejected") and existing.status != status:
+    elif status in ("approved", "rejected"):
+        # Not conditional on the status changing: rejecting an
+        # already-rejected application is a second verdict, by whoever
+        # gave it, and the record has to move on to that one.
         fields["reviewed_by_id"] = actor_id
         fields["reviewed_at"] = NOW
 

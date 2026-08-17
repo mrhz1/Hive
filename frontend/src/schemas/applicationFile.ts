@@ -68,6 +68,17 @@ export function undecidedCount(files: Array<{ review_status: string }>): number 
     file.review_status !== 'rejected').length
 }
 
+/**
+ * How many documents were turned down.
+ *
+ * One is enough to stop the application being submitted: sending a
+ * batch on for review with a document in it that has already been
+ * rejected is asking the reviewer to find what was found here.
+ */
+export function rejectedCount(files: Array<{ review_status: string }>): number {
+  return files.filter((file) => file.review_status === 'rejected').length
+}
+
 export type ApplicationFile = z.infer<typeof applicationFileSchema>
 
 export const applicationFileListSchema = z.array(applicationFileSchema)

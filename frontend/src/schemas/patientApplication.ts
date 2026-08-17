@@ -35,6 +35,10 @@ export const patientApplicationSchema = z.object({
    * with only `application:view` can find their own work.
    */
   assigned_to_username: nullableText,
+  /** Resolved by the API for the same reason as the assignee's. */
+  created_by_username: nullableText,
+  submitted_by_username: nullableText,
+  reviewed_by_username: nullableText,
   /**
    * Where this application's documents came from. Per application, not
    * per patient: a second application for the same patient routinely
@@ -56,10 +60,29 @@ export function applicationTone(
   return 'neutral'
 }
 
-const NON_REJECTABLE = ['submitted', 'rejected', 'deleted']
+const NON_REJECTABLE = ['submitted', 'deleted']
 
+/**
+ * Whether it can be turned down (again).
+ *
+ * A rejected application is deliberately still rejectable: the first
+ * problem gets fixed, the next one comes to light, and each rejection
+ * carries its own reason. A submitted one is not -- it has gone for
+ * review and the only thing left to do from here is close it.
+ */
 export function canReject(status: string): boolean {
   return !NON_REJECTABLE.includes(status)
+}
+
+/**
+ * Whether the application is finished being edited.
+ *
+ * Once submitted it is under review by somebody else, so the wizard
+ * becomes a read-only record of what was sent: no new documents, no
+ * verdicts, no changes to the patient behind it.
+ */
+export function isReadOnly(status: string | undefined): boolean {
+  return status === 'submitted'
 }
 
 /** A deleted application keeps its row but has nothing left to act on. */

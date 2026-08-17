@@ -10,6 +10,7 @@ import { usePermissions } from '@/hooks/useCurrentUser'
 import { useDeleteDialog } from '@/hooks/useDeleteDialog'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { patientHooks } from '@/hooks/useResources'
+import { PatientApplicationsModal } from '@/features/patients/PatientApplicationsModal'
 import { patientName, type Patient } from '@/schemas/patient'
 
 /** Most patient columns are nullable; render a dash, not an empty cell. */
@@ -63,6 +64,8 @@ function PatientsList() {
   const navigate = useNavigate()
   const { can } = usePermissions()
   const [search, setSearch] = useState('')
+  const [showingApplicationsFor, setShowingApplicationsFor] =
+    useState<Patient | null>(null)
 
   const { data, isLoading, isFetching, error } = patientHooks.useList()
   const remove = patientHooks.useRemove()
@@ -129,7 +132,18 @@ function PatientsList() {
           <>
             {/* No Files action here any more: documents hang off an
                 application, not off the patient, so they are reached
-                through Applications rather than from this row. */}
+                through Applications rather than from this row. Their
+                applications are, though -- see below. */}
+            <Can permission="application:view">
+              <Button
+                size="sm"
+                variant="outline"
+                aria-label={`Show applications for ${patientName(patient)}`}
+                onClick={() => setShowingApplicationsFor(patient)}
+              >
+                Applications
+              </Button>
+            </Can>
             {canModify ? (
               <>
                 <Can permission="patient:update">
@@ -161,6 +175,13 @@ function PatientsList() {
           </>
         )}
       />
+
+      {showingApplicationsFor ? (
+        <PatientApplicationsModal
+          patient={showingApplicationsFor}
+          onClose={() => setShowingApplicationsFor(null)}
+        />
+      ) : null}
 
       <ConfirmDeleteModal
         open={deleteDialog.isOpen}

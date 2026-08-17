@@ -324,3 +324,56 @@ def delete_file(stored: str) -> None:
         resolve_stored_path(stored).unlink(missing_ok=True)
     except Exception as exc:  # pragma: no cover - cleanup is not critical
         log.warning("file_delete_failed", path=stored, error=str(exc))
+
+
+def prune_empty_dirs(directory: Path) -> int:
+    """Remove a directory once nothing is left in it, and its parents too.
+
+    An upload lands in a folder of its own -- `<patient>-<timestamp>` --
+    and once every document in it has been filed under the patient and
+    the identified originals discarded, the folder is an empty shell.
+    They accumulate one per upload, so the storage root fills with
+    directories that hold nothing.
+
+    Only while empty, and never a root: a folder still holding a
+    document that was not de-identified is left exactly as it is.
+    """
+    roots = _allowed_roots()
+    removed = 0
+
+    try:
+        current = directory.resolve()
+    except OSError:  # pragma: no cover - unreadable path
+        return 0
+
+    # Bounded by the roots below, but a symlink loop or a path that
+    # somehow escapes them must not spin here.
+    while any(current.is_relative_to(root) and current != root for root in roots):
+        try:
+            current.rmdir()
+        except OSError:
+            # Not empty, or gone already. Either way there is nothing
+            # above it worth trying: its parent holds this one.
+            break
+
+        log.info("empty_dir_removed", directory=str(current))
+        removed += 1
+        current = current.parent
+
+    return removed
+
+
+def prune_stored_folders(*stored: Optional[str]) -> None:
+    """Clear away whichever folders these files were the last things in.
+
+    Takes the paths as they are held on a row -- typically a document's
+    original and its redacted copy, which live in different places and
+    can each leave an empty folder behind.
+    """
+    for path in stored:
+        if not path:
+            continue
+        try:
+            prune_empty_dirs(resolve_stored_path(path).parent)
+        except Exception:  # pragma: no cover - cleanup is best effort
+            continue

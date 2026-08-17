@@ -26,9 +26,31 @@ def application_link(application_id: str) -> Optional[str]:
     back to naming the id, which is what it did before.
     """
     base = (os.environ.get("APP_BASE_URL") or "").strip().rstrip("/")
-    if not base or not application_id:
+    if not application_id:
+        return None
+    if not base:
+        # Warned, not passed over: an email without the link is the
+        # symptom, and this is the only place that says why.
+        log.warning(
+            "application_link_unavailable",
+            application_id=application_id,
+            reason="APP_BASE_URL is not set",
+        )
         return None
     return f"{base}/applications/{application_id}"
+
+
+def _link_lines(application_id: str) -> List[str]:
+    """The one line worth reading in any of these emails.
+
+    The wizard's address, not the id: the id leaves the reader to open
+    the dashboard, find the list and search for eight characters of a
+    uuid, which is the errand this is here to save them.
+    """
+    link = application_link(application_id)
+    if link:
+        return [f"Open the application: {link}"]
+    return [f"Application: {application_id}"]
 
 
 def _display_name(user: User) -> str:
@@ -59,18 +81,40 @@ def source_folder_for(cursor, application_id: str) -> Optional[str]:
     return getattr(application, "original_file_path", None)
 
 
+def creator_of_application(cursor, application_id: str) -> Optional[User]:
+    """Whoever filed the application, if they are still on file."""
+    application = applications_crud.get_application(cursor, application_id)
+    created_by = getattr(application, "created_by_id", None)
+    if not created_by:
+        return None
+    return users_crud.get_user(cursor, created_by)
+
+
 def upload_recipients(
     cursor, application_id: str, fallback_user_id: Optional[str] = None
 ) -> List[User]:
     """Who to tell about an upload on this application.
 
-    The assigned user is the intended audience. When nobody is assigned
-    the person who started the upload is told instead -- a batch that
-    failed silently is worse than one email to the wrong-ish inbox.
+    The assigned user is the intended audience. With nobody assigned the
+    application's creator is told instead: they are the one waiting on
+    these documents, whereas the uploader may be a colleague who moved
+    the folder on their behalf and has nothing to do next. The uploader
+    is the last resort, because a batch that failed silently is worse
+    than one email to the wrong-ish inbox.
     """
     assignee = assignee_for_application(cursor, application_id)
     if assignee is not None:
         return [assignee]
+
+    creator = creator_of_application(cursor, application_id)
+    if creator is not None:
+        log.info(
+            "upload_notice_unassigned",
+            application_id=application_id,
+            falling_back_to=creator.id,
+            because="application creator",
+        )
+        return [creator]
 
     if fallback_user_id:
         actor = users_crud.get_user(cursor, fallback_user_id)
@@ -79,6 +123,7 @@ def upload_recipients(
                 "upload_notice_unassigned",
                 application_id=application_id,
                 falling_back_to=actor.id,
+                because="uploader",
             )
             return [actor]
 
@@ -97,17 +142,13 @@ def notify_assigned(assignee: User, application_id: str, assigned_by: User) -> b
         log.info("assignment_notice_no_recipient", application_id=application_id)
         return False
 
-    link = application_link(application_id)
     lines = [
         f"Hello {_display_name(assignee)},",
         "",
         f"{_display_name(assigned_by)} has assigned a patient application to you.",
         "",
-        f"Application: {application_id}",
     ]
-    if link:
-        lines.append(f"Open it here: {link}")
-
+    lines += _link_lines(application_id)
     lines += ["", "-- Hive"]
 
     return _send([assignee], "An application has been assigned to you", "\n".join(lines))
@@ -131,12 +172,8 @@ def _body(
     source_folder: Optional[str] = None,
 ) -> str:
     lines = [greeting, "", headline, ""]
-    lines.append(f"Application: {job.application_id}")
-
-    link = application_link(job.application_id)
-    if link:
-        lines.append(f"Open it here: {link}")
-
+    lines += _link_lines(job.application_id)
+    lines.append("")
     lines.append(f"Files received: {job.total}")
     lines.append(f"Stored: {job.stored}")
     lines.append(f"Failed: {job.failed}")

@@ -448,6 +448,11 @@ class PatientApplication(BaseModel):
     # belongs to: reading it off the users list would need `user:view`,
     # which is a much larger grant than "whose work is this".
     assigned_to_username: Optional[str] = None
+    # The same treatment for the people behind the other three ids. The
+    # summary reads "submitted by whom", and a uuid does not answer it.
+    created_by_username: Optional[str] = None
+    submitted_by_username: Optional[str] = None
+    reviewed_by_username: Optional[str] = None
 
 
 class AuditLogCreate(BaseModel):

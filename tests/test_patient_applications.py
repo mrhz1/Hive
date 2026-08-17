@@ -29,9 +29,10 @@ def test_model_exposes_every_requested_field(as_admin):
         "description", "created_by_id", "updated_by_id",
         "submitted_at", "created_at", "updated_at", "reviewed_at",
         "status_reason", "assigned_to_id", "original_file_path",
-        # Resolved by the router, not a column: whose work this is, for
-        # people who cannot read the users list.
-        "assigned_to_username",
+        # Resolved by the router, not columns: whose work this is and who
+        # did each thing to it, for people who cannot read the users list.
+        "assigned_to_username", "created_by_username",
+        "submitted_by_username", "reviewed_by_username",
     }
 
 
@@ -239,7 +240,10 @@ def test_an_approved_application_can_still_be_rejected(as_admin):
     assert response.json()["status"] == "rejected"
 
 
-def test_rejecting_twice_is_refused(as_admin):
+def test_rejecting_twice_records_the_second_reason(as_admin):
+    """Explicitly asked for: the first problem gets fixed, the next one
+    surfaces, and it has to be possible to say so. A rejection that
+    could only happen once left the second reason nowhere to go."""
     created = _application(as_admin, _patient(as_admin)).json()
     as_admin.post(f"/applications/{created['id']}/reject", json={"reason": "first"})
 
@@ -247,10 +251,11 @@ def test_rejecting_twice_is_refused(as_admin):
         f"/applications/{created['id']}/reject", json={"reason": "second"}
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 200
+    assert response.json()["status"] == "rejected"
     assert as_admin.get(f"/applications/{created['id']}").json()[
         "status_reason"
-    ] == "first"
+    ] == "second"
 
 
 def test_a_patient_with_an_application_cannot_be_deleted(as_admin):

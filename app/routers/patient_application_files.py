@@ -13,14 +13,19 @@ from app.crud import patient_application_files as crud
 from app.crud import patient_applications as applications_crud
 from app.db import get_cursor
 from app.deid import (
+    DEID_SUFFIX,
     DEIDENTIFIABLE_LABEL,
     dispatch_deidentification,
     is_deidentifiable,
     queued_status,
+    remove_deid_artifacts,
 )
+from app.embed import embed_metadata, generated_facts
 from app.errors import NotFoundError, ValidationError
 from app.access_log import DOWNLOAD, EXPORT, READ, record_access
+from app.file_metadata import extract as extract_metadata
 from app.filetype import SNIFF_BYTES, resolve_extension
+from app.ids import new_document_serial
 from app.logging_setup import get_logger
 from app.preview import read_word_document, render_dicom_png
 from app.schemas import (
@@ -38,10 +43,15 @@ from app.uploads import known_patient_id as _known_patient_id
 from app.uploads import record_metadata as _record_metadata
 from app.xlsx import workbook_bytes
 from app.storage import (
+    deid_dir_for,
     delete_file as remove_from_disk,
+    document_name,
+    document_type_for,
     file_extension,
     guess_mime_type,
+    prune_stored_folders,
     resolve_stored_path,
+    safe_path_segment,
     sanitize_filename,
     write_file,
     write_patient_document,
@@ -221,6 +231,118 @@ async def upload_application_files_in_background(
     return uploads.get_job(job.id)
 
 
+def _redacted_upload_name(patient_id: str, extension: str) -> str:
+    """What the pipeline would have called this, had it produced it.
+
+    Same scheme as an automatic run -- `<patient>-<type>-<date>-<serial>`
+    with the de-identification suffix -- so a hand-redacted document is
+    not the one file in the library that is named differently, and
+    nobody has to learn which of two conventions they are looking at.
+    """
+    stem = document_name(
+        patient_id or "unknown", document_type_for(extension), new_document_serial(), ""
+    )
+    # The uploaded bytes' own extension, not the one the pipeline would
+    # have converted to: these bytes are the finished document, and
+    # calling a .doc a .docx would only stop anything from opening it.
+    return f"{stem}{DEID_SUFFIX}.{extension.lower()}"
+
+
+@router.post(
+    "/applications/{application_id}/files/deidentified",
+    response_model=PatientApplicationFile,
+    status_code=201,
+)
+async def upload_deidentified_application_file(
+    application_id: str,
+    file: UploadFile = File(...),
+    description: Optional[str] = Form(default=None),
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("application:update")),
+):
+    """Attach an already-redacted document, with no original behind it.
+
+    For work done outside the pipeline: a document redacted by hand, or
+    one that arrived from elsewhere already clean. It lands finished --
+    'done' and redacted -- because there is nothing left to run over it,
+    and it is filed and named exactly as an automatic output would be.
+    """
+    application = applications_crud.get_application_or_404(cursor, application_id)
+
+    raw_name = file.filename or "file"
+    data = await file.read()
+
+    if not data:
+        raise ValidationError(f"'{raw_name}' is empty")
+    if len(data) > MAX_FILE_BYTES:
+        raise _too_large(raw_name)
+
+    # After the read: an extensionless DICOM is only recognisable from
+    # its bytes, and the name it was given says nothing.
+    extension = resolve_extension(raw_name, data[:SNIFF_BYTES])
+    if not is_deidentifiable(extension):
+        raise ValidationError(
+            f"'{extension}' files are not handled here (accepted: "
+            f"{DEIDENTIFIABLE_LABEL})"
+        )
+
+    patient_id = _known_patient_id(cursor, application) or ""
+    stored_name = _redacted_upload_name(patient_id, extension)
+
+    directory = deid_dir_for(extension)
+    if patient_id:
+        directory = directory / safe_path_segment(patient_id)
+    directory.mkdir(parents=True, exist_ok=True)
+
+    stored_path = directory / stored_name
+    stored_path.write_bytes(data)
+
+    record = crud.create_file(
+        cursor,
+        application_id=application_id,
+        original_file_name=raw_name,
+        sanitized_file_name=stored_name,
+        file_extension=extension,
+        mime_type=guess_mime_type(raw_name, file.content_type),
+        file_size=len(data),
+        # There is no original: the redacted copy is the only file there
+        # is, so both paths point at it rather than one of them dangling.
+        file_path=str(stored_path),
+        description=description or "Uploaded already de-identified",
+    )
+    record = crud.update_file(
+        cursor,
+        record.id,
+        PatientApplicationFileUpdate(
+            deid_status="done",
+            is_deidentified=True,
+            deidentified_file_name=stored_name,
+            de_identified_file_path=str(stored_path),
+        ),
+    )
+
+    # Into the file, not into `file_metadata` -- that row is for what a
+    # document arrived carrying. See app/embed.py.
+    embed_metadata(
+        stored_path,
+        extension,
+        generated_facts(
+            patient_id=patient_id,
+            output_name=stored_name,
+            output_type=extension,
+            by="manual upload",
+        ),
+    )
+
+    log.info(
+        "deidentified_file_attached",
+        application_id=application_id,
+        file_id=record.id,
+        name=stored_name,
+    )
+    return record
+
+
 @router.get("/upload-jobs/{job_id}", response_model=UploadJob)
 def get_upload_job(
     job_id: str,
@@ -245,22 +367,52 @@ def get_application_file(
     return crud.get_file_or_404(cursor, file_id)
 
 
+def _metadata_of(cursor, document, deidentified: bool) -> FileMetadata:
+    """One document's metadata, from whichever copy was asked for.
+
+    The original's was extracted once, at upload, and stored -- it is
+    what the file arrived carrying, and it does not change. The redacted
+    copy's is read here and now instead: it is only worth looking at to
+    check that what the pipeline (or a person) produced no longer holds
+    the identifiers the original did, and storing a second row keyed by
+    the same file id would make the two indistinguishable afterwards.
+    """
+    if not deidentified:
+        record = metadata_crud.get_metadata_for_file(cursor, document.id)
+        if record is None:
+            raise NotFoundError(f"No metadata recorded for file '{document.id}'")
+        return record
+
+    path, extension = _preview_path(document, True)
+    file_type, metadata, status, error = extract_metadata(path, extension)
+
+    return FileMetadata(
+        # Not a row in `file_metadata`; the id says which file it is of.
+        id=f"{document.id}:deid",
+        file_id=document.id,
+        file_type=file_type,
+        metadata=metadata,
+        status=status,
+        error=error,
+        created_at=datetime.now(timezone.utc),
+    )
+
+
 @router.get("/files/{file_id}/metadata", response_model=FileMetadata)
 def get_application_file_metadata(
     file_id: str,
+    deidentified: bool = False,
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
-    """The metadata extracted at upload time."""
+    """The metadata of the original, or of its redacted copy."""
     document = crud.get_file_or_404(cursor, file_id)
+    record = _metadata_of(cursor, document, deidentified)
 
-    record = metadata_crud.get_metadata_for_file(cursor, file_id)
-    if record is None:
-        raise NotFoundError(f"No metadata recorded for file '{file_id}'")
-
-    # The original's own metadata: names, MRNs, whatever the format held.
+    # The original's own metadata is names, MRNs, whatever the format
+    # held -- a disclosure. The redacted copy's is not.
     _record_file_access(
-        cursor, document, actor, READ, deidentified=False, note="metadata"
+        cursor, document, actor, READ, deidentified=deidentified, note="metadata"
     )
     return record
 
@@ -269,15 +421,13 @@ def get_application_file_metadata(
 def export_application_file_metadata(
     file_id: str,
     fields: Optional[str] = None,
+    deidentified: bool = False,
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
     """The metadata as an Excel workbook."""
     document = crud.get_file_or_404(cursor, file_id)
-
-    record = metadata_crud.get_metadata_for_file(cursor, file_id)
-    if record is None:
-        raise NotFoundError(f"No metadata recorded for file '{file_id}'")
+    record = _metadata_of(cursor, document, deidentified)
 
     wanted = [name.strip() for name in (fields or "").split(",") if name.strip()]
     items = sorted(record.metadata.items())
@@ -292,14 +442,15 @@ def export_application_file_metadata(
     )
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
-    name = f"metadata-{file_id[:8]}-{stamp}.xlsx"
+    kind = "deid-metadata" if deidentified else "metadata"
+    name = f"{kind}-{file_id[:8]}-{stamp}.xlsx"
 
     _record_file_access(
         cursor,
         document,
         actor,
         EXPORT,
-        deidentified=False,
+        deidentified=deidentified,
         record_count=len(items),
         note=name,
     )
@@ -676,6 +827,16 @@ def delete_application_file(
 ):
     record = crud.delete_file(cursor, file_id)
     metadata_crud.delete_metadata_for_files(cursor, [file_id])
+
+    # The run's own leftovers first, while the original's path is still
+    # the way to find them -- they sit in a folder beside it and are
+    # named after it. See app/deid.py: only the redacted document itself
+    # is recorded on the row, so the text and the report went nowhere.
+    remove_deid_artifacts(record.file_path)
+
     remove_from_disk(record.file_path)
     if record.de_identified_file_path:
         remove_from_disk(record.de_identified_file_path)
+
+    # And the upload folder, if that was the last document in it.
+    prune_stored_folders(record.file_path, record.de_identified_file_path)
