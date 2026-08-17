@@ -1,0 +1,41 @@
+# Expected PHI entities - handwritten document
+# format: TYPE<TAB>surface form
+ADDRESS	58 Marlborough Row, Fall River, Mass. 02720
+CONTACT	Mrs. Edith Brennan (wife)
+CONTACT	Fr. Cornelius Doyle
+DATE	17 Jan 1971
+DATE	18 Jan 1971
+DATE	19 Jan 1971
+DATE	20 Jan 1971
+DATE	21 Jan 1971
+DATE	22 Jan 1971
+DATE	23 Jan 1971
+DATE	24 Jan 1971
+DATE	26 Jan 1971
+DATE	29 Jan 1971
+DATE	2 Feb 1971
+DOB	11 Sept 1919
+DOB	9/11/19
+FACILITY	Providence Mercy Hospital
+FACILITY	Ward C - Men's Medical
+FACILITY	St. Anne's Convalescent Home
+MRN	Unit No. 22-84-016
+MRN	22-84-016
+PATIENT	Arthur Leonard Brennan
+PATIENT	Brennan, Arthur L.
+PATIENT	Mr. Brennan
+PATIENT	Art Brennan
+PHONE	OS 4-7719
+PHONE	(617) 555-0233
+PROVIDER	R. W. Ashcroft, M.D.
+PROVIDER	J. P. Mulcahy, M.D.
+PROVIDER	H. Steinmetz, M.D.
+PROVIDER	L. Cavanaugh, M.D.
+PROVIDER	Sr. M. Bernadette, R.N.
+PROVIDER	T. Okamura, M.D.
+PROVIDER	E. Vasquez, R.N.
+PROVIDER	G. Pemberton, M.D.
+PROVIDER	D. Lindqvist, M.D.
+PROVIDER	A. Chowdhury, M.D.
+PROVIDER	Miss K. Halloran, R.N.
+SSN	327-56-4188
