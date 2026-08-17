@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/Field'
 import { Badge, PageHeader } from '@/components/ui/Misc'
 import { DeidentifiedFileMetadataModal } from '@/features/files/DeidentifiedFileMetadataModal'
-import { DeidentifiedUpload } from '@/features/files/DeidentifiedUpload'
 import { FileViewerModal } from '@/features/patients/FileViewerModal'
 import {
   useDeidentifiedFiles,
@@ -118,14 +117,14 @@ function FilesPage() {
   return (
     <RequirePermission permission="files:read">
       <div className="space-y-6">
+        {/* No upload here any more: a de-identified file belongs to an
+            application, and offering to add one from a page that lists
+            everybody's left it unclear what it would be attached to.
+            Step 2 of the application wizard is where it goes now. */}
         <PageHeader
           title="Files"
-          description="De-identified documents, across every patient."
+          description="De-identified documents, across every patient. Read-only -- add one from the application it belongs to."
         />
-
-        <Can permission="files:upload">
-          <DeidentifiedUpload files={data ?? []} />
-        </Can>
 
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4">
           <TextField

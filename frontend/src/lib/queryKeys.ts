@@ -48,8 +48,15 @@ export const queryKeys = {
     list: (applicationId: string) =>
       [...queryKeys.applicationFiles.all, 'list', applicationId] as const,
     // Per file, fetched on demand when someone opens the metadata panel.
-    metadata: (fileId: string) =>
-      [...queryKeys.applicationFiles.all, 'metadata', fileId] as const,
+    // Keyed by which copy: the original's is what it arrived carrying,
+    // the redacted one's is what survived redaction, and caching them
+    // under one key would show whichever was opened first.
+    metadata: (fileId: string, deidentified = false) =>
+      [
+        ...queryKeys.applicationFiles.all,
+        deidentified ? 'deid-metadata' : 'metadata',
+        fileId,
+      ] as const,
     // One background batch, polled while it runs.
     uploadJob: (jobId: string) =>
       [...queryKeys.applicationFiles.all, 'upload-job', jobId] as const,

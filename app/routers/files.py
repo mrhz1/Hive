@@ -19,7 +19,11 @@ from app.crud import patient_application_files as crud
 from app.crud import patient_applications as applications_crud
 from app.crud import patients as patients_crud
 from app.db import get_cursor
-from app.deid import DEIDENTIFIABLE_LABEL, is_deidentifiable
+from app.deid import (
+    DEIDENTIFIABLE_LABEL,
+    is_deidentifiable,
+    remove_deid_artifacts,
+)
 from app.embed import embed_metadata, generated_facts
 from app.errors import NotFoundError, ValidationError
 from app.filetype import SNIFF_BYTES, resolve_extension
@@ -371,6 +375,11 @@ def delete_deidentified_file(
         raise NotFoundError(f"File '{file_id}' has no de-identified copy")
 
     remove_from_disk(record.de_identified_file_path)
+    # The rest of that run goes with it: the text and report describe a
+    # redaction whose output no longer exists, and the text in
+    # particular is the document's contents in the clear. Re-running
+    # de-identification writes all three again.
+    remove_deid_artifacts(record.file_path)
 
     crud.update_file(
         cursor,

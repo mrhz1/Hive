@@ -282,3 +282,110 @@ def test_an_original_without_a_redacted_copy_is_kept(
     submission.finalise_submission(application_id)
 
     assert original.is_file()
+
+
+# ------------------------------------------------- what is left behind
+
+def test_submitting_clears_out_the_upload_folder(
+    as_admin, storage_root, deid_dirs
+):
+    """An upload lands in a folder of its own. Once its documents have
+    been filed under the patient and the originals discarded, the folder
+    is an empty shell, and they were accumulating one per upload."""
+    _, application_id, record = _submitted_application(as_admin, storage_root)
+    original = pathlib.Path(record["file_path"])
+    staged = _stage_output(record, storage_root)
+
+    as_admin.put(
+        f"/files/{record['id']}",
+        json={"deid_status": "done", "de_identified_file_path": str(staged)},
+    )
+
+    submission.finalise_submission(application_id)
+
+    assert not original.parent.exists(), "the upload folder was left behind"
+
+
+def test_submitting_takes_the_run_s_text_and_report_with_it(
+    as_admin, storage_root, deid_dirs
+):
+    """The pipeline also writes the text it read out of the document.
+    Discarding the original while leaving that behind keeps the contents
+    in the clear, which is the thing submission is meant to end."""
+    _, application_id, record = _submitted_application(as_admin, storage_root)
+    staged = _stage_output(record, storage_root)
+
+    text = staged.with_suffix(".txt")
+    report = staged.parent / f"{staged.stem}.report.json"
+    text.write_text("Jane Doe, MRN 12345")
+    report.write_text("{}")
+
+    as_admin.put(
+        f"/files/{record['id']}",
+        json={"deid_status": "done", "de_identified_file_path": str(staged)},
+    )
+
+    submission.finalise_submission(application_id)
+
+    assert not text.exists(), "the extracted text survived submission"
+    assert not report.exists(), "the redaction report survived submission"
+
+
+def test_a_folder_still_holding_a_document_is_kept(
+    as_admin, storage_root, deid_dirs
+):
+    """One document filed, one never de-identified. The second one's
+    original stays, so the folder has to stay with it."""
+    _, application_id, record = _submitted_application(as_admin, storage_root)
+    other = as_admin.post(
+        f"/applications/{application_id}/files",
+        files=[("files", ("second.pdf", b"%PDF-1.4 fake", "application/pdf"))],
+    ).json()[0]
+
+    staged = _stage_output(record, storage_root)
+    as_admin.put(
+        f"/files/{record['id']}",
+        json={"deid_status": "done", "de_identified_file_path": str(staged)},
+    )
+
+    submission.finalise_submission(application_id)
+
+    kept = pathlib.Path(other["file_path"])
+    assert kept.is_file(), "an un-redacted original was removed"
+    assert kept.parent.is_dir()
+
+
+def test_a_document_attached_already_redacted_survives_submission(
+    as_admin, storage_root, deid_dirs
+):
+    """It has no original behind it, so both paths on the row name the
+    same file. Discarding 'the original' deleted the only copy there
+    was, moments after filing it."""
+    patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
+    application_id = as_admin.post(
+        "/applications", json={"patient_id": patient_id}
+    ).json()["id"]
+
+    record = as_admin.post(
+        f"/applications/{application_id}/files/deidentified",
+        files=[("file", ("clean.pdf", _pdf_bytes(), "application/pdf"))],
+    ).json()
+
+    submission.finalise_submission(application_id)
+
+    filed = deid_dirs["pdf"] / patient_id / record["deidentified_file_name"]
+    assert filed.is_file(), "the attached document is gone after submitting"
+
+    listed = as_admin.get(f"/applications/{application_id}/files").json()
+    assert pathlib.Path(listed[0]["de_identified_file_path"]).is_file()
+
+
+def _pdf_bytes() -> bytes:
+    import io
+
+    document = fitz.open()
+    document.new_page().insert_text(fitz.Point(200, 400), "already redacted")
+    buffer = io.BytesIO()
+    document.save(buffer)
+    document.close()
+    return buffer.getvalue()

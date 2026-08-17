@@ -3,6 +3,7 @@ import {
   CheckCheck,
   Eye,
   FileJson,
+  FileSearch,
   ShieldCheck,
   ShieldOff,
   Trash2,
@@ -15,9 +16,10 @@ import { DataTable, type Column } from '@/components/DataTable'
 import { ReasonDialog } from '@/components/ReasonDialog'
 import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/Field'
-import { Badge } from '@/components/ui/Misc'
+import { Badge, Card } from '@/components/ui/Misc'
 import { Spinner } from '@/components/ui/Spinner'
 import { DropdownMenu, type MenuAction } from '@/components/ui/DropdownMenu'
+import { DeidentifiedAttach } from '@/features/applications/DeidentifiedAttach'
 import { FileMetadataModal } from '@/features/applications/FileMetadataModal'
 import { FileViewerModal } from '@/features/patients/FileViewerModal'
 import { FolderUpload } from '@/features/patients/FolderUpload'
@@ -52,6 +54,7 @@ export function FileReviewPanel({
   onUploaded,
   initialFiles,
   onInitialFilesTaken,
+  readOnly = false,
 }: {
   applicationId: string
   /** Where the batch landed. The wizard records it on the patient. */
@@ -63,6 +66,13 @@ export function FileReviewPanel({
    */
   initialFiles?: File[]
   onInitialFilesTaken?: () => void
+  /**
+   * A submitted application: the documents are a record of what was
+   * sent, not a pile still being worked through. Only the redacted copy
+   * and its metadata are on offer -- nothing that changes anything, and
+   * not the original, which there is no longer a reason to open here.
+   */
+  readOnly?: boolean
 }) {
   const filesQuery = useApplicationFiles(applicationId)
   const deidentify = useDeidentifyFile(applicationId)
@@ -87,6 +97,7 @@ export function FileReviewPanel({
   const { start: startUpload } = upload
 
   useEffect(() => {
+    if (readOnly) return
     if (!applicationId || takenFor.current === applicationId) return
     if (!initialFiles || initialFiles.length === 0) return
 
@@ -94,7 +105,7 @@ export function FileReviewPanel({
     void startUpload({ files: initialFiles })
       .then(() => onInitialFilesTaken?.())
       .catch(() => undefined)
-  }, [applicationId, initialFiles, startUpload, onInitialFilesTaken])
+  }, [applicationId, initialFiles, startUpload, onInitialFilesTaken, readOnly])
 
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [viewing, setViewing] = useState<{
@@ -103,8 +114,10 @@ export function FileReviewPanel({
     isDeidentified: boolean
   } | null>(null)
 
-  const [showingMetadataFor, setShowingMetadataFor] =
-    useState<ApplicationFile | null>(null)
+  const [showingMetadata, setShowingMetadata] = useState<{
+    file: ApplicationFile
+    deidentified: boolean
+  } | null>(null)
   const [rejecting, setRejecting] = useState<ApplicationFile | null>(null)
   const [deleting, setDeleting] = useState<ApplicationFile | null>(null)
   const [search, setSearch] = useState('')
@@ -164,6 +177,34 @@ export function FileReviewPanel({
     const deidentifying = deidentify.isPending && deidentify.variables === file.id
     const reviewing = review.isPending && review.variables?.fileId === file.id
 
+    const viewDeidentified: MenuAction = {
+      id: 'deidentified',
+      label: 'View de-identified',
+      icon: <ShieldCheck className="size-4" aria-hidden="true" />,
+      isLoading: readOnly && openingId === file.id,
+      disabled: !file.de_identified_file_path,
+      title: file.de_identified_file_path
+        ? undefined
+        : 'No redacted copy has been produced yet',
+      onSelect: () => void showFile(file, true),
+    }
+
+    const deidentifiedMetadata: MenuAction = {
+      id: 'deid-metadata',
+      label: 'De-identified metadata',
+      icon: <FileSearch className="size-4" aria-hidden="true" />,
+      disabled: !file.de_identified_file_path,
+      title: file.de_identified_file_path
+        ? 'What the redacted copy still carries'
+        : 'No redacted copy has been produced yet',
+      onSelect: () => setShowingMetadata({ file, deidentified: true }),
+    }
+
+    // A submitted application is a record, so nothing here may change
+    // it -- and the original is not on offer either: the reason to open
+    // it was to decide about it, and that has been done.
+    if (readOnly) return [viewDeidentified, deidentifiedMetadata]
+
     return [
       {
         id: 'original',
@@ -172,16 +213,7 @@ export function FileReviewPanel({
         isLoading: openingId === file.id,
         onSelect: () => void showFile(file),
       },
-      {
-        id: 'deidentified',
-        label: 'View de-identified',
-        icon: <ShieldCheck className="size-4" aria-hidden="true" />,
-        disabled: !file.de_identified_file_path,
-        title: file.de_identified_file_path
-          ? undefined
-          : 'No redacted copy has been produced yet',
-        onSelect: () => void showFile(file, true),
-      },
+      viewDeidentified,
       {
         id: 'metadata',
         label: 'Show metadata',
@@ -190,8 +222,9 @@ export function FileReviewPanel({
         title: hasExtractableMetadata(file.file_extension)
           ? undefined
           : 'Metadata is only read from PDF, DICOM and Word files',
-        onSelect: () => setShowingMetadataFor(file),
+        onSelect: () => setShowingMetadata({ file, deidentified: false }),
       },
+      deidentifiedMetadata,
       {
         id: 'deidentify',
         separatorBefore: true,
@@ -318,19 +351,30 @@ export function FileReviewPanel({
 
   return (
     <div className="space-y-6">
-      <FolderUpload
-        isUploading={upload.isSending}
-        onUpload={async (files, description) => {
-          await upload.start({
-            files,
-            ...(description ? { description } : {}),
-          })
-        }}
-      />
+      {readOnly ? (
+        <Card className="border-[rgb(var(--border))] p-4 text-sm text-[rgb(var(--foreground-muted))]">
+          This application has been submitted. Its documents are shown as
+          they were sent -- the de-identified copy and what it carries.
+        </Card>
+      ) : (
+        <>
+          <FolderUpload
+            isUploading={upload.isSending}
+            onUpload={async (files, description) => {
+              await upload.start({
+                files,
+                ...(description ? { description } : {}),
+              })
+            }}
+          />
 
-      {upload.job ? (
-        <UploadProgress job={upload.job} onDismiss={upload.dismiss} />
-      ) : null}
+          <DeidentifiedAttach applicationId={applicationId} />
+
+          {upload.job ? (
+            <UploadProgress job={upload.job} onDismiss={upload.dismiss} />
+          ) : null}
+        </>
+      )}
 
       <div className="flex flex-wrap items-end justify-between gap-4 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4">
         <div className="min-w-64 flex-1">
@@ -343,31 +387,33 @@ export function FileReviewPanel({
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            disabled={undecided === 0}
-            title={
-              undecided === 0
-                ? 'Every document has been decided'
-                : `Approve the ${undecided} document${undecided === 1 ? '' : 's'} still waiting`
-            }
-            isLoading={approveAll.isPending}
-            leadingIcon={<CheckCheck className="size-4" aria-hidden="true" />}
-            onClick={() => approveAll.mutate()}
-          >
-            Approve all
-          </Button>
-          <Button
-            variant="outline"
-            disabled={files.length === 0}
-            isLoading={deidentifyAll.isPending}
-            leadingIcon={<ShieldCheck className="size-4" aria-hidden="true" />}
-            onClick={() => deidentifyAll.mutate()}
-          >
-            De-identify all
-          </Button>
-        </div>
+        {readOnly ? null : (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              disabled={undecided === 0}
+              title={
+                undecided === 0
+                  ? 'Every document has been decided'
+                  : `Approve the ${undecided} document${undecided === 1 ? '' : 's'} still waiting`
+              }
+              isLoading={approveAll.isPending}
+              leadingIcon={<CheckCheck className="size-4" aria-hidden="true" />}
+              onClick={() => approveAll.mutate()}
+            >
+              Approve all
+            </Button>
+            <Button
+              variant="outline"
+              disabled={files.length === 0}
+              isLoading={deidentifyAll.isPending}
+              leadingIcon={<ShieldCheck className="size-4" aria-hidden="true" />}
+              onClick={() => deidentifyAll.mutate()}
+            >
+              De-identify all
+            </Button>
+          </div>
+        )}
       </div>
 
       <DataTable
@@ -381,7 +427,9 @@ export function FileReviewPanel({
         emptyMessage={
           search.trim()
             ? `No document matches "${search.trim()}".`
-            : 'No documents yet. Choose a folder above to add them.'
+            : readOnly
+              ? 'No documents were attached to this application.'
+              : 'No documents yet. Choose a folder above to add them.'
         }
         rowActions={(file) => (
           <DropdownMenu
@@ -391,10 +439,11 @@ export function FileReviewPanel({
         )}
       />
 
-      {showingMetadataFor ? (
+      {showingMetadata ? (
         <FileMetadataModal
-          file={showingMetadataFor}
-          onClose={() => setShowingMetadataFor(null)}
+          file={showingMetadata.file}
+          deidentified={showingMetadata.deidentified}
+          onClose={() => setShowingMetadata(null)}
         />
       ) : null}
 

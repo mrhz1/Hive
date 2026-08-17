@@ -4,7 +4,7 @@ import signal
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import structlog
 
@@ -15,7 +15,11 @@ from app.db import hive_cursor
 from app.embed import embed_metadata, generated_facts
 from app.logging_setup import get_logger
 from app.schemas import PatientApplicationFileUpdate
-from app.storage import resolve_stored_path
+from app.storage import (
+    delete_file as remove_from_disk,
+    prune_empty_dirs,
+    resolve_stored_path,
+)
 
 log = get_logger(__name__)
 
@@ -53,6 +57,75 @@ def is_deidentifiable(extension: str) -> bool:
 def deid_output_extension(extension: str) -> str:
     """The extension the pipeline will write for this input."""
     return DEID_OUTPUT_EXTENSIONS.get((extension or "").lower(), ".pdf")
+
+
+def _resolved_or_none(stored: str) -> Optional[Path]:
+    """The path, or nothing. Cleanup must not raise on the way past."""
+    try:
+        return resolve_stored_path(stored)
+    except Exception:
+        # Outside the storage root, or unreadable -- the same judgement
+        # delete_file makes.
+        return None
+
+
+def deid_artifacts(source_stored_path: str) -> List[Path]:
+    """Everything a de-identification run wrote for one source document.
+
+    The redacted document is only one of three: the pipeline also writes
+    `<stem>_deid.txt` -- the text it read out of the file -- and
+    `<stem>_deid.report.json`, saying what it found and redacted. Only
+    the first is moved out and recorded on the row, so those two are the
+    ones nothing else knows about, and deleting a document used to leave
+    them behind: the extracted text of a document that no longer exists,
+    sitting in the upload folder with nothing pointing at it.
+
+    Matched by name rather than globbed, because a stem comes from a
+    file name and `[` in one would quietly change what a glob means.
+    """
+    source = _resolved_or_none(source_stored_path)
+    if source is None:
+        return []
+
+    output_dir = source.parent / DEID_SUBFOLDER
+    if not output_dir.is_dir():
+        return []
+
+    prefix = f"{source.stem}{DEID_SUFFIX}"
+    try:
+        return sorted(
+            path
+            for path in output_dir.iterdir()
+            if path.is_file() and path.name.startswith(prefix)
+        )
+    except OSError as exc:  # pragma: no cover - unreadable directory
+        log.warning("deid_artifact_scan_failed", directory=str(output_dir), error=str(exc))
+        return []
+
+
+def remove_deid_artifacts(source_stored_path: str) -> int:
+    """Delete a run's leftovers, and the folder if it held nothing else."""
+    removed = 0
+    for path in deid_artifacts(source_stored_path):
+        remove_from_disk(str(path))
+        removed += 1
+
+    if removed:
+        log.info(
+            "deid_artifacts_removed", source=source_stored_path, count=removed
+        )
+
+    source = _resolved_or_none(source_stored_path)
+    if source is not None:
+        # Attempted even when there was nothing to remove: submission
+        # moves the redacted document out, and what it leaves behind is
+        # this folder with nothing in it. prune_empty_dirs stops the
+        # moment a directory is not empty, so another document's outputs
+        # in here keep it -- and the upload folder above it -- exactly
+        # as they are.
+        prune_empty_dirs(source.parent / DEID_SUBFOLDER)
+
+    return removed
 
 
 class DeidError(Exception):

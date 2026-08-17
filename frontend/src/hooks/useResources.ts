@@ -370,13 +370,44 @@ export function useApproveAllFiles(applicationId: string) {
   )
 }
 
-export function useFileMetadata(fileId: string | undefined) {
+export function useFileMetadata(
+  fileId: string | undefined,
+  deidentified = false
+) {
   return useQuery({
-    queryKey: queryKeys.applicationFiles.metadata(fileId ?? ''),
-    queryFn: () => applicationFilesApi.metadata(fileId as string),
+    queryKey: queryKeys.applicationFiles.metadata(fileId ?? '', deidentified),
+    queryFn: () => applicationFilesApi.metadata(fileId as string, deidentified),
     enabled: Boolean(fileId),
     staleTime: Infinity,
     retry: false,
+  })
+}
+
+/**
+ * Attach a document that is already redacted.
+ *
+ * Nothing to de-identify and nothing to review against: it lands done,
+ * named as the pipeline would have named its own output.
+ */
+export function useUploadDeidentifiedApplicationFile(applicationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ file, description }: { file: File; description?: string }) =>
+      applicationFilesApi.uploadDeidentified(applicationId, file, description),
+    onSuccess: (created) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.applicationFiles.list(applicationId),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.deidentifiedFiles.all,
+      })
+      toast.success('De-identified file attached', {
+        description: `Stored as ${created.deidentified_file_name}`,
+      })
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not attach the file'))
+    },
   })
 }
 

@@ -14,7 +14,7 @@ import {
   useUpdateApplication,
 } from '@/hooks/useResources'
 import { cn } from '@/lib/cn'
-import { undecidedCount } from '@/schemas/applicationFile'
+import { rejectedCount, undecidedCount } from '@/schemas/applicationFile'
 import {
   patientName,
   toPatientFormValues,
@@ -22,6 +22,7 @@ import {
 } from '@/schemas/patient'
 import {
   canReject,
+  isReadOnly,
   type PatientApplication,
 } from '@/schemas/patientApplication'
 import { ApplicationSummary } from './ApplicationSummary'
@@ -174,21 +175,26 @@ export function ApplicationWizard({
       .catch(() => setAssignedTo(record.assigned_to_id ?? ''))
   }
 
-  /** Step 1 cannot be left without somewhere for the documents to come from. */
-  function folderIsMissing(): boolean {
+  /**
+   * Step 1 needs both halves before anything is written.
+   *
+   * Checked before the patient is saved, not after: the patient used to
+   * be created regardless and only the application waited on the
+   * folder, which left a patient on file that nobody had set out to
+   * create and no application pointing at them.
+   */
+  function stepOneIsComplete(): boolean {
     if (folder.trim()) {
       setFolderError(null)
-      return false
+      return true
     }
     setFolderError('Choose the folder this application’s documents come from')
-    return true
+    toast.error('Choose a source folder before saving the patient')
+    return false
   }
 
   async function onPatientSaved(saved: Patient) {
     setPatient(saved)
-
-    // The patient is saved either way; only the application waits.
-    if (folderIsMissing()) return
 
     let current: PatientApplication | undefined
     try {
@@ -269,6 +275,13 @@ export function ApplicationWizard({
 
   const files = useApplicationFiles(record?.id ?? '', Boolean(record))
   const undecided = undecidedCount(files.data ?? [])
+  const rejected = rejectedCount(files.data ?? [])
+
+  // Submitted: it has gone for review, and everything here is now a
+  // record of what was sent rather than something still being put
+  // together. Every step stays reachable -- reading it back is the
+  // whole point -- and none of them offer to change anything.
+  const locked = isReadOnly(record?.status)
 
   return (
     <div className="space-y-6">
@@ -276,7 +289,9 @@ export function ApplicationWizard({
         title={application ? 'Application' : 'New application'}
         description={
           patient
-            ? patientName(patient)
+            ? // The id as well as the name: names repeat, and it is the
+              // id that appears on the documents and in every email.
+              `${patientName(patient)} · ${patient.id}`
             : 'Enter the patient, attach their documents, then review.'
         }
         actions={
@@ -286,14 +301,25 @@ export function ApplicationWizard({
         }
       />
 
-      <StepRail current={current} furthest={furthest} onSelect={goTo} />
+      <StepRail
+        current={current}
+        furthest={locked ? 3 : furthest}
+        onSelect={goTo}
+      />
 
       {current === 1 ? (
         <div className="space-y-4">
+          {locked ? (
+            <Card className="p-4 text-sm text-[rgb(var(--foreground-muted))]">
+              This application has been submitted. Everything below is
+              shown as it was sent and cannot be changed.
+            </Card>
+          ) : null}
+
           <AssigneeCard
             value={assignedTo}
             onChange={assign}
-            disabled={updateApplication.isPending}
+            disabled={locked || updateApplication.isPending}
           />
 
           <Card className="p-5">
@@ -306,7 +332,7 @@ export function ApplicationWizard({
                 required
                 value={folder}
                 files={folderFiles}
-                disabled={isSaving}
+                disabled={locked || isSaving}
                 onSelect={(path, files) => {
                   // Keep a typed-in path when the picker yields none.
                   setFolder(path || folder)
@@ -326,11 +352,11 @@ export function ApplicationWizard({
           {/* Only offered while the patient is still undecided. Once one
               is attached, changing it would silently move an application
               -- and any documents already on it -- to someone else. */}
-          {patient ? null : (
+          {patient || locked ? null : (
             <PatientSourceChoice value={source} onChange={setSource} />
           )}
 
-          {source === 'existing' && !patient ? (
+          {source === 'existing' && !patient && !locked ? (
             <ExistingPatientPicker onSelect={onPatientChosen} />
           ) : (
             <>
@@ -353,9 +379,11 @@ export function ApplicationWizard({
                 {...(patient ? { patient } : {})}
                 cancelTo="/applications"
                 submitLabel={patient ? 'Save and continue' : 'Create and continue'}
+                onBeforeSubmit={stepOneIsComplete}
                 onSaved={onPatientSaved}
                 // The application asks for its own folder above.
                 showFilePath={false}
+                readOnly={locked}
               />
             </>
           )}
@@ -370,6 +398,7 @@ export function ApplicationWizard({
               onUploaded={recordUploadFolder}
               initialFiles={folderFiles}
               onInitialFilesTaken={() => setFolderFiles([])}
+              readOnly={locked}
             />
             <div className="flex flex-wrap justify-between gap-3">
               <Button variant="outline" onClick={() => goTo(1)}>
@@ -388,8 +417,16 @@ export function ApplicationWizard({
 
       {rejecting && record ? (
         <ReasonDialog
-          title="Reject this application?"
-          description="The reason is kept on the record."
+          title={
+            record.status === 'rejected'
+              ? 'Reject this application again?'
+              : 'Reject this application?'
+          }
+          description={
+            record.status === 'rejected'
+              ? 'The new reason replaces the one on the record, so say what is wrong now.'
+              : 'The reason is kept on the record.'
+          }
           confirmLabel="Reject application"
           placeholder="e.g. consent form missing"
           isBusy={reject.isPending}
@@ -397,12 +434,16 @@ export function ApplicationWizard({
           onConfirm={(reason) => {
             void reject
               .mutateAsync({ id: record.id, reason })
-              .then(async () => {
+              .then(async (updated) => {
                 setRejecting(false)
-                // Rejecting finishes the application. Staying on the
-                // wizard left a Submit button under a decision that had
-                // already been made, which reads as a second step that
-                // is not one.
+                // Recorded before leaving, so a re-render on the way out
+                // shows the verdict rather than the state it replaced.
+                setRecord(updated)
+                // Back to the list: the decision has been made and there
+                // is nothing further to do here. Rejecting again -- once
+                // the first problem is fixed and the next one turns up --
+                // is done by reopening it, which is where the reason for
+                // the last rejection is waiting to be read anyway.
                 await navigate({ to: '/applications' })
               })
               .catch(() => undefined)
@@ -418,34 +459,63 @@ export function ApplicationWizard({
               {...(record ? { application: record } : {})}
             />
 
-            {undecided > 0 ? (
+            {!locked && undecided > 0 ? (
               <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
                 {undecided} document{undecided === 1 ? '' : 's'} still{' '}
                 {undecided === 1 ? 'needs' : 'need'} approving or rejecting in
                 step 2 before this can be submitted.
               </Card>
             ) : null}
+
+            {/* A rejected document is a decision that this batch is not
+                fit to go, so the only thing left to do with the
+                application is turn it down too. Submitting it anyway
+                would ask the reviewer to find what was found here. */}
+            {!locked && rejected > 0 ? (
+              <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
+                {rejected} document{rejected === 1 ? '' : 's'} in step 2{' '}
+                {rejected === 1 ? 'has' : 'have'} been rejected, so this
+                application cannot be submitted. Reject it, or clear the
+                rejection in step 2 first.
+              </Card>
+            ) : null}
+
             <div className="flex flex-wrap justify-between gap-3">
               <Button variant="outline" onClick={() => goTo(2)}>
                 Back to documents
               </Button>
-              {record && canReject(record.status) ? (
-                <Button variant="danger" onClick={() => setRejecting(true)}>
-                  Reject application
+
+              {/* Submitted: it is with a reviewer now. Neither pushing it
+                  again nor turning it down happens from here. */}
+              {locked ? (
+                <Button onClick={() => void navigate({ to: '/applications' })}>
+                  Close
                 </Button>
-              ) : null}
-              <Button
-                isLoading={isSaving}
-                disabled={undecided > 0}
-                title={
-                  undecided > 0
-                    ? `${undecided} document${undecided === 1 ? '' : 's'} still need a decision`
-                    : undefined
-                }
-                onClick={() => void submitApplication()}
-              >
-                {record?.status === 'submitted' ? 'Re-submit' : 'Submit application'}
-              </Button>
+              ) : (
+                <>
+                  {record && canReject(record.status) ? (
+                    <Button variant="danger" onClick={() => setRejecting(true)}>
+                      {record.status === 'rejected'
+                        ? 'Reject again'
+                        : 'Reject application'}
+                    </Button>
+                  ) : null}
+                  <Button
+                    isLoading={isSaving}
+                    disabled={undecided > 0 || rejected > 0}
+                    title={
+                      undecided > 0
+                        ? `${undecided} document${undecided === 1 ? '' : 's'} still need a decision`
+                        : rejected > 0
+                          ? `${rejected} document${rejected === 1 ? '' : 's'} rejected in step 2`
+                          : undefined
+                    }
+                    onClick={() => void submitApplication()}
+                  >
+                    Submit application
+                  </Button>
+                </>
+              )}
             </div>
           </>
         ) : (
