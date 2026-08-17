@@ -14,22 +14,15 @@ import {
   usersApi,
   type ApplicationPayload,
 } from '@/lib/api/resources'
-import {
-  DEID_LIST_REFRESH_MS,
-  DEID_PROGRESS_POLL_MS,
-  progressPollingEnabled,
-} from '@/lib/deidProgress'
 import { queryKeys } from '@/lib/queryKeys'
 import type { AccessLogFilters } from '@/schemas/accessLog'
 import type { AuditLogFilters } from '@/schemas/log'
 import type { FileMetadataFilters } from '@/schemas/fileMetadata'
 import {
   bulkSummary,
-  isDeidInFlight,
   isUploadJobSettled,
   uploadJobSummary,
   type BulkResult,
-  type DeidProgress,
   type UploadJob,
 } from '@/schemas/applicationFile'
 import type { ApplicationFile } from '@/schemas/applicationFile'
@@ -172,16 +165,6 @@ export function useApplicationFiles(
     queryKey: queryKeys.applicationFiles.list(applicationId ?? ''),
     queryFn: () => applicationFilesApi.list(applicationId as string),
     enabled: Boolean(applicationId) && enabled,
-    // While something is de-identifying, the row's own status has to
-    // catch up on its own -- otherwise a finished file sits at
-    // 'processing' until the page is reloaded by hand. Configurable
-    // because it is a Hive query; VITE_DEID_LIST_REFRESH_MS=0 turns it
-    // back into a manual refresh.
-    refetchInterval: (query) =>
-      DEID_LIST_REFRESH_MS !== false &&
-      (query.state.data ?? []).some((file) => isDeidInFlight(file.deid_status))
-        ? DEID_LIST_REFRESH_MS
-        : false,
   })
 }
 
@@ -317,36 +300,6 @@ export function useUploadFilesForApplication() {
   })
 }
 
-/**
- * Live per-page progress for the files currently being de-identified.
- *
- * Polls only while at least one file on the application is actually
- * running: a table of finished documents makes no requests at all. The
- * caller passes the statuses it already has rather than this fetching
- * them again.
- *
- * Off entirely when VITE_DEID_PROGRESS_ENABLED is false, in which case
- * the badge falls back to the plain status and nothing is requested.
- */
-export function useDeidProgress(applicationId: string, statuses: string[]) {
-  const polling = progressPollingEnabled() && statuses.some(isDeidInFlight)
-
-  const query = useQuery({
-    queryKey: queryKeys.applicationFiles.deidProgress(applicationId),
-    queryFn: () => applicationFilesApi.deidProgress(applicationId),
-    enabled: Boolean(applicationId) && polling,
-    refetchInterval: polling ? DEID_PROGRESS_POLL_MS : false,
-    staleTime: 0,
-    // A progress read is decoration; failing it must not surface an error
-    // over a run that is otherwise fine.
-    retry: false,
-  })
-
-  const byFile = new Map<string, DeidProgress>()
-  for (const item of query.data?.items ?? []) byFile.set(item.file_id, item)
-  return byFile
-}
-
 export function useDeidentifyFile(applicationId: string) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -360,10 +313,7 @@ export function useDeidentifyFile(applicationId: string) {
         queryKey: queryKeys.applicationFiles.list(applicationId),
       })
       toast.success('De-identification started', {
-        // No longer "refresh in a moment": the row reports its own page
-        // count as it goes and flips to done by itself. A large document
-        // is tens of minutes, so saying so sets the expectation.
-        description: 'The row shows its progress; a long document can take a while.',
+        description: 'Refresh in a moment to see the redacted copy.',
       })
     },
     onError: (error) => {

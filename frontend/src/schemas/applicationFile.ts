@@ -34,51 +34,6 @@ export const applicationFileSchema = z.object({
   review_note: z.string().nullable().optional(),
 })
 
-// ------------------------------------------------ de-identification progress
-
-export const deidProgressSchema = z.object({
-  file_id: idSchema,
-  // Permissive for the same reason as deid_status: the API owns it.
-  stage: z.string(),
-  page: z.number().default(0),
-  page_total: z.number().default(0),
-  percent: z.number().default(0),
-  file_index: z.number().default(0),
-  file_total: z.number().default(1),
-  updated_at: z.number().default(0),
-  error: z.string().nullable().optional(),
-})
-
-export type DeidProgress = z.infer<typeof deidProgressSchema>
-
-export const deidProgressListSchema = z.object({
-  items: z.array(deidProgressSchema).default([]),
-})
-
-/**
- * What the badge says while a run is underway.
- *
- * A page takes 20-30 seconds, so "processing" on its own is indistinguishable
- * from a hung job for the better part of an hour. The page counter is the
- * part that shows it is moving; the percentage alone looks stuck between
- * pages on a long document.
- */
-export function deidProgressLabel(
-  status: string,
-  progress: DeidProgress | undefined
-): string {
-  if (!progress || !isDeidInFlight(status)) return status
-
-  if (progress.stage === 'redacting') return 'redacting…'
-
-  if (progress.stage === 'ocr' && progress.page_total > 0) {
-    return `${Math.round(progress.percent)}% · page ${progress.page} of ${progress.page_total}`
-  }
-
-  // Queued, or the first page of a document whose length is not known yet.
-  return progress.stage === 'starting' ? 'starting…' : status
-}
-
 export const REVIEW_STATUSES = ['pending', 'approved', 'rejected'] as const
 export type ReviewStatus = (typeof REVIEW_STATUSES)[number]
 
