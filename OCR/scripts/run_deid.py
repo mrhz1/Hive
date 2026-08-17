@@ -94,6 +94,16 @@ def parse_args(argv=None):
         ),
     )
     parser.add_argument(
+        "--progress-file",
+        default=os.environ.get("DEID_PROGRESS_FILE"),
+        help=(
+            "Rewritten as the run advances, so a caller in another "
+            "container can show a progress bar. Must be somewhere that "
+            "caller can read -- unlike --work-dir it holds no PHI, only "
+            "a page count and the file's own name."
+        ),
+    )
+    parser.add_argument(
         "--preflight",
         action="store_true",
         help="Check both stage interpreters exist, print them, and exit.",
@@ -151,6 +161,7 @@ def main(argv=None) -> int:
         output_dir=args.output_dir,
         suffix=args.suffix,
         work_dir=args.work_dir,
+        progress_path=args.progress_file,
     )
 
     # Printed as JSON so the calling job/service can parse it from stdout.

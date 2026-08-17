@@ -8,6 +8,7 @@ from typing import List, Optional
 
 import structlog
 
+from app import deid_progress
 from app import deid_queue
 from app.crud import patient_application_files as crud
 from app.crud import patient_applications as applications_crud
@@ -32,8 +33,13 @@ DEID_SCRIPT = os.environ.get(
     "DEID_SCRIPT", str(REPO_ROOT / "OCR" / "scripts" / "run_deid.py")
 )
 
-# OCR is slow (tens of seconds per page), so this is generous by design.
-DEID_TIMEOUT_SECONDS = int(os.environ.get("DEID_TIMEOUT_SECONDS", "1800"))
+# OCR is slow, and "generous" has to be measured against a real page
+# rate rather than guessed. On a 4-core job a page costs 19-31 seconds,
+# so the old 1800s default died on any document past ~60 pages -- and
+# reported it as a failure, which is the worst way to say "needed longer".
+# 5400s carries ~175 pages. Size it off the longest document you accept,
+# not the average one; the upload limit is 50MB, which is a lot of pages.
+DEID_TIMEOUT_SECONDS = int(os.environ.get("DEID_TIMEOUT_SECONDS", "5400"))
 
 DEID_SUFFIX = os.environ.get("DEID_OUTPUT_SUFFIX", "_deid")
 
@@ -220,7 +226,7 @@ def _set_status(file_id: str, **fields) -> None:
         log.error("deid_status_write_failed", file_id=file_id, error=str(exc))
 
 
-def _run_pipeline(source: Path, output_dir: Path) -> Path:
+def _run_pipeline(source: Path, output_dir: Path, file_id: str = "") -> Path:
     """Invokes the OCR job for one file and returns the redacted PDF."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -234,6 +240,12 @@ def _run_pipeline(source: Path, output_dir: Path) -> Path:
         "--suffix",
         DEID_SUFFIX,
     ]
+
+    # Under cml_job this process is the Job, in its own container; the
+    # API that serves the progress bar is elsewhere. The path is on
+    # shared storage, which is the only thing the two can both see.
+    if file_id:
+        command += ["--progress-file", str(deid_progress.progress_path(file_id))]
 
     log.info("deid_subprocess_start", command=" ".join(command))
 
@@ -338,7 +350,7 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
         if not source.is_file():
             raise DeidError("The stored file is missing from disk")
 
-        produced = _run_pipeline(source, source.parent / DEID_SUBFOLDER)
+        produced = _run_pipeline(source, source.parent / DEID_SUBFOLDER, file_id)
 
         _set_status(
             file_id,
@@ -358,3 +370,10 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
     except Exception as exc:  # pragma: no cover - defensive
         log.exception("deid_crashed", file_id=file_id, error=str(exc))
         _set_status(file_id, deid_status="failed")
+
+    finally:
+        # deid_status is now terminal and is what the UI should read, so
+        # the progress record has nothing left to say. Removing it also
+        # stops a finished file's leftover file being served as live
+        # progress if it is ever queued again.
+        deid_progress.clear(file_id)

@@ -253,6 +253,34 @@ class BulkResult(BaseModel):
     reasons: dict = Field(default_factory=dict)
 
 
+class DeidProgress(BaseModel):
+    """How far into de-identification one file is.
+
+    Reported by the Job through a file on shared storage, not the
+    database -- see app/deid_progress.py. Absent for any file that is
+    not currently running, which is why the UI must keep treating
+    `deid_status` as the truth about whether a file is finished.
+    """
+
+    file_id: str
+    # "ocr" | "redacting" | "done" | "failed" | "starting"
+    stage: str
+    page: int = 0
+    page_total: int = 0
+    percent: float = 0.0
+    # Only meaningful when a run covers more than one document.
+    file_index: int = 0
+    file_total: int = 1
+    updated_at: float = 0.0
+    error: Optional[str] = None
+
+
+class DeidProgressList(BaseModel):
+    """Progress for every running file the caller asked about."""
+
+    items: List[DeidProgress] = Field(default_factory=list)
+
+
 class PatientApplicationFileUpdate(BaseModel):
     """Fields the de-identification job (or a user) may set afterwards."""
 
