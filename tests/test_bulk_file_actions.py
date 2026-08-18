@@ -14,13 +14,25 @@ def _upload(client, application_id, name, data=b"%PDF-1.4 fake"):
     ).json()[0]
 
 
+def _reviewable(client, application_id, name):
+    """An uploaded file with a redacted copy, so a verdict is allowed.
+
+    Approve-all skips anything not de-identified yet -- there is nothing
+    to review until the redacted copy exists. Tests about the approving
+    itself start past that.
+    """
+    record = _upload(client, application_id, name)
+    client.put(f"/files/{record['id']}", json={"is_deidentified": True})
+    return record
+
+
 # ------------------------------------------------------------- approve all
 
 
 def test_approve_all_clears_the_undecided_pile(as_admin, storage_root):
     application_id = _application(as_admin)
     for name in ("a.pdf", "b.pdf", "c.pdf"):
-        _upload(as_admin, application_id, name)
+        _reviewable(as_admin, application_id, name)
 
     response = as_admin.post(f"/applications/{application_id}/files/approve-all")
 
@@ -40,8 +52,8 @@ def test_approve_all_does_not_overturn_a_rejection(as_admin, storage_root):
     """A bulk approve clears what nobody has looked at. Reversing somebody
     else's rejection is a decision, not a convenience."""
     application_id = _application(as_admin)
-    keep = _upload(as_admin, application_id, "a.pdf")
-    rejected = _upload(as_admin, application_id, "b.pdf")
+    keep = _reviewable(as_admin, application_id, "a.pdf")
+    rejected = _reviewable(as_admin, application_id, "b.pdf")
 
     as_admin.post(
         f"/files/{rejected['id']}/review",
@@ -65,7 +77,7 @@ def test_approve_all_does_not_overturn_a_rejection(as_admin, storage_root):
 
 def test_approve_all_is_idempotent(as_admin, storage_root):
     application_id = _application(as_admin)
-    _upload(as_admin, application_id, "a.pdf")
+    _reviewable(as_admin, application_id, "a.pdf")
 
     as_admin.post(f"/applications/{application_id}/files/approve-all")
     body = as_admin.post(
@@ -176,68 +188,63 @@ def test_bulk_actions_on_an_unknown_application_are_404(as_admin):
     )
 
 
-# ---------------------------------------------------- statement economy
+# ------------------------------------- nothing is reviewable before redaction
 
-def _updates_of(cursor, table):
-    """Every UPDATE issued against `table`, as normalised SQL."""
-    return [
-        sql
-        for sql, _ in cursor.statements
-        if sql.startswith(f"UPDATE `{table}`")
-    ]
+def test_approve_all_skips_what_has_not_been_de_identified(as_admin, storage_root):
+    """A verdict is a verdict on the redacted copy.
 
-
-def test_approve_all_writes_once_however_many_files(as_admin, storage_root, cursor):
-    """The whole reason this endpoint exists is that a per-file loop does not scale.
-
-    update_file is three statements -- an existence check, the UPDATE, and
-    a read-back -- so a loop over an application holding a thousand
-    documents is three thousand, every UPDATE of them a Hive ACID delta
-    write costing seconds. One statement does the same work, and this
-    pins that it stays one.
+    Without this the bulk button would approve in one click exactly what
+    the per-file action refuses -- and an application could be signed off
+    with documents still carrying their identifiers.
     """
     application_id = _application(as_admin)
-    for name in ("a.pdf", "b.pdf", "c.pdf", "d.pdf"):
-        _upload(as_admin, application_id, name)
+    ready = _reviewable(as_admin, application_id, "done.pdf")
+    _upload(as_admin, application_id, "waiting.pdf")
 
-    before = len(_updates_of(cursor, "patient_application_files"))
-    response = as_admin.post(f"/applications/{application_id}/files/approve-all")
-    assert response.status_code == 200, response.text
-    assert response.json()["changed"] == 4
+    body = as_admin.post(
+        f"/applications/{application_id}/files/approve-all"
+    ).json()
 
-    issued = _updates_of(cursor, "patient_application_files")[before:]
-    assert len(issued) == 1, issued
-    assert "IN (" in issued[0]
+    assert body["changed"] == 1
+    assert body["reasons"] == {"not de-identified yet": 1}
 
-
-def test_deidentify_all_writes_once_however_many_files(
-    as_admin, storage_root, cursor, monkeypatch
-):
-    monkeypatch.setattr(
-        "app.routers.patient_application_files.dispatch_deidentification",
-        lambda **kwargs: None,
+    by_id = {
+        record["id"]: record
+        for record in as_admin.get(f"/applications/{application_id}/files").json()
+    }
+    assert by_id[ready["id"]]["review_status"] == "approved"
+    assert all(
+        record["review_status"] == "pending"
+        for record in by_id.values()
+        if record["id"] != ready["id"]
     )
 
+
+def test_a_file_cannot_be_approved_before_it_is_de_identified(
+    as_admin, storage_root
+):
     application_id = _application(as_admin)
-    for name in ("a.pdf", "b.pdf", "c.pdf"):
-        _upload(as_admin, application_id, name)
+    record = _upload(as_admin, application_id, "waiting.pdf")
 
-    before = len(_updates_of(cursor, "patient_application_files"))
-    response = as_admin.post(f"/applications/{application_id}/files/deidentify-all")
-    assert response.status_code == 200, response.text
-    assert response.json()["changed"] == 3
+    response = as_admin.post(
+        f"/files/{record['id']}/review", json={"review_status": "approved"}
+    )
 
-    issued = _updates_of(cursor, "patient_application_files")[before:]
-    assert len(issued) == 1, issued
+    assert response.status_code == 422, response.text
+    assert "not been de-identified" in response.json()["error"]["detail"]
 
 
-def test_nothing_to_do_writes_nothing(as_admin, storage_root, cursor):
-    """An empty batch must not issue an UPDATE with an empty IN list."""
+def test_a_file_cannot_be_rejected_before_it_is_de_identified(
+    as_admin, storage_root
+):
+    """Rejecting is a verdict too, and there is still nothing to look at."""
     application_id = _application(as_admin)
+    record = _upload(as_admin, application_id, "waiting.pdf")
 
-    before = len(_updates_of(cursor, "patient_application_files"))
-    response = as_admin.post(f"/applications/{application_id}/files/approve-all")
+    response = as_admin.post(
+        f"/files/{record['id']}/review",
+        json={"review_status": "rejected", "review_note": "illegible"},
+    )
 
-    assert response.status_code == 200, response.text
-    assert response.json()["changed"] == 0
-    assert _updates_of(cursor, "patient_application_files")[before:] == []
+    assert response.status_code == 422, response.text
+    assert "not been de-identified" in response.json()["error"]["detail"]

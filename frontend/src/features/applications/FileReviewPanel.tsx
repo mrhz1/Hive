@@ -35,6 +35,7 @@ import {
 import { ApiError } from '@/lib/api/client'
 import { applicationFilesApi } from '@/lib/api/resources'
 import {
+  approvableCount,
   canDeidentify,
   deidTone,
   fileTally,
@@ -50,6 +51,9 @@ import {
 } from '@/schemas/applicationFile'
 import { FileTallyBar } from './FileTallyBar'
 import { UploadProgress } from './UploadProgress'
+
+/** Why approve and reject are unavailable until redaction has run. */
+const NOT_REVIEWABLE = 'De-identify this document before reviewing it'
 
 export function FileReviewPanel({
   applicationId,
@@ -138,6 +142,9 @@ export function FileReviewPanel({
   }, [files, search])
 
   const undecided = undecidedCount(files)
+  // What "Approve all" would actually change: the undecided pile minus
+  // anything still waiting on de-identification.
+  const approvable = approvableCount(files)
 
   // Over every document, not the filtered view: the question it answers
   // is whether the batch is finished, which a search term must not
@@ -256,9 +263,15 @@ export function FileReviewPanel({
         separatorBefore: true,
         label: 'Approve',
         icon: <Check className="size-4" aria-hidden="true" />,
-        disabled: file.review_status === 'approved',
-        title:
-          file.review_status === 'approved' ? 'Already approved' : undefined,
+        // A verdict is a verdict on the redacted copy, so the API
+        // refuses one until that copy exists. Saying so here beats
+        // offering the action and answering with a 422.
+        disabled: !file.is_deidentified || file.review_status === 'approved',
+        title: !file.is_deidentified
+          ? NOT_REVIEWABLE
+          : file.review_status === 'approved'
+            ? 'Already approved'
+            : undefined,
         isLoading: reviewing && review.variables?.reviewStatus === 'approved',
         onSelect: () =>
           review.mutate({ fileId: file.id, reviewStatus: 'approved' }),
@@ -268,6 +281,8 @@ export function FileReviewPanel({
         label: 'Reject',
         icon: <X className="size-4" aria-hidden="true" />,
         tone: 'danger',
+        disabled: !file.is_deidentified,
+        title: !file.is_deidentified ? NOT_REVIEWABLE : undefined,
         onSelect: () => setRejecting(file),
       },
       {
@@ -400,11 +415,13 @@ export function FileReviewPanel({
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
-              disabled={undecided === 0}
+              disabled={approvable === 0}
               title={
-                undecided === 0
-                  ? 'Every document has been decided'
-                  : `Approve the ${undecided} document${undecided === 1 ? '' : 's'} still waiting`
+                approvable > 0
+                  ? `Approve the ${approvable} document${approvable === 1 ? '' : 's'} still waiting`
+                  : undecided === 0
+                    ? 'Every document has been decided'
+                    : 'De-identify these documents before reviewing them'
               }
               isLoading={approveAll.isPending}
               leadingIcon={<CheckCheck className="size-4" aria-hidden="true" />}

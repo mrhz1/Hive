@@ -1,6 +1,8 @@
 import { FolderUp, X } from 'lucide-react'
 import { useRef } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
+import { partitionBySupport, SUPPORTED_FORMATS_LABEL } from '@/lib/fileType'
 import { formatFileSize } from '@/schemas/applicationFile'
 
 export function FilePicker({
@@ -34,6 +36,45 @@ export function FilePicker({
     input.click()
   }
 
+  async function handlePicked(input: HTMLInputElement) {
+    const picked = Array.from(input.files ?? [])
+    if (picked.length === 0) return
+
+    // Set by openPicker just before the dialog opened, and still there
+    // now: which button was clicked, not a guess from the result.
+    const isDirectory = input.hasAttribute('webkitdirectory')
+    const { supported, unsupported } = await partitionBySupport(picked)
+
+    if (isDirectory) {
+      // A folder can hold anything; only DICOM, PDF and Word belong in
+      // the batch, and flagging every unrelated file in it would be
+      // noise, not help.
+      if (unsupported.length > 0 && supported.length > 0) {
+        toast.warning(
+          `Skipped ${unsupported.length} unsupported file${unsupported.length === 1 ? '' : 's'} -- only ${SUPPORTED_FORMATS_LABEL} documents are uploaded.`
+        )
+      } else if (unsupported.length > 0) {
+        toast.error(
+          `No supported files found in that folder -- only ${SUPPORTED_FORMATS_LABEL} documents are uploaded.`
+        )
+      }
+      onFilesChange(supported)
+      return
+    }
+
+    // Chosen by hand, not swept in with a folder: a file that does not
+    // belong here is a mistake worth stopping on, not skipping past.
+    if (unsupported.length > 0) {
+      const names = unsupported.map((file) => file.name)
+      toast.error(
+        names.length === 1
+          ? `"${names[0]}" is not a supported file type. Only ${SUPPORTED_FORMATS_LABEL} documents are accepted.`
+          : `${names.length} files are not supported and were not added (only ${SUPPORTED_FORMATS_LABEL} documents are accepted): ${names.join(', ')}`
+      )
+    }
+    onFilesChange(supported)
+  }
+
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0)
 
   return (
@@ -48,7 +89,7 @@ export function FilePicker({
         multiple
         className="hidden"
         aria-label="File input"
-        onChange={(event) => onFilesChange(Array.from(event.target.files ?? []))}
+        onChange={(event) => void handlePicked(event.target)}
       />
 
       <div className="flex flex-wrap gap-2">

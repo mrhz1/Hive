@@ -79,6 +79,24 @@ export function rejectedCount(files: Array<{ review_status: string }>): number {
   return files.filter((file) => file.review_status === 'rejected').length
 }
 
+/**
+ * Documents a bulk approve would actually change.
+ *
+ * Narrower than undecidedCount: nothing is reviewable until it has a
+ * redacted copy, so an application whose undecided pile is all still
+ * waiting on de-identification has nothing to approve yet.
+ */
+export function approvableCount(
+  files: Array<{ review_status: string; is_deidentified: boolean }>
+): number {
+  return files.filter(
+    (file) =>
+      file.is_deidentified &&
+      file.review_status !== 'approved' &&
+      file.review_status !== 'rejected'
+  ).length
+}
+
 export type ApplicationFile = z.infer<typeof applicationFileSchema>
 
 export const applicationFileListSchema = z.array(applicationFileSchema)

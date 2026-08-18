@@ -23,3 +23,6 @@ frontend/dist/
 frontend/coverage/
 frontend/.env.local
 storage
+.aider*
+*.pdf
+*.txt
