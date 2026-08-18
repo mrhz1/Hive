@@ -238,44 +238,45 @@ HIVE_POOL = _flag("HIVE_POOL")
 # timer -- particularly for Hive, where a write cannot simply be retried.
 POOL_MAX_IDLE_SECONDS = float(os.environ.get("POOL_MAX_IDLE_SECONDS", "300"))
 
-_pool = threading.local()
+# How many unused sessions to keep parked per engine. Beyond this a
+# returning connection is closed rather than kept: a burst of uploads
+# should not leave the server holding a session apiece for the rest of
+# the day.
+POOL_MAX_IDLE = int(os.environ.get("POOL_MAX_IDLE", "8"))
+
+# The parked sessions, per engine, most recently returned last.
+#
+# Borrowed for the life of one RoutingCursor and handed back when it
+# closes, rather than parked per thread. Thread-local parking was
+# cheaper to write and wrong: a request does not stay on one thread.
+# FastAPI resolves a sync dependency in a worker thread and then runs an
+# `async def` endpoint on the event loop, so `Depends(get_cursor)` --
+# one object, shared by the whole dependency tree -- would pick up the
+# worker thread's session and go on using it from the loop thread while
+# the worker was already serving the next request. Two threads on one
+# HiveServer2 socket interleaves their Thrift frames, and the replies
+# come back mismatched: 'Required field operationHandle is unset',
+# 'Query failed: None', or a bare bad file descriptor.
+#
+# Checking out is exclusive, so a session is driven by one caller at a
+# time no matter which thread that caller happens to be on.
+_idle: dict = {}
+_pool_lock = threading.Lock()
 
 
 def _pooled(engine: str) -> bool:
     return IMPALA_POOL if engine == IMPALA else HIVE_POOL
 
 
-def _sessions() -> dict:
-    found = getattr(_pool, "sessions", None)
-    if found is None:
-        found = {}
-        _pool.sessions = found
-    return found
+def _close_session(engine: str, connection) -> None:
+    try:
+        connection.close()
+    except Exception as exc:  # pragma: no cover - closing a dead session
+        log.debug("db_session_close_failed", engine=engine, error=str(exc))
 
 
-def _session(engine: str):
-    """The calling thread's cursor for one engine, opened once and kept.
-
-    Parked on the thread rather than shared: FastAPI hands each request
-    to a thread from its pool and a thread serves one request at a time,
-    so a connection kept here is never used by two requests at once --
-    which a DB-API connection would not survive.
-
-    Returns the cursor and whether it was already open, because a reused
-    session is the only kind that can have gone stale while parked.
-    """
-    sessions = _sessions()
-    found = sessions.get(engine)
-
-    if found is not None:
-        connection, cursor, last_used = found
-        if time.monotonic() - last_used <= POOL_MAX_IDLE_SECONDS:
-            sessions[engine] = (connection, cursor, time.monotonic())
-            return cursor, True
-
-        log.debug("db_session_expired", engine=engine)
-        discard_session(engine)
-
+def _open_session(engine: str):
+    """A new connection and cursor, ready to run statements."""
     connection = _connect(engine)
     cursor = connection.cursor()
     # Hive takes the database as a connection parameter; Impala's data
@@ -284,31 +285,69 @@ def _session(engine: str):
     if engine == IMPALA:
         use_database(cursor, IMPALA_DB)
 
-    sessions[engine] = (connection, cursor, time.monotonic())
     log.debug("db_session_opened", engine=engine)
-    return cursor, False
+    return connection, cursor
+
+
+def _checkout(engine: str):
+    """Take a session for one engine, parked or newly opened.
+
+    Returns the connection, its cursor, and whether it came out of the
+    pool -- a reused session is the only kind that can have gone stale
+    while it was parked.
+    """
+    while True:
+        with _pool_lock:
+            parked = _idle.get(engine)
+            if not parked:
+                break
+            connection, cursor, parked_at = parked.pop()
+
+        if time.monotonic() - parked_at <= POOL_MAX_IDLE_SECONDS:
+            return connection, cursor, True
+
+        log.debug("db_session_expired", engine=engine)
+        _close_session(engine, connection)
+
+    connection, cursor = _open_session(engine)
+    return connection, cursor, False
+
+
+def _checkin(engine: str, connection, cursor) -> None:
+    """Hand a session back for the next caller, or close it."""
+    with _pool_lock:
+        parked = _idle.setdefault(engine, [])
+        if len(parked) < POOL_MAX_IDLE:
+            parked.append((connection, cursor, time.monotonic()))
+            return
+
+    _close_session(engine, connection)
 
 
 def discard_session(engine: str) -> None:
-    """Drop the thread's session for one engine; the next use reopens it."""
-    found = _sessions().pop(engine, None)
-    if found is None:
-        return
+    """Close every parked session for one engine; the next use reopens.
 
-    try:
-        found[0].close()
-    except Exception as exc:  # pragma: no cover - closing a dead session
-        log.debug("db_session_close_failed", engine=engine, error=str(exc))
+    Only reaches sessions nobody is holding. One that is checked out
+    belongs to its caller, and is closed or returned when they are done.
+    """
+    with _pool_lock:
+        parked = _idle.pop(engine, [])
+
+    for connection, _cursor, _parked_at in parked:
+        _close_session(engine, connection)
 
 
 def discard_impala_session() -> None:
-    """Drop the thread's Impala session (shutdown, and between tests)."""
+    """Drop the parked Impala sessions (shutdown, and between tests)."""
     discard_session(IMPALA)
 
 
 def discard_sessions() -> None:
-    """Drop every session this thread is holding."""
-    for engine in list(_sessions()):
+    """Drop every parked session."""
+    with _pool_lock:
+        engines = list(_idle)
+
+    for engine in engines:
         discard_session(engine)
 
 
@@ -351,29 +390,32 @@ class RoutingCursor:
         self._cursors: dict = {}
         self._written: set = set()
         self._reused: dict = {}
+        # Engines whose connection was checked out of the pool, as
+        # opposed to opened just for this cursor -- close() returns
+        # these, and only these, when it is done.
+        self._pooled_engines: set = set()
 
     def cursor_for(self, engine: str):
         if engine in self._cursors:
             return self._cursors[engine]
 
         if _pooled(engine):
-            # Borrowed from the thread, not opened. Deliberately not
-            # recorded in _connections: closing this request must leave
-            # the session open for the next one.
-            cursor, self._reused[engine] = _session(engine)
-            self._cursors[engine] = cursor
-            return cursor
+            # Exclusively ours until close() checks it back in. A pooled
+            # session used to be parked on the thread, but a request is
+            # not confined to one thread -- FastAPI resolves a sync
+            # dependency in a worker thread and then runs the `async def`
+            # endpoint on the event loop, so a session found by thread
+            # identity could be read on one thread while still being used
+            # to answer the previous request on another. Two callers on
+            # one HiveServer2 socket interleave their Thrift frames, and
+            # the replies come back for the wrong request.
+            connection, cursor, reused = _checkout(engine)
+            self._reused[engine] = reused
+            self._pooled_engines.add(engine)
+        else:
+            connection, cursor = _open_session(engine)
 
-        connection = _connect(engine)
         self._connections[engine] = connection
-
-        cursor = connection.cursor()
-        # Hive takes the database as a connection parameter; Impala's
-        # data connection has nowhere to put one, so its session is
-        # pointed at the right database here.
-        if engine == IMPALA:
-            use_database(cursor, IMPALA_DB)
-
         self._cursors[engine] = cursor
         return cursor
 
@@ -405,18 +447,22 @@ class RoutingCursor:
         try:
             return cursor.execute(sql, params)
         except Exception as exc:
-            reused = _pooled(engine) and self._reused.get(engine)
+            reused = engine in self._pooled_engines and self._reused.get(engine)
             if not reused:
                 raise
 
             # A session parked between requests can be closed from the
             # other end: an idle timeout, a restarted daemon, a Kerberos
             # ticket that has run out. Either way this one is finished
-            # with, so it goes rather than being handed to the next
-            # request as well.
+            # with, so it goes rather than being handed back to the pool
+            # for the next caller as well. Only this cursor's own
+            # connection is closed -- other sessions parked for the same
+            # engine are somebody else's and are left alone.
             log.info("db_session_dropped", engine=engine, error=str(exc))
-            discard_session(engine)
+            _close_session(engine, self._connections.pop(engine))
             self._cursors.pop(engine, None)
+            self._pooled_engines.discard(engine)
+            self._reused.pop(engine, None)
 
             if engine != IMPALA:
                 # Hive is not retried. A write that reached the server
@@ -468,6 +514,9 @@ class RoutingCursor:
         self._refresh_written()
 
         for engine, connection in self._connections.items():
+            if engine in self._pooled_engines:
+                _checkin(engine, connection, self._cursors.get(engine))
+                continue
             try:
                 connection.close()
             except Exception as exc:  # pragma: no cover - close is best effort

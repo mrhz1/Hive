@@ -604,9 +604,21 @@ def test_a_file_starts_undecided(as_admin, storage_root):
     assert record["review_note"] is None
 
 
+def _reviewable(client, application_id, name="scan.pdf"):
+    """An uploaded file with a redacted copy, so it can be reviewed.
+
+    A verdict is a verdict on the redacted copy, so the endpoint refuses
+    one until de-identification has produced it -- these tests are about
+    the verdict, not about that rule.
+    """
+    record = _upload(client, application_id, name=name).json()[0]
+    client.put(f"/files/{record['id']}", json={"is_deidentified": True})
+    return record
+
+
 def test_approving_a_file(as_admin, storage_root):
     application_id = _application(as_admin)
-    record = _upload(as_admin, application_id).json()[0]
+    record = _reviewable(as_admin, application_id)
 
     response = as_admin.post(
         f"/files/{record['id']}/review", json={"review_status": "approved"}
@@ -618,7 +630,7 @@ def test_approving_a_file(as_admin, storage_root):
 
 def test_rejecting_a_file_keeps_the_reason(as_admin, storage_root):
     application_id = _application(as_admin)
-    record = _upload(as_admin, application_id).json()[0]
+    record = _reviewable(as_admin, application_id)
 
     response = as_admin.post(
         f"/files/{record['id']}/review",
@@ -633,7 +645,7 @@ def test_rejecting_a_file_keeps_the_reason(as_admin, storage_root):
 def test_rejecting_without_a_reason_is_refused(as_admin, storage_root):
     """'Rejected' with no reason gives whoever has to fix it nothing."""
     application_id = _application(as_admin)
-    record = _upload(as_admin, application_id).json()[0]
+    record = _reviewable(as_admin, application_id)
 
     for payload in (
         {"review_status": "rejected"},
@@ -646,7 +658,7 @@ def test_rejecting_without_a_reason_is_refused(as_admin, storage_root):
 
 def test_approving_clears_an_earlier_rejection_reason(as_admin, storage_root):
     application_id = _application(as_admin)
-    record = _upload(as_admin, application_id).json()[0]
+    record = _reviewable(as_admin, application_id)
 
     as_admin.post(
         f"/files/{record['id']}/review",

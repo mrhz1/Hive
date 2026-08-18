@@ -30,7 +30,19 @@ test:
 	$(PYTHON) -m pytest
 
 run:
-	$(PYTHON) -m uvicorn app.main:app --host 0.0.0.0 --port $(CDSW_APP_PORT) --reload
+	# --reload-exclude, not --reload-dir: uvicorn's watchfiles supervisor
+	# folds any --reload-dir back into watching the whole cwd whenever
+	# that dir is (as it always is here) a subdirectory of cwd -- see
+	# WatchFilesReload.__init__ in uvicorn/supervisors/watchfilesreload.py.
+	# --reload-exclude does not go through that path.
+	#
+	# storage/ is excluded because uploads land under storage/patient_files,
+	# inside the project tree uvicorn otherwise watches. A stored .py file
+	# (nothing stops one being uploaded) looked like a source change and
+	# restarted the server mid-batch -- taking the in-memory upload-job
+	# registry with it, so the frontend's next poll got 404 for a batch
+	# that had, in fact, finished.
+	$(PYTHON) -m uvicorn app.main:app --host 0.0.0.0 --port $(CDSW_APP_PORT) --reload --reload-exclude "$(CURDIR)/storage"
 
 # --- de-identification -------------------------------------------------
 # Two virtualenvs: paddle and presidio cannot share one. See OCR/README.md.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  approvableCount,
   fileTally,
   isFullyDeidentified,
   isFullyReviewed,
@@ -111,5 +112,33 @@ describe('fileTally', () => {
     expect(tally.rejected).toBe(1)
     expect(tally.undecided).toBe(1)
     expect(isFullyDeidentified(tally)).toBe(false)
+  })
+})
+
+describe('approvableCount', () => {
+  it('excludes documents that have no redacted copy yet', () => {
+    // The API refuses a verdict on these, so counting them would put a
+    // number on the Approve all button that it cannot deliver.
+    const files = [
+      file({ is_deidentified: true, review_status: 'pending' }),
+      file({ is_deidentified: false, review_status: 'pending' }),
+      file({ is_deidentified: false, deid_status: 'processing' }),
+    ]
+    expect(approvableCount(files)).toBe(1)
+  })
+
+  it('excludes anything already decided', () => {
+    const files = [
+      file({ is_deidentified: true, review_status: 'approved' }),
+      file({ is_deidentified: true, review_status: 'rejected' }),
+    ]
+    expect(approvableCount(files)).toBe(0)
+  })
+
+  it('is zero while a whole batch is still de-identifying', () => {
+    const files = Array.from({ length: 50 }, () =>
+      file({ is_deidentified: false, deid_status: 'queued' })
+    )
+    expect(approvableCount(files)).toBe(0)
   })
 })
