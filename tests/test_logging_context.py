@@ -1,9 +1,3 @@
-"""What every log line carries, and what it must never carry.
-
-'Which account' is not enough to scope an incident or spot a shared
-login, so the request's origin is bound once here rather than passed by
-every call site.
-"""
 import json
 import logging
 import sys
@@ -17,14 +11,12 @@ from app.middleware import client_ip
 
 
 class _Request:
-    """Enough of a Starlette request for the address logic."""
 
     def __init__(self, headers=None, host="127.0.0.1"):
         self.headers = headers or {}
         self.client = type("Client", (), {"host": host})()
 
 
-# ------------------------------------------------------------ the caller
 
 
 def test_the_socket_address_is_used_when_nothing_is_in_front(monkeypatch):
@@ -50,8 +42,6 @@ def test_the_caller_is_read_from_behind_two_proxies(monkeypatch):
 
 
 def test_a_short_header_does_not_read_off_the_end(monkeypatch):
-    """A direct hit that skipped the proxy still has to resolve to
-    something rather than raising."""
     monkeypatch.setenv("TRUSTED_PROXY_COUNT", "2")
 
     assert client_ip(_Request({"X-Forwarded-For": "203.0.113.9"})) == "203.0.113.9"
@@ -72,12 +62,9 @@ def test_an_unparseable_proxy_count_falls_back(monkeypatch):
     assert client_ip(request) == "203.0.113.9"
 
 
-# ------------------------------------------------- through a real request
 
 
 def test_every_line_of_a_request_carries_its_origin(as_admin, caplog):
-    """Bound once in the middleware, so a later access record does not
-    depend on each call site remembering."""
     with caplog.at_level(logging.INFO):
         as_admin.get(
             "/patients",
@@ -104,7 +91,6 @@ def test_a_long_user_agent_is_truncated(as_admin, caplog):
     assert "A" * 300 not in message
 
 
-# ----------------------------------------------------------- the renderer
 
 
 @pytest.mark.parametrize(
@@ -117,7 +103,6 @@ def test_the_format_can_be_set_explicitly(monkeypatch, value, expected):
 
 
 def test_a_pipe_gets_json_and_a_terminal_gets_console(monkeypatch):
-    """In production stdout is captured, not watched."""
     monkeypatch.delenv("LOG_FORMAT", raising=False)
 
     monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
@@ -136,11 +121,6 @@ def test_an_unknown_format_does_not_break_startup(monkeypatch):
 
 @pytest.fixture
 def json_logging(monkeypatch):
-    """Render as JSON for one test, then put the config back.
-
-    structlog's configuration is global, so leaving it set would change
-    how every later test logs.
-    """
     monkeypatch.setenv("LOG_FORMAT", "json")
     configure_logging()
     yield
@@ -149,7 +129,6 @@ def json_logging(monkeypatch):
 
 
 def _rendered(caplog):
-    """The line as it was handed to stdout -- the JSON, not the fields."""
     return caplog.records[-1].getMessage()
 
 
@@ -178,13 +157,9 @@ def test_json_output_carries_the_traceback(json_logging, caplog):
     assert "hive is down" in parsed["exception"]
 
 
-# -------------------------------------------------------- PHI in the logs
 
 
 def test_a_failed_deid_run_does_not_log_the_document(caplog):
-    """The NLP stage's dependencies quote the document into their
-    warnings, so forwarding a failed run's output wholesale would
-    re-leak exactly what the pipeline removes."""
     leaky = (
         "UserWarning: Skipping annotation for doc "
         "'Patient Jane Doe, MRN 4471, seen on 3 March'\n"
@@ -199,8 +174,6 @@ def test_a_failed_deid_run_does_not_log_the_document(caplog):
 
 
 def test_the_whole_output_is_kept_when_there_is_no_error_line():
-    """Something has to be reported, but never more than a bounded
-    amount of it."""
     detail = deid._failure_detail("x" * 5000, "")
 
     assert len(detail) <= 500

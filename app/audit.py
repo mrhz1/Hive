@@ -1,4 +1,3 @@
-"""Fire-and-forget audit recording."""
 from typing import Optional
 
 import structlog
@@ -20,7 +19,6 @@ def record_audit(
     new_values: Optional[dict] = None,
     request_id: Optional[str] = None,
 ) -> None:
-    """Runs in a background task, i.e."""
     if request_id:
         structlog.contextvars.bind_contextvars(
             request_id=request_id, background_task="record_audit"

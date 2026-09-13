@@ -3,7 +3,6 @@ from typing import Any, List, Mapping, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
-# ---------------------------------------------------------------- roles
 
 
 class RoleCreate(BaseModel):
@@ -22,7 +21,6 @@ class Role(BaseModel):
     permissions: List[str]
 
 
-# ---------------------------------------------------------------- users
 
 
 class UserCreate(BaseModel):
@@ -46,7 +44,6 @@ class UserUpdate(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-    """Self-service profile edit (PUT /me)."""
 
     first_name: Optional[str] = None
     last_name: Optional[str] = None
@@ -63,12 +60,10 @@ class User(BaseModel):
     is_active: bool
     role_id: Optional[str] = None
     created_at: datetime
-    # Denormalised from the roles join so callers get the role inline.
     role_name: Optional[str] = None
     permissions: List[str] = Field(default_factory=list)
 
 
-# ------------------------------------------------------------- patients
 
 
 _PATIENT_OPTIONAL_FIELDS = (
@@ -112,21 +107,15 @@ PATIENT_IDENTITY_REQUIRED = (
     "At least one of fstname, lstname or ptemail is required"
 )
 
-# A patient's own source folder is optional: it is a default, and the
-# folder that matters belongs to an application (a second application for
-# the same patient routinely draws on a different one).
 APPLICATION_FILE_REQUIRED = "original_file_path is required"
 
 
 def patient_has_identity(values: Mapping[str, Any]) -> bool:
-    """True when at least one identifier is populated."""
     return any(str(values.get(name) or "").strip() for name in PATIENT_IDENTIFIERS)
 
 
 class _PatientFields(BaseModel):
-    """Field definitions shared by the create/update payloads."""
 
-    # --- provider / institution
     instcode: Optional[str] = None
     pname: Optional[str] = None
     pemail: Optional[EmailStr] = None
@@ -157,7 +146,6 @@ class _PatientFields(BaseModel):
     ptzip: Optional[str] = None
     ptcountry: Optional[str] = None
 
-    # --- dates: registration, birth, death
     dt_reg: Optional[date] = None
     dt_b: Optional[date] = None
     dt_d: Optional[date] = None
@@ -175,7 +163,6 @@ class _PatientFields(BaseModel):
     @field_validator("original_file_path", mode="before")
     @classmethod
     def _strip_path(cls, value: Any) -> Any:
-        """Whitespace is not a path -- store nothing rather than a blank."""
         if isinstance(value, str):
             return value.strip() or None
         return value
@@ -190,11 +177,10 @@ class PatientCreate(_PatientFields):
 
 
 class PatientUpdate(_PatientFields):
-    """Every field optional -- see _PatientFields."""
+    pass
 
 
 class Patient(_PatientFields):
-    """A patient record."""
 
     id: str
 
@@ -203,13 +189,11 @@ class Patient(_PatientFields):
     original_file_path: Optional[str] = None
 
 
-# ---------------------------------------------- patient application files
 
 DEID_STATUSES = ("pending", "queued", "processing", "done", "failed")
 
 
 class PatientApplicationFile(BaseModel):
-    """Metadata for one stored document."""
 
     id: str
     application_id: str
@@ -233,42 +217,26 @@ REVIEW_STATUSES = ("pending", "approved", "rejected")
 
 
 class FileReview(BaseModel):
-    """A reviewer's verdict on one document."""
 
     review_status: str = Field(pattern="^(approved|rejected)$")
     review_note: Optional[str] = None
 
 
 class BulkResult(BaseModel):
-    """What a whole-application action did, and to how much.
-
-    An application can hold thousands of documents; the caller needs the
-    counts, not the rows back.
-    """
 
     total: int
     changed: int
     skipped: int
-    # Named so the UI can say why, rather than only how many.
     reasons: dict = Field(default_factory=dict)
 
 
 class DeidProgress(BaseModel):
-    """How far into de-identification one file is.
-
-    Reported by the Job through a file on shared storage, not the
-    database -- see app/deid_progress.py. Absent for any file that is
-    not currently running, which is why the UI must keep treating
-    `deid_status` as the truth about whether a file is finished.
-    """
 
     file_id: str
-    # "ocr" | "redacting" | "done" | "failed" | "starting"
     stage: str
     page: int = 0
     page_total: int = 0
     percent: float = 0.0
-    # Only meaningful when a run covers more than one document.
     file_index: int = 0
     file_total: int = 1
     updated_at: float = 0.0
@@ -276,13 +244,21 @@ class DeidProgress(BaseModel):
 
 
 class DeidProgressList(BaseModel):
-    """Progress for every running file the caller asked about."""
 
     items: List[DeidProgress] = Field(default_factory=list)
 
 
+class DeidBatchSummary(BaseModel):
+
+    application_id: str
+    total: int
+    deidentified: int
+    failed: int
+    deidentified_names: List[str] = Field(default_factory=list)
+    failed_names: List[str] = Field(default_factory=list)
+
+
 class PatientApplicationFileUpdate(BaseModel):
-    """Fields the de-identification job (or a user) may set afterwards."""
 
     description: Optional[str] = None
     deid_status: Optional[str] = Field(
@@ -298,7 +274,6 @@ class PatientApplicationFileUpdate(BaseModel):
 
 
 class DeidentifiedFile(BaseModel):
-    """One row of the de-identified file library."""
 
     id: str
     application_id: str
@@ -312,7 +287,6 @@ class DeidentifiedFile(BaseModel):
     de_identified_file_path: Optional[str] = None
 
 
-# --------------------------------------------------------- file metadata
 
 METADATA_STATUSES = ("ok", "unsupported", "failed")
 
@@ -326,7 +300,6 @@ METADATA_EXTENSIONS = {
 
 
 class FileMetadata(BaseModel):
-    """Extracted document metadata for one file."""
 
     id: str
     file_id: str
@@ -346,23 +319,15 @@ class FileMetadataCreate(BaseModel):
 
 
 class FileMetadataRow(FileMetadata):
-    """A `file_metadata` row with the document it describes joined on.
-
-    The stored row knows only a file id, which is useless to look at. The
-    browse table needs the document's name and whose it is, so the join
-    happens once on the way out rather than in every caller.
-    """
 
     file_name: Optional[str] = None
     application_id: Optional[str] = None
     patient_id: Optional[str] = None
 
 
-# ------------------------------------------------------------- previews
 
 
 class WordBlock(BaseModel):
-    """One paragraph of a Word document, as text rather than markup."""
 
     kind: str
     style: str
@@ -375,13 +340,11 @@ class WordPreview(BaseModel):
     truncated: bool = False
 
 
-# --------------------------------------------------------- upload jobs
 
 UPLOAD_JOB_STATUSES = ("pending", "running", "done", "partial", "failed")
 
 
 class UploadJobFile(BaseModel):
-    """One file's fate within a job."""
 
     name: str
     status: str = Field(pattern="^(pending|stored|failed)$")
@@ -390,7 +353,6 @@ class UploadJobFile(BaseModel):
 
 
 class UploadJob(BaseModel):
-    """Progress of one background upload batch."""
 
     id: str
     application_id: str
@@ -401,13 +363,10 @@ class UploadJob(BaseModel):
     created_at: datetime
     finished_at: Optional[datetime] = None
     error: Optional[str] = None
-    # Where the batch landed, once the first file is in place. The wizard
-    # records it on the patient as their source folder.
     folder: Optional[str] = None
     files: List[UploadJobFile] = Field(default_factory=list)
 
 
-# ------------------------------------------------- patient applications
 
 APPLICATION_STATUSES = ("draft", "submitted", "approved", "rejected", "deleted")
 
@@ -415,20 +374,16 @@ _STATUS_PATTERN = "^(draft|submitted|approved|rejected|deleted)$"
 
 
 class PatientApplicationCreate(BaseModel):
-    """A new submission for a patient."""
 
     patient_id: str = Field(min_length=1)
     status: str = Field(default="draft", pattern=_STATUS_PATTERN)
     description: Optional[str] = None
-    # Who is to work on it. Upload notifications go to this user.
     assigned_to_id: Optional[str] = None
-    # Where this application's documents came from.
     original_file_path: Optional[str] = None
 
     @field_validator("assigned_to_id", "original_file_path", mode="before")
     @classmethod
     def _blank_to_null(cls, value: Any) -> Any:
-        """An empty <select> means unassigned, not a user whose id is ''."""
         if isinstance(value, str) and not value.strip():
             return None
         return value
@@ -450,7 +405,6 @@ class PatientApplicationUpdate(BaseModel):
 
 
 class StatusReason(BaseModel):
-    """Why an application is being rejected or deleted."""
 
     reason: Optional[str] = None
 
@@ -471,13 +425,7 @@ class PatientApplication(BaseModel):
     status_reason: Optional[str] = None
     assigned_to_id: Optional[str] = None
     original_file_path: Optional[str] = None
-    # Resolved by the router, not stored on the row. It is here so that
-    # somebody holding only `application:view` can see who an application
-    # belongs to: reading it off the users list would need `user:view`,
-    # which is a much larger grant than "whose work is this".
     assigned_to_username: Optional[str] = None
-    # The same treatment for the people behind the other three ids. The
-    # summary reads "submitted by whom", and a uuid does not answer it.
     created_by_username: Optional[str] = None
     submitted_by_username: Optional[str] = None
     reviewed_by_username: Optional[str] = None
@@ -493,7 +441,6 @@ class AuditLogCreate(BaseModel):
 
 
 class AccessLog(BaseModel):
-    """One row of the access trail -- who saw what, or was refused it."""
 
     id: str
     occurred_at: datetime
@@ -511,7 +458,6 @@ class AccessLog(BaseModel):
     resource_id: Optional[str] = None
     patient_id: Optional[str] = None
     application_id: Optional[str] = None
-    # Whether identified PHI left, as opposed to a redacted copy.
     identified: Optional[bool] = None
     record_count: Optional[int] = None
     byte_count: Optional[int] = None
@@ -520,16 +466,6 @@ class AccessLog(BaseModel):
     @field_validator("occurred_at")
     @classmethod
     def _as_utc(cls, value: datetime) -> datetime:
-        """Say out loud that the moment is UTC.
-
-        Events are recorded with `datetime.now(timezone.utc)`, but Hive
-        TIMESTAMP carries no zone, so what comes back out is a bare
-        wall-clock reading. Serialised as-is it has no offset on it, and
-        a browser reads an offset-less timestamp as *local* time -- which
-        showed every event at the UTC hour, four hours off for anybody in
-        Eastern time. Stamping the zone here is what makes the client
-        able to convert it.
-        """
         return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 

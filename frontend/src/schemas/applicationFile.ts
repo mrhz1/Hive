@@ -10,7 +10,6 @@ export const DEID_STATUSES = [
 ] as const
 export type DeidStatus = (typeof DEID_STATUSES)[number]
 
-/** Whether a run is already underway, so it must not be started twice. */
 export function isDeidInFlight(status: string): boolean {
   return status === 'queued' || status === 'processing'
 }
@@ -43,7 +42,6 @@ export function reviewTone(status: string): 'success' | 'danger' | 'neutral' {
   return 'neutral'
 }
 
-/** Everything about a document a search term could plausibly mean. */
 export function fileHaystack(file: {
   original_file_name: string
   file_extension: string
@@ -62,30 +60,15 @@ export function fileHaystack(file: {
     .toLowerCase()
 }
 
-/** Nothing may be submitted while a document is still undecided. */
 export function undecidedCount(files: Array<{ review_status: string }>): number {
   return files.filter((file) => file.review_status !== 'approved' &&
     file.review_status !== 'rejected').length
 }
 
-/**
- * How many documents were turned down.
- *
- * One is enough to stop the application being submitted: sending a
- * batch on for review with a document in it that has already been
- * rejected is asking the reviewer to find what was found here.
- */
 export function rejectedCount(files: Array<{ review_status: string }>): number {
   return files.filter((file) => file.review_status === 'rejected').length
 }
 
-/**
- * Documents a bulk approve would actually change.
- *
- * Narrower than undecidedCount: nothing is reviewable until it has a
- * redacted copy, so an application whose undecided pile is all still
- * waiting on de-identification has nothing to approve yet.
- */
 export function approvableCount(
   files: Array<{ review_status: string; is_deidentified: boolean }>
 ): number {
@@ -101,32 +84,21 @@ export type ApplicationFile = z.infer<typeof applicationFileSchema>
 
 export const applicationFileListSchema = z.array(applicationFileSchema)
 
-// ------------------------------------------------------------- tally
-
 export type FileTally = {
   total: number
-  /** Documents with a redacted copy on disk. */
+
   deidentified: number
-  /** Queued or running right now. */
+
   deidRunning: number
-  /** Tried and failed -- the ones that need somebody to look. */
+
   deidFailed: number
-  /** Never attempted, and not running. */
+
   deidPending: number
   approved: number
   rejected: number
   undecided: number
 }
 
-/**
- * One pass over the documents for the counts the header shows.
- *
- * An application can hold a thousand files, at which point "is every one
- * of these redacted?" is not answerable by scrolling. The failed and
- * pending counts matter most: a single file that failed hours ago is
- * invisible in a list that long, and it is the one thing that stops the
- * batch being finished.
- */
 export function fileTally(files: ApplicationFile[]): FileTally {
   const tally: FileTally = {
     total: files.length,
@@ -140,8 +112,7 @@ export function fileTally(files: ApplicationFile[]): FileTally {
   }
 
   for (const file of files) {
-    // is_deidentified, not deid_status: the question is whether a
-    // redacted copy exists, and that flag is what says one does.
+
     if (file.is_deidentified) tally.deidentified += 1
     else if (isDeidInFlight(file.deid_status)) tally.deidRunning += 1
     else if (file.deid_status === 'failed') tally.deidFailed += 1
@@ -155,17 +126,14 @@ export function fileTally(files: ApplicationFile[]): FileTally {
   return tally
 }
 
-/** Every document redacted, with nothing still running or failed. */
 export function isFullyDeidentified(tally: FileTally): boolean {
   return tally.total > 0 && tally.deidentified === tally.total
 }
 
-/** Every document decided, one way or the other. */
 export function isFullyReviewed(tally: FileTally): boolean {
   return tally.total > 0 && tally.undecided === 0
 }
 
-/** Colour the de-identification state so progress is scannable. */
 export function deidTone(
   status: string
 ): 'success' | 'warning' | 'danger' | 'neutral' {
@@ -175,19 +143,15 @@ export function deidTone(
   return 'neutral'
 }
 
-/** Human-readable size for the table. */
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-// -------------------------------------------------------------- metadata
-
 export const METADATA_STATUSES = ['ok', 'unsupported', 'failed'] as const
 export type MetadataStatus = (typeof METADATA_STATUSES)[number]
 
-/** The formats the API extracts metadata from (app/file_metadata.py). */
 const METADATA_EXTENSIONS = new Set(['pdf', 'dcm', 'dicom', 'doc', 'docx'])
 
 export function hasExtractableMetadata(extension: string): boolean {
@@ -205,7 +169,7 @@ export const fileMetadataSchema = z.object({
   file_id: idSchema,
   file_type: z.string(),
   metadata: z.record(z.string(), z.string()).default({}),
-  // Permissive for the same reason as deid_status: the API owns it.
+
   status: z.string(),
   error: z.string().nullable().optional(),
   created_at: timestampSchema,
@@ -219,8 +183,6 @@ export function metadataTone(status: string): 'success' | 'danger' | 'neutral' {
   return 'neutral'
 }
 
-// --------------------------------------------------------- bulk actions
-
 export const bulkResultSchema = z.object({
   total: z.number(),
   changed: z.number(),
@@ -230,7 +192,6 @@ export const bulkResultSchema = z.object({
 
 export type BulkResult = z.infer<typeof bulkResultSchema>
 
-/** 'Nothing to do', or what happened and what it left behind. */
 export function bulkSummary(result: BulkResult, verb: string): string {
   if (result.total === 0) return 'There are no documents yet.'
   if (result.changed === 0) return `Nothing to ${verb}.`
@@ -243,13 +204,6 @@ export function bulkSummary(result: BulkResult, verb: string): string {
   return why ? `${done}; ${why}.` : `${done}.`
 }
 
-// -------------------------------------------------------------- previews
-
-/**
- * How a format is shown. A PDF an <iframe> renders on its own; the other
- * two need the API to turn them into something a browser will display,
- * and anything else is only ever a download.
- */
 export type PreviewKind = 'pdf' | 'image' | 'text' | 'download'
 
 const IMAGE_EXTENSIONS = new Set(['dcm', 'dicom'])
@@ -279,8 +233,6 @@ export type WordPreview = z.infer<typeof wordPreviewSchema>
 
 export type ImagePreview = { url: string; frames: number }
 
-// ----------------------------------------------------------- upload jobs
-
 export const uploadJobFileSchema = z.object({
   name: z.string(),
   status: z.string(),
@@ -304,7 +256,6 @@ export const uploadJobSchema = z.object({
 
 export type UploadJob = z.infer<typeof uploadJobSchema>
 
-/** Whether the batch is over, one way or another -- stop polling. */
 export function isUploadJobSettled(job: UploadJob | undefined): boolean {
   return Boolean(job && ['done', 'partial', 'failed'].includes(job.status))
 }

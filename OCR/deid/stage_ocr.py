@@ -1,4 +1,3 @@
-"""Stage 1: raster pages in, OCR spans out."""
 import logging
 import time
 from typing import Any, Dict, List
@@ -19,7 +18,6 @@ def ocr_document(
     progress=None,
     index: int = 0,
 ) -> OcrDocument:
-    """OCR every page or frame of one document."""
     progress = progress or NullProgress()
     started = time.perf_counter()
     document = OcrDocument(
@@ -40,8 +38,6 @@ def ocr_document(
         document.duration_seconds = round(time.perf_counter() - started, 2)
         return document
 
-    # Announced before the first page so the UI can show "1 of 100"
-    # rather than a bare spinner for the ~30s that page one takes.
     try:
         total_pages = page_count(doc, kind)
     except Exception:
@@ -79,13 +75,9 @@ def ocr_document(
 
 
 def run_stage(jobs: List[Dict[str, Any]], config: Config) -> List[dict]:
-    """Process a batch."""
     engine = OcrEngine(config)
     outcomes: List[dict] = []
 
-    # Every job in a batch carries the same progress file and the same
-    # run-wide total; `index` is what moves. Both are absent unless the
-    # caller asked for progress, in which case this is a no-op writer.
     first = jobs[0] if jobs else {}
     progress = progress_writer(
         first.get("progress"), file_total=int(first.get("file_total") or len(jobs) or 1)

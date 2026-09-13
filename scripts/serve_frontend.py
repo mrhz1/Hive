@@ -1,4 +1,3 @@
-"""Serve the built dashboard as a Cloudera AI Application."""
 import os
 import sys
 from pathlib import Path
@@ -34,7 +33,6 @@ app = Flask(__name__, static_folder=None)
 
 @app.get("/healthz")
 def healthz():
-    """This server's own liveness."""
     return {"status": "ok", "dist": str(DIST)}
 
 
@@ -53,11 +51,6 @@ if API_PROXY_TARGET:
             if key.lower() not in _HOP_BY_HOP and key.lower() != "host"
         }
 
-        # Say who this is being forwarded for. Without it the API sees
-        # only this process connecting from 127.0.0.1, and every access
-        # record names the loopback address instead of the person -- an
-        # access log that cannot say where a read came from is most of
-        # the way to useless.
         forwarded = request.headers.get("X-Forwarded-For")
         client = request.remote_addr or ""
         if client:
@@ -92,7 +85,6 @@ if API_PROXY_TARGET:
 @app.get("/", defaults={"path": ""})
 @app.get("/<path:path>")
 def spa(path: str):
-    """Serve a real file when one exists, index.html otherwise."""
     candidate = DIST / path
     if path and candidate.is_file():
         return send_from_directory(DIST, path)

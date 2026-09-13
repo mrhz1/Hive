@@ -9,14 +9,6 @@ import {
   type UploadJob,
 } from '@/schemas/applicationFile'
 
-/**
- * What a background batch is doing.
- *
- * The wizard no longer waits for the upload, so this is the only place a
- * user can see that files are still moving -- and, more importantly, the
- * only place they see which ones did not make it. The same list goes out
- * by email to whoever the application is assigned to.
- */
 export function UploadProgress({
   job,
   onDismiss,

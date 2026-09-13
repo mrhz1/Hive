@@ -1,4 +1,3 @@
-"""PaddleOCR PP-OCRv6 wrapper."""
 import logging
 from typing import List, Optional, Sequence
 
@@ -14,7 +13,6 @@ __all__ = ["OcrEngine", "OcrSpan"]
 
 
 def _poly_to_bbox(poly) -> Optional[tuple]:
-    """PP-OCR returns 4-point quads (rotated text is not axis aligned); reduce to the enclosing axis-aligned box, which is what redaction rectangles need."""
     try:
         arr = np.asarray(poly, dtype=float).reshape(-1, 2)
     except Exception:
@@ -30,7 +28,6 @@ def _poly_to_bbox(poly) -> Optional[tuple]:
 
 
 class OcrEngine:
-    """Lazy singleton-ish wrapper."""
 
     def __init__(self, config: Config):
         self.config = config
@@ -59,7 +56,6 @@ class OcrEngine:
         self._ocr = PaddleOCR(
             text_detection_model_name=self.config.det_model,
             text_recognition_model_name=self.config.rec_model,
-            # None means "resolve the name yourself", i.e. download.
             text_detection_model_dir=str(det_dir) if det_dir else None,
             text_recognition_model_dir=str(rec_dir) if rec_dir else None,
             use_doc_orientation_classify=self.config.use_doc_orientation_classify,
@@ -72,7 +68,6 @@ class OcrEngine:
         return self._ocr
 
     def read_page(self, image: np.ndarray) -> List[OcrSpan]:
-        """OCR a single page image (RGB numpy array)."""
         ocr = self._load()
         try:
             results = ocr.predict(image)

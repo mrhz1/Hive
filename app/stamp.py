@@ -1,4 +1,3 @@
-"""Stamp the patient id onto every page of a de-identified PDF."""
 import os
 from pathlib import Path
 
@@ -14,11 +13,10 @@ STAMP_FONT = "helv"
 
 
 class StampError(Exception):
-    """Raised so the caller can record a failure against the file."""
+    pass
 
 
 def stamp_pdf(path: Path, patient_id: str) -> int:
-    """Draw `patient_id` at the top-left of every page."""
     import fitz
 
     if not patient_id:

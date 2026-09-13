@@ -1,4 +1,3 @@
-"""Extra pattern recognizers."""
 from typing import List
 
 from presidio_analyzer import Pattern, PatternRecognizer
@@ -46,7 +45,6 @@ def _street_address_recognizer() -> PatternRecognizer:
 
 
 def _mrn_recognizer() -> PatternRecognizer:
-    """Medical record numbers."""
     return PatternRecognizer(
         supported_entity="MRN",
         name="MedicalRecordNumberRecognizer",
@@ -64,7 +62,6 @@ def _mrn_recognizer() -> PatternRecognizer:
 
 
 def _age_recognizer() -> PatternRecognizer:
-    """HIPAA Safe Harbor: ages over 89 are identifiers and must go."""
     return PatternRecognizer(
         supported_entity="AGE",
         name="ElderlyAgeRecognizer",

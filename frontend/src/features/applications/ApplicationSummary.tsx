@@ -15,25 +15,15 @@ import {
   undecidedCount,
 } from '@/schemas/applicationFile'
 
-/** A patient field worth showing back, and only if it has a value. */
 function Detail({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null
   return <DescriptionItem label={label}>{value}</DescriptionItem>
 }
 
-/** Hive TIMESTAMPs arrive as naive ISO strings; the seconds add nothing. */
 function moment(value: string | null | undefined): string | null {
   return value ? value.slice(0, 16).replace('T', ' ') : null
 }
 
-/**
- * One thing that happened to the application: when, and at whose hand.
- *
- * Both halves, always. The username answers who without anybody having
- * to go and look an id up, and the id is kept beside it because it is
- * what the audit trail and the access log are keyed on -- two people
- * can share a display name, and only one of them did this.
- */
 function Event({
   label,
   at,
@@ -78,7 +68,6 @@ export function ApplicationSummary({
   const undecided = undecidedCount(files)
   const approved = files.length - rejected - undecided
 
-  // Only to put a name to the id the application carries.
   const usersQuery = userHooks.useList({ enabled: Boolean(application?.assigned_to_id) })
   const assignee = usersQuery.data?.find(
     (user) => user.id === application?.assigned_to_id
@@ -110,8 +99,7 @@ export function ApplicationSummary({
               userId={application.submitted_by_id}
               username={application.submitted_by_username}
             />
-            {/* The same pair of columns carries both verdicts, so the
-                heading has to say which one this was. */}
+            {}
             <Event
               label={application.status === 'rejected' ? 'Rejected' : 'Reviewed'}
               at={application.reviewed_at}
@@ -122,9 +110,7 @@ export function ApplicationSummary({
               {assignee ? (
                 userLabel(assignee)
               ) : application.assigned_to_id ? (
-                // The API resolves the username for exactly this case:
-                // somebody with `application:view` and no `user:view`
-                // gets a name rather than a uuid.
+
                 (application.assigned_to_username ?? application.assigned_to_id)
               ) : (
                 <span className="text-[rgb(var(--foreground-muted))]">Nobody</span>
@@ -223,9 +209,7 @@ export function ApplicationSummary({
                     {formatFileSize(file.file_size)}
                     {file.description ? ` · ${file.description}` : ''}
                   </span>
-                  {/* The reason a document was turned down, where the
-                      verdict is: whoever has to fix it reads this page
-                      and would otherwise have to go back to step 2. */}
+                  {}
                   {file.review_status === 'rejected' && file.review_note ? (
                     <span className="mt-0.5 block text-xs text-[rgb(var(--foreground-muted))]">
                       {file.review_note}

@@ -1,4 +1,3 @@
-"""Submitting an application stamps and files its de-identified output."""
 import pathlib
 
 import fitz
@@ -10,7 +9,6 @@ from conftest import minimal_patient
 
 @pytest.fixture
 def deid_dirs(tmp_path, monkeypatch):
-    """Point every configured destination at a temp directory."""
     pdf = tmp_path / "final" / "pdf"
     dicom = tmp_path / "final" / "dicom"
     word = tmp_path / "final" / "word"
@@ -38,7 +36,6 @@ def _pdf(path: pathlib.Path, pages: int = 2) -> pathlib.Path:
 
 
 def _submitted_application(client, storage_root, name="scan.pdf"):
-    """A patient, an application, and one file already de-identified."""
     patient_id = client.post("/patients", json=minimal_patient()).json()["id"]
     application_id = client.post(
         "/applications", json={"patient_id": patient_id}
@@ -51,7 +48,6 @@ def _submitted_application(client, storage_root, name="scan.pdf"):
 
 
 def _stage_output(record, storage_root, extension="pdf", pages=2):
-    """Put a de-identified file where the pipeline would have left it."""
     original = pathlib.Path(record["file_path"])
     staged = original.parent / "deidentified" / f"{original.stem}_deid.{extension}"
     if extension == "pdf":
@@ -90,7 +86,6 @@ def test_submitting_stamps_and_files_the_pdf(
         words = page.get_text("words")
         stamps = [w for w in words if w[4] == patient_id]
         assert len(stamps) == 1, f"page {page.number} is not stamped"
-        # Top-left: x near the left edge, y near the top.
         assert stamps[0][0] < page.rect.width / 3
         assert stamps[0][1] < page.rect.height / 3
         assert any("clinical" in w[4] for w in words), "content was lost"
@@ -117,7 +112,6 @@ def test_the_row_points_at_the_final_location(
 def test_dicom_goes_to_the_dicom_directory_and_is_not_stamped(
     as_admin, storage_root, deid_dirs
 ):
-    """Stamping is a PDF operation; a DICOM would be corrupted by it."""
     patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
     application_id = as_admin.post(
         "/applications", json={"patient_id": patient_id}
@@ -144,7 +138,6 @@ def test_files_that_are_not_done_are_left_alone(as_admin, storage_root, deid_dir
     patient_id, application_id, record = _submitted_application(as_admin, storage_root)
     staged = _stage_output(record, storage_root)
 
-    # Still processing: nothing to file yet.
     as_admin.put(
         f"/files/{record['id']}",
         json={"deid_status": "processing", "de_identified_file_path": str(staged)},
@@ -157,7 +150,6 @@ def test_files_that_are_not_done_are_left_alone(as_admin, storage_root, deid_dir
 
 
 def test_a_missing_staged_file_does_not_raise(as_admin, storage_root, deid_dirs):
-    """Runs detached from the request, so it records and moves on."""
     _, application_id, record = _submitted_application(as_admin, storage_root)
     original = pathlib.Path(record["file_path"])
     missing = original.parent / "deidentified" / "not-there_deid.pdf"
@@ -167,11 +159,10 @@ def test_a_missing_staged_file_does_not_raise(as_admin, storage_root, deid_dirs)
         json={"deid_status": "done", "de_identified_file_path": str(missing)},
     )
 
-    submission.finalise_submission(application_id)  # must not raise
+    submission.finalise_submission(application_id)
 
 
 def test_submitting_through_the_api_triggers_it(as_admin, storage_root, deid_dirs):
-    """The whole point: the user presses Submit, this happens."""
     patient_id, application_id, record = _submitted_application(
         as_admin, storage_root
     )
@@ -193,9 +184,6 @@ def test_submitting_through_the_api_triggers_it(as_admin, storage_root, deid_dir
 def test_an_extensionless_dicom_is_filed_with_the_dicoms(
     as_admin, storage_root, deid_dirs
 ):
-    """deid_dir_for('') falls back to the PDF directory, so an
-    extensionless DICOM used to be filed with the PDFs. It is resolved to
-    'dcm' at upload now, which is what routes it here."""
     from tests.test_filetype import DICOM_BYTES
 
     patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
@@ -222,7 +210,6 @@ def test_an_extensionless_dicom_is_filed_with_the_dicoms(
 def test_re_saving_an_already_submitted_application_does_not_refile(
     as_admin, storage_root, deid_dirs
 ):
-    """Stamping twice would put two ids on every page."""
     patient_id, application_id, record = _submitted_application(as_admin, storage_root)
     staged = _stage_output(record, storage_root)
     as_admin.put(
@@ -244,9 +231,6 @@ def test_re_saving_an_already_submitted_application_does_not_refile(
 def test_submitting_removes_the_identified_original(
     as_admin, storage_root, deid_dirs
 ):
-    """The redacted copy is what survives submission. Keeping the
-    identified one past that point is the risk the whole pass exists to
-    remove."""
     patient_id, application_id, record = _submitted_application(
         as_admin, storage_root
     )
@@ -268,8 +252,6 @@ def test_submitting_removes_the_identified_original(
 def test_an_original_without_a_redacted_copy_is_kept(
     as_admin, storage_root, deid_dirs
 ):
-    """The original is the thing that cannot be reconstructed, so it goes
-    only once there is something to replace it."""
     _, application_id, record = _submitted_application(as_admin, storage_root)
     original = pathlib.Path(record["file_path"])
     staged = _stage_output(record, storage_root)
@@ -284,14 +266,10 @@ def test_an_original_without_a_redacted_copy_is_kept(
     assert original.is_file()
 
 
-# ------------------------------------------------- what is left behind
 
 def test_submitting_clears_out_the_upload_folder(
     as_admin, storage_root, deid_dirs
 ):
-    """An upload lands in a folder of its own. Once its documents have
-    been filed under the patient and the originals discarded, the folder
-    is an empty shell, and they were accumulating one per upload."""
     _, application_id, record = _submitted_application(as_admin, storage_root)
     original = pathlib.Path(record["file_path"])
     staged = _stage_output(record, storage_root)
@@ -309,9 +287,6 @@ def test_submitting_clears_out_the_upload_folder(
 def test_submitting_takes_the_run_s_text_and_report_with_it(
     as_admin, storage_root, deid_dirs
 ):
-    """The pipeline also writes the text it read out of the document.
-    Discarding the original while leaving that behind keeps the contents
-    in the clear, which is the thing submission is meant to end."""
     _, application_id, record = _submitted_application(as_admin, storage_root)
     staged = _stage_output(record, storage_root)
 
@@ -334,8 +309,6 @@ def test_submitting_takes_the_run_s_text_and_report_with_it(
 def test_a_folder_still_holding_a_document_is_kept(
     as_admin, storage_root, deid_dirs
 ):
-    """One document filed, one never de-identified. The second one's
-    original stays, so the folder has to stay with it."""
     _, application_id, record = _submitted_application(as_admin, storage_root)
     other = as_admin.post(
         f"/applications/{application_id}/files",
@@ -358,9 +331,6 @@ def test_a_folder_still_holding_a_document_is_kept(
 def test_a_document_attached_already_redacted_survives_submission(
     as_admin, storage_root, deid_dirs
 ):
-    """It has no original behind it, so both paths on the row name the
-    same file. Discarding 'the original' deleted the only copy there
-    was, moments after filing it."""
     patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
     application_id = as_admin.post(
         "/applications", json={"patient_id": patient_id}

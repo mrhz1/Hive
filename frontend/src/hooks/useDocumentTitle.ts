@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 
 const SUFFIX = 'Hive Admin'
 
-/** Sets document.title per page and restores it on unmount. */
 export function useDocumentTitle(title: string) {
   useEffect(() => {
     const previous = document.title

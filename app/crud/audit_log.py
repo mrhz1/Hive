@@ -1,4 +1,3 @@
-"""Audit log CRUD (append + read only -- audit rows are never mutated)."""
 import json
 import uuid
 from typing import List, Optional
@@ -10,7 +9,6 @@ from app.schemas import AuditLog, AuditLogCreate
 
 log = get_logger(__name__)
 
-# Order must match sql/schema.sql -- Hive INSERT is positional.
 COLUMNS = (
     "id",
     "action",
@@ -28,7 +26,6 @@ _VALUES = ", ".join(NOW_SQL if c == "created_at" else "%s" for c in COLUMNS)
 
 
 def dumps(value: Optional[dict]) -> Optional[str]:
-    """JSON-encode for storage. default=str so datetimes survive."""
     if value is None:
         return None
     return json.dumps(value, default=str, sort_keys=True)
@@ -97,12 +94,6 @@ def list_audit_logs(
     date_to: Optional[str] = None,
     limit: int = 100,
 ) -> List[AuditLog]:
-    """Filtered change events, newest first.
-
-    `user_id` and the date bounds are what make this answer "what did
-    this person do, and when" -- the question an access review and an
-    incident both start from, and which this could not be asked before.
-    """
     where, params = [], []
     if entity_type:
         where.append("`entity_type` = %s")
@@ -120,7 +111,6 @@ def list_audit_logs(
         where.append("`created_at` >= %s")
         params.append(date_from)
     if date_to:
-        # Inclusive of the whole day the caller named.
         where.append("`created_at` < %s")
         params.append(f"{date_to} 23:59:59.999")
 

@@ -1,4 +1,3 @@
-"""Extract metadata from an uploaded document."""
 import datetime as _datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -14,18 +13,15 @@ MAX_FIELDS = 200
 
 
 def file_type_for(extension: str) -> Optional[str]:
-    """'pdf' / 'dicom' / 'word', or None when we do not read this format."""
     return METADATA_EXTENSIONS.get((extension or "").lower().lstrip("."))
 
 
 def _clean(value: Any) -> Optional[str]:
-    """Normalise one attribute to a short string, or None to drop it."""
     if value is None:
         return None
     if isinstance(value, (_datetime.datetime, _datetime.date)):
         return value.isoformat()
     if isinstance(value, (bytes, bytearray)):
-        # Binary attributes are rarely meaningful and never displayable.
         return None
 
     text = str(value).strip()
@@ -96,19 +92,12 @@ def _extract_docx(path: Path) -> Dict[str, str]:
 
 
 def _decoded(value: Any) -> Any:
-    """olefile hands back bytes for text properties on older documents."""
     if isinstance(value, (bytes, bytearray)):
         return value.decode("utf-8", "replace").strip("\x00") or None
     return value
 
 
 def _extract_legacy_doc(path: Path) -> Dict[str, str]:
-    """A pre-2007 .doc: OLE2, so python-docx cannot open it at all.
-
-    The properties live in the SummaryInformation streams, which is what
-    olefile reads. Without it the row records 'failed' with the reason,
-    which is what this format did before and is not made worse by it.
-    """
     import olefile
 
     ole = olefile.OleFileIO(str(path))
@@ -123,7 +112,6 @@ def _extract_legacy_doc(path: Path) -> Dict[str, str]:
 
 
 def _extract_word(path: Path) -> Dict[str, str]:
-    """Word, either generation. The container says which, not the name."""
     with open(path, "rb") as handle:
         head = handle.read(len(OLE_MAGIC))
 
@@ -140,7 +128,6 @@ _EXTRACTORS = {
 
 
 def extract(path: Path, extension: str) -> Tuple[str, Dict[str, str], str, Optional[str]]:
-    """Read one file's metadata."""
     file_type = file_type_for(extension)
     if file_type is None:
         return (extension or "unknown").lower(), {}, "unsupported", None

@@ -1,15 +1,6 @@
 import { z } from 'zod'
 import { idSchema, timestampSchema } from './common'
 
-/**
- * A row of the metadata browser: what was extracted from a document,
- * plus enough about the document itself to recognise it.
- *
- * Extracted values arrive as strings -- app/file_metadata.py stringifies
- * whatever the format handed it -- but nothing here depends on that, so
- * the record stays permissive rather than rejecting a whole page over one
- * odd field.
- */
 export const fileMetadataRowSchema = z.object({
   id: idSchema,
   file_id: idSchema,
@@ -34,7 +25,6 @@ export type FileMetadataFilters = {
   patient_id?: string
 }
 
-/** Drops the empty filters, so the query key and the URL stay tidy. */
 export function activeFilters(
   filters: FileMetadataFilters
 ): Record<string, string> {
@@ -51,7 +41,6 @@ export function metadataEntries(
     .sort((a, b) => a[0].localeCompare(b[0]))
 }
 
-/** A one-line taste of the blob, for the table cell. */
 export function metadataPreview(row: FileMetadataRow, limit = 3): string {
   const entries = metadataEntries(row).filter(([, value]) => value !== '')
   if (entries.length === 0) return 'No fields extracted'

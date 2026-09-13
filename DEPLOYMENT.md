@@ -749,6 +749,7 @@ have it.
 | `DEID_BATCH_LIMIT` | `0` (no limit) | Cap files per job run |
 | `DEID_RETRY_STALE_MINUTES` | `0` (off) | Re-claim rows stuck in `processing` |
 | `DEID_FILE_ID` | — | Set per run by the API; scopes a run to one file |
+| `DEID_NOTICE_REPEAT_SECONDS` | `120` | Window in which a repeat de-identification notice for the same outcome is dropped |
 | `DEID_WORK_DIR` | 0700 temp dir | Holds the PHI-bearing handoff |
 | `DEID_KEEP_WORK_DIR` | `false` | Debugging only |
 | `CML_DEID_JOB_ID` | — | Required for `cml_job` |

@@ -21,12 +21,7 @@ export function FormLayout({
   children: ReactNode
   footerNote?: ReactNode
   submitLabel?: string
-  /**
-   * Show the record without offering to change it. A disabled fieldset
-   * rather than a prop threaded through every field: one element takes
-   * every input, select and button inside it out of play, and cannot be
-   * forgotten when a field is added.
-   */
+
   readOnly?: boolean
 }) {
   const submitLabel =
@@ -62,7 +57,6 @@ export function FormLayout({
   )
 }
 
-/** Makes a field span the full width of the two-column form grid. */
 export function FullWidth({ children }: { children: ReactNode }) {
   return <div className="sm:col-span-2">{children}</div>
 }

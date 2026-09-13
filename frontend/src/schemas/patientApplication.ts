@@ -27,23 +27,15 @@ export const patientApplicationSchema = z.object({
   updated_at: nullableTimestamp,
   reviewed_at: nullableTimestamp,
   status_reason: nullableText,
-  /** The user who has to work on it; upload notices go to them. */
+
   assigned_to_id: nullableText,
-  /**
-   * Resolved by the API rather than looked up here: reading it off the
-   * users list would need `user:view`, and the point is that somebody
-   * with only `application:view` can find their own work.
-   */
+
   assigned_to_username: nullableText,
-  /** Resolved by the API for the same reason as the assignee's. */
+
   created_by_username: nullableText,
   submitted_by_username: nullableText,
   reviewed_by_username: nullableText,
-  /**
-   * Where this application's documents came from. Per application, not
-   * per patient: a second application for the same patient routinely
-   * draws on a different folder.
-   */
+
   original_file_path: nullableText,
 })
 
@@ -62,44 +54,20 @@ export function applicationTone(
 
 const NON_REJECTABLE = ['submitted', 'deleted']
 
-/**
- * Whether it can be turned down (again).
- *
- * A rejected application is deliberately still rejectable: the first
- * problem gets fixed, the next one comes to light, and each rejection
- * carries its own reason. A submitted one is not -- it has gone for
- * review and the only thing left to do from here is close it.
- */
 export function canReject(status: string): boolean {
   return !NON_REJECTABLE.includes(status)
 }
 
-/**
- * Whether the application is finished being edited.
- *
- * Once submitted it is under review by somebody else, so the wizard
- * becomes a read-only record of what was sent: no new documents, no
- * verdicts, no changes to the patient behind it.
- */
 export function isReadOnly(status: string | undefined): boolean {
   return status === 'submitted'
 }
 
-/** A deleted application keeps its row but has nothing left to act on. */
 export function isDeleted(status: string): boolean {
   return status === 'deleted'
 }
 
 const UNDELETABLE = ['submitted', 'rejected', 'deleted']
 
-/**
- * Whether deleting is still on the table.
- *
- * Once an application has been submitted or rejected it is a record of
- * something that happened, and deleting is not the way to take that
- * back -- a submitted application is under review by somebody else, and
- * a rejected one already carries the reason it was turned down.
- */
 export function canDelete(status: string): boolean {
   return !UNDELETABLE.includes(status)
 }

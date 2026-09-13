@@ -1,4 +1,3 @@
-"""Cloudera AI (CML) API v2 client -- just enough to start a job run."""
 import os
 from typing import Dict, Optional
 
@@ -18,7 +17,6 @@ CML_CA_BUNDLE = (
 
 
 def _tls_verify():
-    """What to pass as httpx's `verify`: a CA bundle path, or True/False."""
     disabled = os.environ.get("CML_VERIFY_TLS", "true").strip().lower() in (
         "0",
         "false",
@@ -32,18 +30,17 @@ def _tls_verify():
 
 
 class ClouderaError(Exception):
-    """Raised for any failure to reach or command the CML API."""
+    pass
 
 
 class ClouderaCapacityError(ClouderaError):
-    """The control plane refused the run for want of capacity, not because anything is wrong with it."""
+    pass
 
 
 _RETRYABLE_STATUS = (409, 429, 500, 502, 503, 504)
 
 _BUSY_PHRASES = (
-    "already active",  # the exact wording CML uses: "job run for job <id>
-    # already active, code 9", and it arrives as a 400
+    "already active",
     "already running",
     "already in progress",
     "another run",
@@ -62,9 +59,6 @@ _TERMINAL_RUN_STATES = (
     "killed",
     "cancelled",
     "canceled",
-    # A skipped run never starts, so it is over the moment it is
-    # recorded. Without this, waiting on one that slipped through meant
-    # polling a run that would never move for the full run timeout.
     "skipped",
 )
 
@@ -122,7 +116,6 @@ def _config() -> Dict[str, str]:
 
 
 def is_configured() -> bool:
-    """Whether a job run could be started right now."""
     try:
         _config()
         return True
@@ -131,7 +124,6 @@ def is_configured() -> bool:
 
 
 def start_deid_job_run(environment: Optional[Dict[str, str]] = None) -> str:
-    """Start a run of the de-identification Job."""
     config = _config()
     url = (
         f"{config['url']}/projects/{config['project_id']}"
@@ -143,7 +135,6 @@ def start_deid_job_run(environment: Optional[Dict[str, str]] = None) -> str:
         "job_id": config["job_id"],
     }
     if environment:
-        # Values must be strings; the API rejects a JSON number here.
         payload["environment"] = {k: str(v) for k, v in environment.items()}
 
     try:
@@ -184,14 +175,6 @@ def start_deid_job_run(environment: Optional[Dict[str, str]] = None) -> str:
     status = str(body.get("status", "")) if isinstance(body, dict) else ""
 
     if "skip" in status.lower():
-        # CML accepted the request and refused the work: a run of this
-        # Job is already active, so this one was recorded as Skipped and
-        # will never execute. That is the busy answer wearing a 200, and
-        # treating it as a dispatch is what filled the queue with Skipped
-        # entries -- each one taken as started, waited on, found finished,
-        # and immediately followed by another request that was skipped
-        # in turn. Raised as capacity so the caller backs off and leaves
-        # the row queued for the run that is actually going.
         raise ClouderaCapacityError(
             f"Cloudera skipped the run for job {config['job_id']}: a run is "
             f"already active (status {status!r}, run {run_id or 'unnumbered'})"
@@ -204,7 +187,6 @@ def start_deid_job_run(environment: Optional[Dict[str, str]] = None) -> str:
 
 
 def get_job_run_status(run_id: str) -> str:
-    """Current status of one run, or "" when it cannot be determined."""
     if not run_id:
         return ""
 

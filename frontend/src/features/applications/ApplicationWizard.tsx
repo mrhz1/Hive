@@ -38,7 +38,6 @@ const STEPS = [
 
 type StepNumber = (typeof STEPS)[number]['number']
 
-/** The step rail. Steps ahead of the patient being saved are unreachable. */
 function StepRail({
   current,
   furthest,
@@ -91,7 +90,6 @@ const SOURCES = [
   },
 ]
 
-/** Step 1's fork: is this application for somebody already on file? */
 function PatientSourceChoice({
   value,
   onChange,
@@ -149,9 +147,6 @@ export function ApplicationWizard({
   const [rejecting, setRejecting] = useState(false)
   const [assignedTo, setAssignedTo] = useState(application?.assigned_to_id ?? '')
 
-  // This application's source folder, not the patient's. A second
-  // application for the same patient routinely draws on a different one,
-  // so it is asked for here and stored on the application.
   const [folder, setFolder] = useState(application?.original_file_path ?? '')
   const [folderFiles, setFolderFiles] = useState<File[]>([])
   const [folderError, setFolderError] = useState<string | null>(null)
@@ -161,10 +156,6 @@ export function ApplicationWizard({
     if (step > furthest) setFurthest(step)
   }
 
-  /**
-   * Push the assignment at whatever exists. Before the application does,
-   * the choice is just held in state and goes up with the create call.
-   */
   function assign(userId: string) {
     setAssignedTo(userId)
     if (!record || userId === (record.assigned_to_id ?? '')) return
@@ -175,14 +166,6 @@ export function ApplicationWizard({
       .catch(() => setAssignedTo(record.assigned_to_id ?? ''))
   }
 
-  /**
-   * Step 1 needs both halves before anything is written.
-   *
-   * Checked before the patient is saved, not after: the patient used to
-   * be created regardless and only the application waited on the
-   * folder, which left a patient on file that nobody had set out to
-   * create and no application pointing at them.
-   */
   function stepOneIsComplete(): boolean {
     if (folder.trim()) {
       setFolderError(null)
@@ -213,34 +196,21 @@ export function ApplicationWizard({
       }
       setRecord(current)
     } catch {
-      // The mutation hooks toast their own message. Staying on step 1 is
-      // the point: step 2 has nothing to attach documents to, and moving
-      // there anyway is what produced 'create an application first'.
+
       return
     }
 
     goTo(2)
   }
 
-  /**
-   * Picking somebody off the list only fills the form in. Nothing is
-   * created and nothing moves on: their details are shown to be read
-   * through, corrected if they are out of date, and saved deliberately.
-   * Selecting used to create the application and jump to step 2 on its
-   * own, which flashed the form up for a second and left no chance to
-   * check -- let alone change -- what the application was being filed
-   * against.
-   */
   function onPatientChosen(chosen: Patient) {
     setPatient(chosen)
   }
 
-  /** Undo the pick, while there is still nothing filed against it. */
   function clearChosenPatient() {
     setPatient(undefined)
   }
 
-  /** Where the batch actually landed, kept on the patient as a default. */
   function recordUploadFolder(landedIn: string) {
     if (!patient || patient.original_file_path) return
 
@@ -253,7 +223,6 @@ export function ApplicationWizard({
       .catch(() => undefined)
   }
 
-  /** Step 3's submit: the application leaves draft and goes for review. */
   async function submitApplication() {
     if (!record) {
       toast.error('This application has not been created yet')
@@ -277,10 +246,6 @@ export function ApplicationWizard({
   const undecided = undecidedCount(files.data ?? [])
   const rejected = rejectedCount(files.data ?? [])
 
-  // Submitted: it has gone for review, and everything here is now a
-  // record of what was sent rather than something still being put
-  // together. Every step stays reachable -- reading it back is the
-  // whole point -- and none of them offer to change anything.
   const locked = isReadOnly(record?.status)
 
   return (
@@ -289,8 +254,8 @@ export function ApplicationWizard({
         title={application ? 'Application' : 'New application'}
         description={
           patient
-            ? // The id as well as the name: names repeat, and it is the
-              // id that appears on the documents and in every email.
+            ?
+
               `${patientName(patient)} · ${patient.id}`
             : 'Enter the patient, attach their documents, then review.'
         }
@@ -334,7 +299,7 @@ export function ApplicationWizard({
                 files={folderFiles}
                 disabled={locked || isSaving}
                 onSelect={(path, files) => {
-                  // Keep a typed-in path when the picker yields none.
+
                   setFolder(path || folder)
                   setFolderFiles(files)
                   if (path || files.length) setFolderError(null)
@@ -349,9 +314,7 @@ export function ApplicationWizard({
             </div>
           </Card>
 
-          {/* Only offered while the patient is still undecided. Once one
-              is attached, changing it would silently move an application
-              -- and any documents already on it -- to someone else. */}
+          {}
           {patient || locked ? null : (
             <PatientSourceChoice value={source} onChange={setSource} />
           )}
@@ -360,8 +323,7 @@ export function ApplicationWizard({
             <ExistingPatientPicker onSelect={onPatientChosen} />
           ) : (
             <>
-              {/* Only while the pick can still be undone -- once an
-                  application exists it is filed against this patient. */}
+              {}
               {source === 'existing' && patient && !record ? (
                 <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
                   <p className="text-sm text-[rgb(var(--foreground-muted))]">
@@ -381,7 +343,7 @@ export function ApplicationWizard({
                 submitLabel={patient ? 'Save and continue' : 'Create and continue'}
                 onBeforeSubmit={stepOneIsComplete}
                 onSaved={onPatientSaved}
-                // The application asks for its own folder above.
+
                 showFilePath={false}
                 readOnly={locked}
               />
@@ -436,14 +398,9 @@ export function ApplicationWizard({
               .mutateAsync({ id: record.id, reason })
               .then(async (updated) => {
                 setRejecting(false)
-                // Recorded before leaving, so a re-render on the way out
-                // shows the verdict rather than the state it replaced.
+
                 setRecord(updated)
-                // Back to the list: the decision has been made and there
-                // is nothing further to do here. Rejecting again -- once
-                // the first problem is fixed and the next one turns up --
-                // is done by reopening it, which is where the reason for
-                // the last rejection is waiting to be read anyway.
+
                 await navigate({ to: '/applications' })
               })
               .catch(() => undefined)
@@ -467,10 +424,7 @@ export function ApplicationWizard({
               </Card>
             ) : null}
 
-            {/* A rejected document is a decision that this batch is not
-                fit to go, so the only thing left to do with the
-                application is turn it down too. Submitting it anyway
-                would ask the reviewer to find what was found here. */}
+            {}
             {!locked && rejected > 0 ? (
               <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
                 {rejected} document{rejected === 1 ? '' : 's'} in step 2{' '}
@@ -485,8 +439,7 @@ export function ApplicationWizard({
                 Back to documents
               </Button>
 
-              {/* Submitted: it is with a reviewer now. Neither pushing it
-                  again nor turning it down happens from here. */}
+              {}
               {locked ? (
                 <Button onClick={() => void navigate({ to: '/applications' })}>
                   Close

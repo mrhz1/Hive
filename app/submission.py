@@ -1,4 +1,3 @@
-"""What happens after an application is submitted."""
 from pathlib import Path
 from typing import Optional
 
@@ -36,7 +35,6 @@ def _set_path(file_id: str, path: str) -> None:
 
 
 def process_one(record, patient_id: str) -> bool:
-    """Stamp and file one de-identified output. True if it was filed."""
     if not record.de_identified_file_path:
         return False
 
@@ -79,7 +77,6 @@ def process_one(record, patient_id: str) -> bool:
 
 
 def _resolved(path: Path) -> Path:
-    """Best-effort resolve; an unresolvable path is still worth comparing."""
     try:
         return path.resolve()
     except OSError:  # pragma: no cover - unreadable path
@@ -87,15 +84,6 @@ def _resolved(path: Path) -> Path:
 
 
 def _discard_original(record, final: Path) -> None:
-    """Delete the identified copy, now that the redacted one is filed.
-
-    Only ever after the redacted copy has been moved into place: the
-    original is the thing that cannot be reconstructed, so it goes last
-    and only once there is something to replace it. Submitting is the
-    point at which the application no longer needs it, and keeping
-    identified documents past that point is the risk the whole
-    de-identification pass exists to remove.
-    """
     if not record.file_path:
         return
 
@@ -107,24 +95,10 @@ def _discard_original(record, final: Path) -> None:
         )
         return
 
-    # Both resolved before comparing: `final` is built from a configured
-    # directory, and a symlink anywhere in it would otherwise make the
-    # same file look like two different ones -- which is the comparison
-    # this whole branch turns on.
     if original == _resolved(final):
-        # A document attached already redacted: there is no original
-        # behind it, so both paths on the row name the same file. This
-        # used to delete it -- the one copy in existence -- moments
-        # after filing it, and the submitted application came out the
-        # other side with nothing under the patient's folder.
         log.info("submission_original_is_the_output", file_id=record.id)
         return
 
-    # Before the original goes, while its name is still the way to find
-    # them: the run also wrote the text it read out of the document and
-    # a report of what it redacted, in a folder beside it. Neither is
-    # recorded anywhere, and the text is the document in the clear --
-    # exactly what discarding the original is meant to be the end of.
     remove_deid_artifacts(record.file_path)
 
     try:
@@ -137,16 +111,12 @@ def _discard_original(record, final: Path) -> None:
 
     log.info("submission_original_removed", file_id=record.id)
 
-    # The upload's own folder, once the last document has left it. A
-    # folder still holding something -- a document that was never
-    # de-identified, so was never filed -- is left alone.
     prune_empty_dirs(original.parent)
 
 
 def finalise_submission(
     application_id: str, request_id: Optional[str] = None
 ) -> None:
-    """Stamp and file every de-identified output on this application."""
     if request_id:
         structlog.contextvars.bind_contextvars(
             request_id=request_id, background_task="finalise_submission"

@@ -1,4 +1,3 @@
-"""Prove transactional ORC actually works: insert a row, SELECT it, DELETE it by id, confirm it's gone."""
 import os
 import sys
 
@@ -7,7 +6,6 @@ from impala.dbapi import connect
 
 load_dotenv(".env.local")
 
-# ids are application-generated UUID STRINGs (Hive has no sequences).
 TEST_ID = "acid-test-00000000-0000-0000-0000-000000000000"
 
 
@@ -34,7 +32,6 @@ def main() -> int:
         cursor.execute(
             "INSERT INTO `users` (`id`, `username`, `email`, `first_name`, "
             "`last_name`, `status`, `is_active`, `role_id`, `created_at`) "
-            # created_at inlined, not bound -- see app/db.py::NOW_SQL.
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, current_timestamp())",
             (
                 TEST_ID,

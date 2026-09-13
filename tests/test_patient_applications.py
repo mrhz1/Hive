@@ -1,4 +1,3 @@
-"""Patient application endpoints, end to end through permissions -> router -> CRUD."""
 from conftest import (
     ADMIN_ID,
     ADMIN_USER,
@@ -19,7 +18,6 @@ def _application(client, patient_id, **overrides):
     )
 
 
-# ------------------------------------------------------------ the shape
 
 def test_model_exposes_every_requested_field(as_admin):
     created = _application(as_admin, _patient(as_admin)).json()
@@ -29,8 +27,6 @@ def test_model_exposes_every_requested_field(as_admin):
         "description", "created_by_id", "updated_by_id",
         "submitted_at", "created_at", "updated_at", "reviewed_at",
         "status_reason", "assigned_to_id", "original_file_path",
-        # Resolved by the router, not columns: whose work this is and who
-        # did each thing to it, for people who cannot read the users list.
         "assigned_to_username", "created_by_username",
         "submitted_by_username", "reviewed_by_username",
     }
@@ -43,7 +39,6 @@ def test_a_new_application_is_a_draft_stamped_with_its_creator(as_admin):
     assert created["created_by_id"] == ADMIN_ID
     assert created["updated_by_id"] == ADMIN_ID
     assert created["created_at"] is not None
-    # A draft has not been submitted or reviewed by anyone yet.
     assert created["submitted_by_id"] is None
     assert created["submitted_at"] is None
     assert created["reviewed_by_id"] is None
@@ -51,7 +46,6 @@ def test_a_new_application_is_a_draft_stamped_with_its_creator(as_admin):
 
 
 def test_an_application_for_an_unknown_patient_is_a_404(as_admin):
-    """Hive enforces no foreign keys, so nothing but this check stops a row pointing at a patient that does not exist."""
     assert _application(as_admin, "no-such-patient").status_code == 404
 
 
@@ -60,7 +54,6 @@ def test_an_unknown_status_is_rejected(as_admin):
     assert response.status_code == 422
 
 
-# ----------------------------------------------------------- transitions
 
 def test_submitting_stamps_the_submitter(as_admin):
     created = _application(as_admin, _patient(as_admin)).json()
@@ -72,7 +65,6 @@ def test_submitting_stamps_the_submitter(as_admin):
     assert submitted["status"] == "submitted"
     assert submitted["submitted_by_id"] == ADMIN_ID
     assert submitted["submitted_at"] is not None
-    # Submitting is not reviewing.
     assert submitted["reviewed_by_id"] is None
 
 
@@ -90,7 +82,6 @@ def test_reviewing_stamps_the_reviewer(as_admin):
 
 
 def test_resaving_does_not_rewrite_who_submitted_it(as_admin):
-    """Only the transition stamps the actor."""
     created = _application(as_admin, _patient(as_admin)).json()
     first = as_admin.put(
         f"/applications/{created['id']}", json={"status": "submitted"}
@@ -116,7 +107,6 @@ def test_every_write_records_who_made_it(as_admin):
 
 
 def test_the_caller_cannot_attribute_an_application_to_someone_else(as_admin):
-    """created_by_id is not an input -- it comes from the authenticated caller, so a forged body is ignored rather than honoured."""
     created = _application(
         as_admin, _patient(as_admin), created_by_id="somebody-else"
     ).json()
@@ -124,7 +114,6 @@ def test_the_caller_cannot_attribute_an_application_to_someone_else(as_admin):
     assert created["created_by_id"] == ADMIN_ID
 
 
-# ------------------------------------------------------------- lifecycle
 
 def test_list_filters_by_patient(as_admin):
     first, second = _patient(as_admin), _patient(as_admin)
@@ -143,7 +132,6 @@ def test_unknown_application_is_a_404(as_admin):
 
 
 def test_delete_keeps_the_record_and_says_why(as_admin):
-    """The documents go; the application stays."""
     created = _application(as_admin, _patient(as_admin)).json()
 
     response = as_admin.delete(
@@ -190,7 +178,6 @@ def test_deleting_removes_the_documents(as_admin, storage_root):
     assert as_admin.get(f"/files/{record['id']}").status_code == 404
 
 
-# ------------------------------------------------------------- rejection
 
 
 def test_rejecting_records_the_reason(as_admin):
@@ -215,7 +202,6 @@ def test_rejecting_needs_a_reason(as_admin):
 
 
 def test_a_submitted_application_cannot_be_rejected(as_admin):
-    """Explicitly asked for: once submitted it has gone for review, and the verdict is not recorded from here."""
     created = _application(as_admin, _patient(as_admin)).json()
     as_admin.put(f"/applications/{created['id']}", json={"status": "submitted"})
 
@@ -241,9 +227,6 @@ def test_an_approved_application_can_still_be_rejected(as_admin):
 
 
 def test_rejecting_twice_records_the_second_reason(as_admin):
-    """Explicitly asked for: the first problem gets fixed, the next one
-    surfaces, and it has to be possible to say so. A rejection that
-    could only happen once left the second reason nowhere to go."""
     created = _application(as_admin, _patient(as_admin)).json()
     as_admin.post(f"/applications/{created['id']}/reject", json={"reason": "first"})
 
@@ -259,10 +242,6 @@ def test_rejecting_twice_records_the_second_reason(as_admin):
 
 
 def test_a_patient_with_an_application_cannot_be_deleted(as_admin):
-    """Deleting a patient used to take their applications with them,
-    which is the one thing the soft delete exists to prevent: an
-    application is *kept* when it is deleted, as the record of what
-    happened to it. So the patient stays while anything refers to them."""
     patient_id = _patient(as_admin)
     application_id = _application(as_admin, patient_id).json()["id"]
 
@@ -271,14 +250,11 @@ def test_a_patient_with_an_application_cannot_be_deleted(as_admin):
     assert refused.status_code == 409
     assert "application" in refused.json()["error"]["detail"]
 
-    # Neither end of it was touched.
     assert as_admin.get(f"/patients/{patient_id}").status_code == 200
     assert as_admin.get(f"/applications/{application_id}").status_code == 200
 
 
 def test_an_application_that_was_deleted_still_holds_the_patient(as_admin):
-    """It is marked deleted, not removed -- the row is still there and
-    still names the patient, so the patient is still spoken for."""
     patient_id = _patient(as_admin)
     application_id = _application(as_admin, patient_id).json()["id"]
 
@@ -301,7 +277,6 @@ def test_a_patient_with_no_applications_is_deleted(as_admin):
     assert as_admin.get(f"/patients/{patient_id}").status_code == 404
 
 
-# ----------------------------------------------------------- permissions
 
 def test_reader_cannot_write(client):
     client.headers.update({"REMOTE-USER": VIEWER_USER})
@@ -324,7 +299,6 @@ def test_identity_is_required(client):
     assert client.get("/applications").status_code == 401
 
 
-# ---------------------------------------------------------------- audit
 
 def test_writes_are_audited_as_patient_application(as_admin, store):
     created = _application(as_admin, _patient(as_admin)).json()
@@ -341,9 +315,6 @@ def test_writes_are_audited_as_patient_application(as_admin, store):
 
 
 def test_the_assignee_username_comes_back_with_the_application(as_admin):
-    """So somebody holding only `application:view` can see whose work an
-    application is. Reading it off the users list would need `user:view`,
-    which is a much larger grant than that question deserves."""
     patient_id = _patient(as_admin)
     _application(as_admin, patient_id, assigned_to_id=VIEWER_ID)
 
@@ -362,8 +333,6 @@ def test_an_unassigned_application_has_no_username(as_admin):
 
 
 def test_the_username_is_served_with_the_application_not_looked_up(client):
-    """Resolved server-side so the page needs nothing but the
-    applications endpoint to show whose work each one is."""
     client.headers.update({"REMOTE-USER": ADMIN_USER})
     patient_id = _patient(client)
     _application(client, patient_id, assigned_to_id=VIEWER_ID)

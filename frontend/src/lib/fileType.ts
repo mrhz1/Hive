@@ -1,12 +1,7 @@
 import { canDeidentify } from '@/schemas/applicationFile'
 
-/** What the picker accepts, for messages shown to whoever just picked something else. */
 export const SUPPORTED_FORMATS_LABEL = 'DICOM, PDF, or Word'
 
-// Mirrors app/filetype.py: a name is only ever a claim about content, and
-// DICOM off a PACS routinely carries no extension at all. The name still
-// wins when it names a format the picker knows -- it carries the
-// .doc/.docx and .dcm/.dicom distinctions the magic bytes alone cannot.
 const DICOM_PREAMBLE_BYTES = 128
 const DICOM_MAGIC = 'DICM'
 const PDF_MAGIC = '%PDF-'
@@ -35,11 +30,9 @@ function startsWithBytes(bytes: Uint8Array, magic: number[]): boolean {
   return true
 }
 
-/** The format these opening bytes belong to, or null if unrecognised. */
 function sniffExtension(head: Uint8Array): string | null {
   if (head.length === 0) return null
 
-  // Some writers drop the preamble and start straight at the magic.
   if (
     startsWithAscii(head, DICOM_MAGIC, DICOM_PREAMBLE_BYTES) ||
     startsWithAscii(head, DICOM_MAGIC)
@@ -49,12 +42,8 @@ function sniffExtension(head: Uint8Array): string | null {
 
   if (startsWithAscii(head, PDF_MAGIC)) return 'pdf'
 
-  // Every legacy Office format shares this container; Word is the only
-  // one this application handles.
   if (startsWithBytes(head, OLE_MAGIC)) return 'doc'
 
-  // OOXML is a zip; 'word/' among its entry names is what separates a
-  // .docx from an .xlsx or a plain archive.
   if (startsWithBytes(head, ZIP_MAGIC)) {
     const text = new TextDecoder('latin1').decode(head)
     if (text.includes('word/')) return 'docx'
@@ -68,13 +57,11 @@ async function readHead(file: File, bytes = SNIFF_BYTES): Promise<Uint8Array> {
   return new Uint8Array(buffer)
 }
 
-/** Whether the upload pipeline can actually do anything with this file. */
 export async function isSupportedUpload(file: File): Promise<boolean> {
   if (canDeidentify(nameExtension(file.name))) return true
   return sniffExtension(await readHead(file)) !== null
 }
 
-/** Splits a picked batch into what the pipeline accepts and what it does not. */
 export async function partitionBySupport(
   files: File[]
 ): Promise<{ supported: File[]; unsupported: File[] }> {

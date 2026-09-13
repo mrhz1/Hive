@@ -1,14 +1,3 @@
-"""Reading the progress the de-identification Job writes.
-
-The Job runs in its own container, so the API cannot ask it anything.
-The one thing they share is `FILE_STORAGE_DIR` (DEPLOYMENT.md), and the
-Job rewrites a small JSON file there as it works -- see
-OCR/deid/progress.py for the writing half and for why this is a file
-rather than a Hive column.
-
-Everything here is best-effort. Progress is decoration on top of
-`deid_status`, which remains the truth about whether a file is done.
-"""
 import json
 import os
 import time
@@ -22,21 +11,14 @@ log = get_logger(__name__)
 
 PROGRESS_DIR = STORAGE_ROOT / ".progress"
 
-# Older than this and the writer is gone without having said so -- the
-# Job was killed, the container went away. Rather than show a bar frozen
-# at 41% forever, the record is treated as absent and the caller falls
-# back to `deid_status`. Comfortably longer than a page takes (20-30s)
-# so a slow page is never mistaken for a dead job.
 STALE_AFTER_SECONDS = float(os.environ.get("DEID_PROGRESS_STALE_SECONDS", "300"))
 
 
 def progress_path(file_id: str) -> Path:
-    """Where the Job should write progress for this file."""
     return PROGRESS_DIR / f"{safe_path_segment(file_id)}.json"
 
 
 def read(file_id: str) -> Optional[dict]:
-    """This file's progress, or None if there is nothing usable."""
     path = progress_path(file_id)
 
     try:
@@ -50,8 +32,6 @@ def read(file_id: str) -> Optional[dict]:
     try:
         state = json.loads(raw)
     except ValueError:
-        # A torn read should be impossible -- the writer swaps the file in
-        # with os.replace -- so this means the content is genuinely bad.
         log.debug("progress_unparsable", file_id=file_id)
         return None
 
@@ -70,11 +50,6 @@ def read(file_id: str) -> Optional[dict]:
 
 
 def read_many(file_ids: List[str]) -> Dict[str, dict]:
-    """Progress for several files, skipping those that have none.
-
-    One directory's worth of small reads: this is what the file list
-    polls, and doing it per file would be one request each.
-    """
     found: Dict[str, dict] = {}
     for file_id in file_ids:
         state = read(file_id)
@@ -84,7 +59,6 @@ def read_many(file_ids: List[str]) -> Dict[str, dict]:
 
 
 def clear(file_id: str) -> None:
-    """Drop the progress record for a file that is no longer running."""
     try:
         progress_path(file_id).unlink()
     except FileNotFoundError:

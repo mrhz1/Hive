@@ -1,4 +1,3 @@
-"""Generate a synthetic clinical-note PDF for testing."""
 import argparse
 import sys
 from pathlib import Path
@@ -38,7 +37,7 @@ LINES = [
 
 def build(output: str, keep_text: bool, dpi: int = 200) -> None:
     doc = fitz.open()
-    page = doc.new_page()  # Letter by default
+    page = doc.new_page()
 
     y = 60
     for text, size, bold in LINES:
@@ -58,7 +57,6 @@ def build(output: str, keep_text: bool, dpi: int = 200) -> None:
         print(f"wrote digital (text-layer) PDF: {output}")
         return
 
-    # Rasterise to remove the text layer -> a "scanned" document.
     scale = dpi / 72.0
     pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
     scanned = fitz.open()

@@ -1,4 +1,3 @@
-"""Browsing and exporting the whole `file_metadata` table."""
 import io
 
 from conftest import minimal_patient
@@ -41,7 +40,6 @@ def test_search_reaches_inside_the_stored_metadata(as_admin, storage_root, curso
     first = _upload(as_admin, application_id, name="alpha.pdf")
     _upload(as_admin, application_id, name="beta.pdf")
 
-    # Put a value on one of them that appears nowhere else.
     for row in cursor.store["file_metadata"]:
         if row["file_id"] == first["id"]:
             row["metadata"] = '{"Manufacturer": "Siemens Healthineers"}'
@@ -121,7 +119,6 @@ def test_the_export_is_a_real_workbook_of_the_filtered_rows(
     headers = [cell.value for cell in sheet[1]]
 
     assert headers[0] == "File"
-    # The extracted fields become columns of their own.
     assert "Manufacturer" in headers
 
     body = list(sheet.iter_rows(min_row=2, values_only=True))
@@ -142,7 +139,7 @@ def test_the_export_covers_every_row_when_nothing_is_searched_for(
     response = as_admin.get("/file-metadata/export")
     sheet = load_workbook(io.BytesIO(response.content)).active
 
-    assert sheet.max_row == 3  # header + two documents
+    assert sheet.max_row == 3
 
 
 def test_browsing_metadata_needs_the_application_view_permission(client):

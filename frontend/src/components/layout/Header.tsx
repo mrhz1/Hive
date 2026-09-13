@@ -25,7 +25,6 @@ function ThemeToggle() {
   )
 }
 
-/** Initials fallback for the avatar, from the user's name or email. */
 function getInitials(first?: string, last?: string, email?: string) {
   const fromName = `${first?.[0] ?? ''}${last?.[0] ?? ''}`.trim()
   if (fromName) return fromName.toUpperCase()

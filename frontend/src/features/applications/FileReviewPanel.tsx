@@ -52,7 +52,6 @@ import {
 import { FileTallyBar } from './FileTallyBar'
 import { UploadProgress } from './UploadProgress'
 
-/** Why approve and reject are unavailable until redaction has run. */
 const NOT_REVIEWABLE = 'De-identify this document before reviewing it'
 
 export function FileReviewPanel({
@@ -63,21 +62,12 @@ export function FileReviewPanel({
   readOnly = false,
 }: {
   applicationId: string
-  /** Where the batch landed. The wizard records it on the patient. */
+
   onUploaded?: (folder: string) => void
-  /**
-   * Picked in step 1, before there was an application to attach them to.
-   * Uploaded once on arrival here rather than making the user choose the
-   * same folder a second time.
-   */
+
   initialFiles?: File[]
   onInitialFilesTaken?: () => void
-  /**
-   * A submitted application: the documents are a record of what was
-   * sent, not a pile still being worked through. Only the redacted copy
-   * and its metadata are on offer -- nothing that changes anything, and
-   * not the original, which there is no longer a reason to open here.
-   */
+
   readOnly?: boolean
 }) {
   const filesQuery = useApplicationFiles(applicationId)
@@ -85,8 +75,6 @@ export function FileReviewPanel({
   const review = useReviewApplicationFile(applicationId)
   const remove = useDeleteApplicationFile(applicationId)
 
-  // The batch reports where it put the files once the first one lands,
-  // which is what the wizard records against the patient.
   const onJobFinished = useCallback(
     (job: UploadJob) => {
       if (job.folder && onUploaded) onUploaded(job.folder)
@@ -96,9 +84,6 @@ export function FileReviewPanel({
 
   const upload = useBackgroundUpload(applicationId, onJobFinished)
 
-  // Once per application: the effect re-runs whenever the parent
-  // re-renders with the same array, and a second upload would duplicate
-  // every document.
   const takenFor = useRef<string | null>(null)
   const { start: startUpload } = upload
 
@@ -133,8 +118,6 @@ export function FileReviewPanel({
 
   const files = useMemo(() => filesQuery.data ?? [], [filesQuery.data])
 
-  // Filtered here rather than server-side: the list is already loaded,
-  // and a round trip per keystroke would be slower than the filter.
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase()
     if (!term) return files
@@ -142,20 +125,11 @@ export function FileReviewPanel({
   }, [files, search])
 
   const undecided = undecidedCount(files)
-  // What "Approve all" would actually change: the undecided pile minus
-  // anything still waiting on de-identification.
+
   const approvable = approvableCount(files)
 
-  // Over every document, not the filtered view: the question it answers
-  // is whether the batch is finished, which a search term must not
-  // change the answer to.
   const tally = useMemo(() => fileTally(files), [files])
 
-  /**
-   * Only a PDF needs its bytes up front -- the modal renders it in an
-   * iframe. DICOM and Word are fetched as rendered previews by the
-   * viewer itself, so pulling a 200MB study here would be for nothing.
-   */
   async function showFile(file: ApplicationFile, deidentified = false) {
     const extension =
       deidentified && ['doc', 'docx'].includes(file.file_extension)
@@ -214,9 +188,6 @@ export function FileReviewPanel({
       onSelect: () => setShowingMetadata({ file, deidentified: true }),
     }
 
-    // A submitted application is a record, so nothing here may change
-    // it -- and the original is not on offer either: the reason to open
-    // it was to decide about it, and that has been done.
     if (readOnly) return [viewDeidentified, deidentifiedMetadata]
 
     return [
@@ -263,9 +234,7 @@ export function FileReviewPanel({
         separatorBefore: true,
         label: 'Approve',
         icon: <Check className="size-4" aria-hidden="true" />,
-        // A verdict is a verdict on the redacted copy, so the API
-        // refuses one until that copy exists. Saying so here beats
-        // offering the action and answering with a 422.
+
         disabled: !file.is_deidentified || file.review_status === 'approved',
         title: !file.is_deidentified
           ? NOT_REVIEWABLE
@@ -325,9 +294,7 @@ export function FileReviewPanel({
       header: 'Review',
       cell: (file) => (
         <div className="min-w-0">
-          {/* The menu closes the moment an action is chosen, taking its
-              own spinner with it. Without this the row sits unchanged
-              for a few seconds and nothing says anything happened. */}
+          {}
           {review.isPending && review.variables?.fileId === file.id ? (
             <span className="inline-flex items-center gap-2 text-xs font-semibold text-[rgb(var(--foreground-muted))]">
               <Spinner size="sm" label="" />

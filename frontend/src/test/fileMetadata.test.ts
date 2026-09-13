@@ -67,7 +67,7 @@ describe('file metadata rows', () => {
   })
 
   it('leaves empty fields out of the preview', () => {
-    // Producer is blank; showing 'Producer: ' would waste the one line.
+
     expect(metadataPreview(row())).toBe('Author: Ada · Title: Scan')
   })
 
@@ -126,7 +126,7 @@ describe('preview kinds', () => {
   })
 
   it('routes DICOM to the image viewer, whichever way it is spelt', () => {
-    // The reported bug: these downloaded instead of opening.
+
     expect(previewKind('dcm')).toBe('image')
     expect(previewKind('dicom')).toBe('image')
   })

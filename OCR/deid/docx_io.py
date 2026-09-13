@@ -1,4 +1,3 @@
-"""Word text extraction, in-place redaction and property clearing."""
 import logging
 from typing import Callable, Iterator, List, Tuple
 
@@ -40,7 +39,6 @@ def _paragraphs_in(container) -> Iterator:
 
 
 def paragraphs(document) -> Iterator:
-    """Every paragraph in the document, headers and footers included."""
     yield from _paragraphs_in(document)
 
     for section in document.sections:
@@ -50,7 +48,6 @@ def paragraphs(document) -> Iterator:
 
 
 def read_blocks(document) -> List[Tuple[int, str]]:
-    """(index, text) for every non-empty paragraph, in document order."""
     return [
         (index, paragraph.text)
         for index, paragraph in enumerate(paragraphs(document))
@@ -59,7 +56,6 @@ def read_blocks(document) -> List[Tuple[int, str]]:
 
 
 def replace_paragraph_text(paragraph, text: str) -> None:
-    """Set a paragraph's text, keeping the first run's formatting."""
     runs = paragraph.runs
     if not runs:
         return
@@ -70,7 +66,6 @@ def replace_paragraph_text(paragraph, text: str) -> None:
 
 
 def redact_document(document, redact: Callable[[str], str]) -> int:
-    """Apply `redact` to every paragraph. Returns paragraphs changed."""
     changed = 0
 
     for paragraph in paragraphs(document):
@@ -86,25 +81,12 @@ def redact_document(document, redact: Callable[[str], str]) -> int:
     return changed
 
 
-# Names a person by definition, whatever it happens to contain. These
-# never keep their own value: if the analyzer does not fire, they are
-# replaced anyway.
 AUTHORSHIP_PROPERTIES = ("author", "last_modified_by")
 
-# Free text that may or may not carry PHI. Read, redacted where the
-# analyzer finds something, and otherwise left alone -- 'keywords:
-# cardiology' is worth keeping, and wiping it identifies nobody.
 SCANNED_PROPERTIES = CLEARED_PROPERTIES + ("category", "keywords", "subject")
 
 
 def deidentify_properties(document, redact=None) -> List[str]:
-    """De-identify the core properties in place.
-
-    Kept rather than blanked: a `title` with the patient's name taken out
-    still says what the document is. Only `author` and
-    `last_modified_by` are replaced unconditionally -- see the note on
-    trusting the analyzer in deid/metadata.py.
-    """
     from deid.metadata import PLACEHOLDER, deidentify_value
 
     touched: List[str] = []
@@ -120,7 +102,6 @@ def deidentify_properties(document, redact=None) -> List[str]:
             continue
 
         if redact is None:
-            # No analyzer: the old behaviour, which is still safe.
             setattr(properties, name, "")
             touched.append(name)
             continue
@@ -140,7 +121,6 @@ def deidentify_properties(document, redact=None) -> List[str]:
     return touched
 
 
-# The name this had when it only ever blanked things.
 clear_properties = deidentify_properties
 
 

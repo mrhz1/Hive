@@ -79,12 +79,7 @@ CREATE TABLE `patient_applications` (
   `created_by_id` STRING,
   `updated_by_id` STRING,
   `status_reason` STRING,
-  -- The user who has to do the work. Notifications about this
-  -- application's uploads go to them.
   `assigned_to_id` STRING,
-  -- Where this application's documents came from. Per application, not
-  -- per patient: a second application for the same patient routinely
-  -- draws on a different folder.
   `original_file_path` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
@@ -124,11 +119,6 @@ CREATE TABLE `file_metadata` (
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
--- Who *saw* what. `audit_logs` records changes; this records reads,
--- downloads, exports and refusals -- the questions an incident actually
--- asks. Partitioned by day from the start: retrofitting a partition
--- scheme onto a populated table means rewriting it, and a year of this
--- is the one table that gets scanned by date.
 DROP TABLE IF EXISTS `access_logs`;
 
 CREATE TABLE `access_logs` (
@@ -148,8 +138,6 @@ CREATE TABLE `access_logs` (
   `resource_id` STRING,
   `patient_id` STRING,
   `application_id` STRING,
-  -- Did identified PHI leave? The same endpoint serves the original and
-  -- the redacted copy, and only one of those is a disclosure.
   `identified` BOOLEAN,
   `record_count` INT,
   `byte_count` BIGINT,

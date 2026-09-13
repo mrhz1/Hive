@@ -1,4 +1,3 @@
-"""Fill OCR/models/ so the deployment never needs the network."""
 import argparse
 import logging
 import os
@@ -34,7 +33,6 @@ TRANSFORMERS_ALLOW = [
 
 
 def _target(kind: str, name: str) -> Path:
-    """The canonical location for a model, names kept verbatim."""
     return model_store.models_dir() / kind / name.strip().strip("/")
 
 
@@ -47,7 +45,6 @@ def _already_there(kind: str, name: str, force: bool) -> bool:
 
 
 def _copy_tree(source: Path, target: Path) -> None:
-    """Copy into place, resolving symlinks."""
     if target.exists():
         shutil.rmtree(target)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -57,7 +54,6 @@ def _copy_tree(source: Path, target: Path) -> None:
 
 
 def stage_paddle(name: str, device: str, force: bool) -> bool:
-    """PaddleOCR downloads into ~/.paddlex/official_models on first construction, so we build the pipeline and then copy what landed."""
     log.info("paddle: %s", name)
     if _already_there(model_store.PADDLE_DIR, name, force):
         return True
@@ -81,7 +77,6 @@ def stage_paddle(name: str, device: str, force: bool) -> bool:
 
 
 def stage_spacy(name: str, force: bool) -> bool:
-    """spaCy models ship as pip packages hosted on github (blocked on the target), so what gets staged is the *loadable directory* inside the installed package -- the one holding config.cfg."""
     log.info("spacy: %s", name)
     if _already_there(model_store.SPACY_DIR, name, force):
         return True
@@ -113,7 +108,6 @@ def stage_spacy(name: str, force: bool) -> bool:
 
 
 def stage_transformers(name: str, force: bool) -> bool:
-    """snapshot_download with a local_dir, so the result is a plain directory of real files rather than the symlinked blob cache."""
     log.info("transformers: %s", name)
     if _already_there(model_store.TRANSFORMERS_DIR, name, force):
         return True

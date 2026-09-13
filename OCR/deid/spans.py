@@ -1,4 +1,3 @@
-"""Data that crosses the stage boundary."""
 import json
 import os
 from dataclasses import dataclass, field
@@ -9,11 +8,9 @@ SCHEMA_VERSION = 1
 
 @dataclass
 class OcrSpan:
-    """One recognised text run and where it sits on the page image."""
 
     text: str
     confidence: float
-    # Axis-aligned bounds in *image pixel* coordinates.
     x0: float
     y0: float
     x1: float
@@ -47,8 +44,8 @@ class OcrSpan:
 
 @dataclass
 class PageSpans:
-    page_number: int  # 1-based
-    scale: float  # image pixels per PDF point
+    page_number: int
+    scale: float
     spans: List[OcrSpan] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -69,7 +66,6 @@ class PageSpans:
 
 @dataclass
 class OcrDocument:
-    """Everything the OCR stage learned about one PDF."""
 
     source_path: str
     dpi: int
@@ -114,7 +110,6 @@ class OcrDocument:
         )
 
     def write(self, path: str) -> None:
-        """Write the handoff file."""
         directory = os.path.dirname(os.path.abspath(path))
         if directory:
             os.makedirs(directory, mode=0o700, exist_ok=True)
@@ -131,7 +126,6 @@ class OcrDocument:
 
 @dataclass
 class PiiSpan:
-    """A detected entity, in character offsets into the page text."""
 
     entity_type: str
     start: int
@@ -151,15 +145,12 @@ class RedactionBox:
 
 @dataclass
 class PageText:
-    """A page's OCR spans flattened into one string, plus the index that walks character offsets back to the span they came from."""
 
     text: str
-    # (char_start, char_end, span) per OCR span, in text order.
     index: List[Tuple[int, int, OcrSpan]] = field(default_factory=list)
 
 
 def read_manifest(path: str) -> List[Dict[str, Any]]:
-    """Stage inputs travel in a file, not in argv."""
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
     if not isinstance(data, list):

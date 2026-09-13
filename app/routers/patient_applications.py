@@ -1,4 +1,3 @@
-"""Patient application endpoints."""
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
@@ -29,9 +28,6 @@ log = get_logger(__name__)
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
-# An already-rejected application is *not* in here: fixing what was
-# wrong and finding the next thing wrong is the normal shape of this
-# work, and each rejection has to be able to carry its own reason.
 NON_REJECTABLE = ("submitted", "deleted")
 
 
@@ -46,13 +42,6 @@ def _notify_assignee(
     application_id: str,
     actor: User,
 ) -> None:
-    """Email whoever the application has just been handed to.
-
-    The user is resolved here, on the request's cursor, and the sending
-    is what goes to the background: the email must not hold up the
-    response, and a mail relay having a bad day must not fail an
-    assignment that was recorded perfectly well.
-    """
     if not assigned_to_id or assigned_to_id == actor.id:
         return
 
@@ -69,16 +58,11 @@ def _notify_assignee(
 
 
 def _assert_assignee_exists(cursor, user_id: Optional[str]) -> None:
-    """An application assigned to nobody real would silently stop notifying."""
     if not user_id:
         return
     if users_crud.get_user(cursor, user_id) is not None:
         return
 
-    # Logged with what the lookup actually saw: the id arriving here comes
-    # from a <select> built out of GET /users, so a miss means the two
-    # disagree -- a stale list in the browser, or a user deleted since it
-    # was fetched.
     known = users_crud.list_users(cursor)
     log.warning(
         "assignee_not_found",
@@ -120,7 +104,6 @@ def create_application(
     return application
 
 
-# The id on the row, and the field the username it resolves to goes in.
 _NAMED_IDS = (
     ("assigned_to_id", "assigned_to_username"),
     ("created_by_id", "created_by_username"),
@@ -130,12 +113,6 @@ _NAMED_IDS = (
 
 
 def _with_user_names(cursor, applications: List[PatientApplication]):
-    """Put a username against every user id an application carries.
-
-    One pass over the users, not one lookup per row: a list of two
-    hundred applications handled by a handful of people would otherwise
-    be hundreds of queries to print a few columns.
-    """
     wanted = {
         getattr(application, id_field)
         for application in applications
@@ -196,8 +173,6 @@ def update_application(
 
     after = crud.update_application(cursor, application_id, payload, actor_id=actor.id)
 
-    # Only on a change. Re-saving an application for some other reason
-    # must not email the assignee again about work they already have.
     if after.assigned_to_id and after.assigned_to_id != before.assigned_to_id:
         _notify_assignee(background, cursor, after.assigned_to_id, application_id, actor)
 
@@ -230,7 +205,6 @@ def reject_application(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:update")),
 ):
-    """Reject an application, with the reason on the record."""
     before = crud.get_application_or_404(cursor, application_id)
 
     if before.status in NON_REJECTABLE:
@@ -271,7 +245,6 @@ def delete_application(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:delete")),
 ):
-    """Remove the documents; keep the application as a record of what happened."""
     before = crud.get_application_or_404(cursor, application_id)
 
     detail = (reason or "").strip()
@@ -282,9 +255,6 @@ def delete_application(
     metadata_crud.delete_metadata_for_files(cursor, [f.id for f in orphaned])
 
     for record in orphaned:
-        # Including what the de-identification run left beside the
-        # original -- its extracted text and report, which nothing on
-        # the row points at. See app/deid.py.
         remove_deid_artifacts(record.file_path)
         remove_from_disk(record.file_path)
         if record.de_identified_file_path:

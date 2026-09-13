@@ -41,23 +41,13 @@ export function PatientForm({
 }: {
   patient?: Patient
   onSaved?: (patient: Patient) => void | Promise<void>
-  /**
-   * A last word from the owner of this form before anything is written.
-   * Returning false stops the save. The wizard uses it to refuse a
-   * patient whose application has nowhere to draw documents from --
-   * without it the patient was created and the application was not,
-   * which left a record of somebody nobody had asked to create.
-   */
+
   onBeforeSubmit?: () => boolean
   cancelTo?: string
   submitLabel?: string
-  /**
-   * The patient's own default folder, optional. The wizard hides it and
-   * asks for a folder of its own instead -- that one belongs to the
-   * application and is required there.
-   */
+
   showFilePath?: boolean
-  /** Show the details without offering to change them. */
+
   readOnly?: boolean
 }) {
   const mode = patient ? 'edit' : 'create'
@@ -82,8 +72,7 @@ export function PatientForm({
   const isSubmitting = create.isPending || update.isPending
 
   const onSubmit = handleSubmit(async (values) => {
-    // Before the mutation, not after: whatever else has to be true is
-    // still true while nothing has been written.
+
     if (onBeforeSubmit && !onBeforeSubmit()) return
 
     let saved: Patient

@@ -1,4 +1,3 @@
-"""The local model store: weights on disk, never off the network."""
 import os
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -19,7 +18,7 @@ MARKERS: Dict[str, tuple] = {
 
 
 class ModelNotFound(RuntimeError):
-    """A model is not in the local store and we are not allowed to fetch it."""
+    pass
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -43,7 +42,6 @@ def _has_marker(path: Path, kind: str) -> bool:
 
 
 def _candidates(kind: str, name: str) -> List[Path]:
-    """Where a model called `name` could legitimately live."""
     root = models_dir() / kind
     name = name.strip().strip("/")
     paths = [root / name]
@@ -64,7 +62,6 @@ def _candidates(kind: str, name: str) -> List[Path]:
 
 
 def find(kind: str, name: str) -> Optional[Path]:
-    """The local directory for `name`, or None if it is not staged."""
     for candidate in _candidates(kind, name):
         if candidate.is_dir() and _has_marker(candidate, kind):
             return candidate
@@ -72,7 +69,6 @@ def find(kind: str, name: str) -> Optional[Path]:
 
 
 def resolve(kind: str, name: str) -> str:
-    """What to hand the loader: a local path, or the hub id if allowed."""
     local = find(kind, name)
     if local is not None:
         return str(local)
@@ -89,7 +85,6 @@ def resolve(kind: str, name: str) -> str:
 
 
 def apply_offline_env() -> None:
-    """Bolt the doors on the HuggingFace stack, before it is imported."""
     if not offline():
         return
 
@@ -100,7 +95,6 @@ def apply_offline_env() -> None:
 
 
 def required_models(config) -> List[tuple]:
-    """(kind, name) for every model a full run needs."""
     return [
         (PADDLE_DIR, config.det_model),
         (PADDLE_DIR, config.rec_model),
@@ -110,7 +104,6 @@ def required_models(config) -> List[tuple]:
 
 
 def missing_models(config) -> List[str]:
-    """Human-readable descriptions of what preflight could not find."""
     if not offline():
         return []
 
@@ -125,7 +118,6 @@ def missing_models(config) -> List[str]:
 
 
 def describe(config) -> dict:
-    """What resolved to what -- worth having in a job log when a deployment loads the wrong weights."""
     return {
         "models_dir": str(models_dir()),
         "offline": offline(),

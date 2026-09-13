@@ -1,4 +1,3 @@
-"""Orchestration across two virtualenvs."""
 import json
 import logging
 import os
@@ -42,11 +41,10 @@ def _log_stage_output() -> bool:
 
 
 class StageError(RuntimeError):
-    """A whole stage failed, as opposed to individual files failing."""
+    pass
 
 
 def _failure_detail(stderr: str, stdout: str) -> str:
-    """The most useful ~800 characters of a failed stage's output."""
     text = (stderr or stdout or "").strip()
     errors = [
         line
@@ -64,7 +62,6 @@ def _run_stage(
     result_path: str,
     stage: str,
 ) -> List[dict]:
-    """Run one stage subprocess and read back its result file."""
     command = [
         interpreter,
         str(OCR_ROOT / "scripts" / script),
@@ -107,13 +104,6 @@ def _run_stage(
 
 
 def ocr_batch_size() -> int:
-    """How many documents one OCR process handles at a time.
-
-    One by default. Rasterising and reading a page is where the memory
-    goes, so this is the dial between speed and surviving: raise it on a
-    workload with memory to spare, leave it alone on one that gets its
-    OCR process killed.
-    """
     try:
         return max(1, int(os.environ.get("DEID_OCR_BATCH_SIZE", "1")))
     except ValueError:
@@ -141,12 +131,6 @@ def run_pipeline(
     work_dir: Optional[str] = None,
     progress_path: Optional[str] = None,
 ) -> List[DocumentResult]:
-    """De-identify every PDF in `sources`, writing results to `output_dir`.
-
-    `progress_path` is a file the stages rewrite as they advance. It must
-    live somewhere the caller can read -- the work dir will not do, that
-    is this container's /tmp. See deid/progress.py.
-    """
     if not sources:
         return []
 
@@ -180,7 +164,6 @@ def run_pipeline(
 
 
 def _run_nlp(jobs: List[Dict[str, Any]], work: Path) -> List[DocumentResult]:
-    """Stage 2 over a batch of jobs, or nothing if there are none."""
     if not jobs:
         return []
 
@@ -218,9 +201,6 @@ def _run(
                 "output_pdf": str(output_root / f"{stem}{output_extension(source)}"),
                 "output_text": str(output_root / f"{stem}.txt"),
                 "output_report": str(output_root / f"{stem}.report.json"),
-                # Carried into both manifests: a stage subprocess has no
-                # other way to learn where to report, and `index`/`total`
-                # are what keep the bar continuous across a batch.
                 "progress": progress_path,
                 "index": index,
                 "file_total": len(sources),
@@ -235,14 +215,6 @@ def _run(
     ocr_failures: List[DocumentResult] = []
 
     if rasterisable:
-        # In batches, because peak memory follows the batch. Rendering a
-        # page to an image and running OCR over it is the expensive part
-        # of this whole pipeline, and handing one process every document
-        # at once is what gets it killed -- exit -9, no result file, the
-        # whole batch lost. One application's worth of documents fitted;
-        # several did not. Smaller batches take marginally longer and
-        # survive, and a batch that does die costs only its own
-        # documents rather than all of them.
         outcomes: List[dict] = []
 
         for index, batch in enumerate(_batched(rasterisable, ocr_batch_size())):
@@ -284,18 +256,14 @@ def _run(
 
         ocr_status = {o["source"]: o for o in outcomes}
 
-    # --- stage 2: PII detection + redaction ---------------------------
     ready = [
         j for j in rasterisable if ocr_status.get(j["source"], {}).get("status") == "ok"
     ] + text_only
     results = _run_nlp(ready, work)
 
     by_source = {r.source_path: r for r in results}
-    # A batch that died takes its documents with it, and its error says
-    # how -- 'exit -9', which is the one detail worth keeping.
     failed_batches = {r.source_path: r for r in ocr_failures}
 
-    # Reassemble in input order, filling in the files stage 1 rejected.
     ordered: List[DocumentResult] = []
     for job in plan:
         source = job["source"]
@@ -318,10 +286,6 @@ def _run(
             )
         )
 
-    # The stages cannot write the terminal state themselves: a stage that
-    # is killed (exit -9) writes nothing at all, and the reader would sit
-    # on a stale "ocr, page 41 of 100" forever. The orchestrator outlives
-    # both, so it is what closes the file out.
     progress = progress_writer(progress_path, file_total=len(plan)).adopt()
     failures = [r for r in ordered if r.status != "ok"]
     if failures and len(failures) == len(ordered):
@@ -333,7 +297,6 @@ def _run(
 
 
 def preflight() -> List[str]:
-    """Problems that would make a run fail, checked before doing work."""
     problems: List[str] = []
 
     for name, interpreter in (("ocr", ocr_python()), ("nlp", nlp_python())):
@@ -356,7 +319,6 @@ def preflight() -> List[str]:
 
 
 def describe_environment() -> dict:
-    """What the orchestrator resolved to -- printed by --preflight and worth having in a job log when something is misconfigured."""
     return {
         "orchestrator_python": sys.executable,
         "ocr_root": str(OCR_ROOT),

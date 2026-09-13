@@ -13,7 +13,6 @@ import { patientHooks } from '@/hooks/useResources'
 import { PatientApplicationsModal } from '@/features/patients/PatientApplicationsModal'
 import { patientName, type Patient } from '@/schemas/patient'
 
-/** Most patient columns are nullable; render a dash, not an empty cell. */
 function Muted({ value }: { value: string | null | undefined }) {
   return <span className="text-[rgb(var(--foreground-muted))]">{value || '—'}</span>
 }
@@ -25,7 +24,7 @@ const columns: Array<Column<Patient>> = [
     cell: (p) => <span className="font-mono text-xs tabular-nums">{p.id}</span>,
     sortValue: (p) => p.id,
   },
-  // Combined for the same reason as the users table -- see the note there.
+
   {
     id: 'name',
     header: 'Name',
@@ -130,10 +129,7 @@ function PatientsList() {
         emptyMessage="No patients found."
         rowActions={(patient) => (
           <>
-            {/* No Files action here any more: documents hang off an
-                application, not off the patient, so they are reached
-                through Applications rather than from this row. Their
-                applications are, though -- see below. */}
+            {}
             <Can permission="application:view">
               <Button
                 size="sm"

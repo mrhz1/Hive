@@ -1,4 +1,3 @@
-"""Configuration for the de-identification job."""
 import os
 from dataclasses import dataclass, field
 from typing import Dict, List
@@ -35,7 +34,7 @@ DEFAULT_TRANSFORMERS_MODEL = "StanfordAIMI/stanford-deidentifier-base"
 
 MODEL_TO_PRESIDIO_ENTITY: Dict[str, str] = {
     "PATIENT": "PERSON",
-    "HCW": "PERSON",          # healthcare worker
+    "HCW": "PERSON",
     "HOSPITAL": "ORGANIZATION",
     "VENDOR": "ORGANIZATION",
     "DATE": "DATE_TIME",
@@ -70,7 +69,6 @@ DEFAULT_ENTITIES: List[str] = [
 
 @dataclass
 class Config:
-    # --- OCR ---
     det_model: str = field(
         default_factory=lambda: os.environ.get("OCR_DET_MODEL", DEFAULT_DET_MODEL)
     )
@@ -78,7 +76,6 @@ class Config:
         default_factory=lambda: os.environ.get("OCR_REC_MODEL", DEFAULT_REC_MODEL)
     )
     ocr_lang: str = field(default_factory=lambda: os.environ.get("OCR_LANG", "en"))
-    # "cpu" or "gpu:0". Cloudera AI job nodes here are CPU.
     device: str = field(
         default_factory=lambda: os.environ.get("OCR_DEVICE", "cpu")
     )
@@ -100,7 +97,6 @@ class Config:
     )
     cpu_threads: int = field(default_factory=lambda: _env_int("OCR_CPU_THREADS", 8))
 
-    # --- NLP / PII ---
     spacy_model: str = field(
         default_factory=lambda: os.environ.get("DEID_SPACY_MODEL", DEFAULT_SPACY_MODEL)
     )
@@ -120,9 +116,7 @@ class Config:
     redaction_fill: str = field(
         default_factory=lambda: os.environ.get("DEID_REDACTION_FILL", "black")
     )
-    # Write the extracted (de-identified) text alongside the PDF.
     write_text: bool = field(default_factory=lambda: _env_bool("DEID_WRITE_TEXT", True))
-    # Write a JSON report of what was found/redacted.
     write_report: bool = field(
         default_factory=lambda: _env_bool("DEID_WRITE_REPORT", True)
     )

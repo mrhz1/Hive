@@ -12,7 +12,6 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 def _snapshot(user: User) -> dict:
-    """What goes into the audit log."""
     return user.model_dump(exclude={"role_name", "permissions"}, mode="json")
 
 
@@ -31,7 +30,7 @@ def create_user(
         entity_type="user",
         entity_id=user.id,
         user_id=actor.id,
-        old_values=None,  # nothing existed before a create
+        old_values=None,
         new_values=_snapshot(user),
         request_id=request.headers.get("X-Request-ID"),
     )
@@ -95,6 +94,6 @@ def delete_user(
         entity_id=user_id,
         user_id=actor.id,
         old_values=_snapshot(deleted),
-        new_values=None,  # nothing remains after a delete
+        new_values=None,
         request_id=request.headers.get("X-Request-ID"),
     )

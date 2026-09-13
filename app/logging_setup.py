@@ -1,16 +1,3 @@
-"""structlog configuration.
-
-Two renderings of the same events:
-
-- **console** -- aligned key=value, for a terminal. What you want while
-  working, and unreadable to a machine.
-- **json** -- one object per line, for anything that ingests logs. What
-  you want in production, and tiring to read by eye.
-
-Which one is picked automatically: a terminal gets console, a pipe gets
-json, because in production stdout is captured rather than watched.
-`LOG_FORMAT` overrides it either way.
-"""
 import logging
 import os
 import sys
@@ -21,12 +8,10 @@ VALID_FORMATS = ("console", "json")
 
 
 def _configured_format() -> str:
-    """'console' or 'json' -- explicit if set, otherwise by where stdout goes."""
     chosen = (os.environ.get("LOG_FORMAT") or "").strip().lower()
     if chosen in VALID_FORMATS:
         return chosen
 
-    # A TTY means somebody is reading it; anything else is being captured.
     return "console" if sys.stdout.isatty() else "json"
 
 
@@ -51,8 +36,6 @@ def configure_logging(level: int = logging.INFO) -> None:
     ]
 
     if log_format == "json":
-        # ConsoleRenderer formats exceptions itself and warns if this has
-        # already flattened them, so it is only wanted on the JSON path.
         renderers = [
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),

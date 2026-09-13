@@ -233,12 +233,39 @@ Nothing raises on a failed send. An upload that succeeded must not be
 reported as failed because a mail server was down, so `send_email`
 returns a bool and logs `email_send_failed`.
 
-Currently the only notifications are upload outcomes, from
-`app/notifications.py`: the user in the application's `assigned_to_id`
-hears when a background batch finishes, and hears with the failing file
-names when it does not. An unassigned application falls back to whoever
-started the upload -- a batch failing silently is worse than one email to
-a roughly-right inbox.
+The notifications live in `app/notifications.py`. Every one of them goes
+to the user in the application's `assigned_to_id`, falling back to whoever
+created the application -- a run finishing silently is worse than one
+email to a roughly-right inbox:
+
+- an application being assigned to someone
+- a background upload batch finishing, with the failing file names when it
+  did not
+- de-identification finishing, with the documents that could not be
+  redacted
+
+### One de-identification email per application
+
+De-identification is triggered per file and each run is independent, so
+there is no batch record to hang a "finished" email off. `app/deid_notices.py`
+reads it off the rows instead: after every run settles, it asks whether any
+file on that application is still `queued` or `processing`, and only the run
+that finds none sends the notice. Ten files clicked through
+`/deidentify-all` therefore produce one email, not ten.
+
+Two runs finishing in the same instant would both see an idle table, so a
+marker under `FILE_STORAGE_DIR/.deid-notices/<application id>.json` holds
+the outcome that was last announced. A second notice describing the same
+outcome within `DEID_NOTICE_REPEAT_SECONDS` (default 120) is dropped; a
+genuine re-run later, or one that changes the outcome, still sends.
+
+On the `cml_job` backend the email is sent from inside the Cloudera Job,
+because that is where `run_deidentification` finishes -- the Job needs
+`SMTP_HOST` and `APP_BASE_URL` in its own environment, or the notice
+becomes a logged no-op with no link in it. The one case the API sends for
+itself is a run that never touched the row at all: `deid_queue._fail_row`
+marks the file `failed` after `DEID_DISPATCH_MAX_ATTEMPTS`, and notifies
+from there.
 
 ### Background uploads
 

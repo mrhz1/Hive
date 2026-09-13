@@ -1,4 +1,3 @@
-"""Add newly-introduced permissions to roles that already exist."""
 import argparse
 import os
 import sys

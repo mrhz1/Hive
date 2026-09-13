@@ -1,15 +1,3 @@
-"""Browsing and exporting everything in `file_metadata`.
-
-The per-file endpoints in patient_application_files.py answer "what is in
-this document?". This router answers the other question -- "which
-documents have this in them?" -- which needs the whole table, the file
-each row describes, and a search that reaches inside the extracted blob.
-
-A stored row knows only a file id, so the file and its application are
-joined on in Python. Hive is asked for three flat SELECTs rather than one
-three-way join: the tables are small, and the join keeps working when a
-file has been deleted out from under its metadata.
-"""
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -29,7 +17,6 @@ log = get_logger(__name__)
 
 router = APIRouter(prefix="/file-metadata", tags=["file-metadata"])
 
-# Columns that come before the extracted fields in an export.
 EXPORT_HEADERS = (
     "File",
     "File id",
@@ -43,7 +30,6 @@ EXPORT_HEADERS = (
 
 
 def _rows(cursor) -> List[FileMetadataRow]:
-    """Every metadata row, with its file and patient attached."""
     files = {record.id: record for record in files_crud.list_files(cursor)}
     patients = {
         application.id: application.patient_id
@@ -66,12 +52,6 @@ def _rows(cursor) -> List[FileMetadataRow]:
 
 
 def _haystack(row: FileMetadataRow) -> str:
-    """Everything about a row that a search term could plausibly mean.
-
-    The extracted keys are in here as well as the values: somebody
-    hunting for every scan that carries a 'PatientBirthDate' at all is
-    asking a real question.
-    """
     parts = [
         row.file_name or "",
         row.file_id,
@@ -118,7 +98,6 @@ def list_file_metadata(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
-    """Extracted metadata across every document, newest first."""
     rows = _filtered(
         _rows(cursor), search=search, status=status, file_type=file_type,
         patient_id=patient_id,
@@ -135,7 +114,6 @@ def list_file_metadata(
 
 
 def _metadata_keys(rows: List[FileMetadataRow]) -> List[str]:
-    """Every extracted field present anywhere in the exported set."""
     keys = {key for row in rows for key in row.metadata}
     return sorted(keys)
 
@@ -164,12 +142,6 @@ def export_file_metadata(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
-    """The filtered table as an Excel workbook.
-
-    Takes the same filters as the listing, so what downloads is what the
-    table was showing -- one row per document, one column per extracted
-    field that any of them carries.
-    """
     rows = _filtered(
         _rows(cursor), search=search, status=status, file_type=file_type,
         patient_id=patient_id,
@@ -187,7 +159,6 @@ def export_file_metadata(
     name = f"file-metadata-{stamp}.xlsx"
 
     log.info("file_metadata_exported", count=len(rows), fields=len(keys))
-    # The bulk path: this is what walks out of the door in one click.
     record_access(
         EXPORT,
         actor=actor,

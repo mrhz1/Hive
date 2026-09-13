@@ -1,4 +1,3 @@
-"""Test harness: an in-memory stand-in for HiveServer2."""
 import json
 import re
 from datetime import date, datetime
@@ -11,7 +10,6 @@ from app.db import get_cursor
 from app.main import app
 from app.security import KNOWN_PERMISSIONS, MODEL_ACTIONS
 
-# --------------------------------------------------------------- fixtures
 
 ADMIN_ID = "user-admin"
 VIEWER_ID = "user-viewer"
@@ -23,7 +21,6 @@ NOBODY_USER = "nobody"
 
 ALL_PERMISSIONS = sorted(KNOWN_PERMISSIONS)
 
-# The read grant for each model, whatever it happens to be called there.
 READONLY_PERMISSIONS = [
     f"{model}:{'read' if 'read' in actions else 'view'}"
     for model, actions in MODEL_ACTIONS.items()
@@ -31,7 +28,6 @@ READONLY_PERMISSIONS = [
 
 
 def _seed():
-    """A fresh store: two roles, three users, no patients."""
     return {
         "roles": [
             {"id": "role-admin", "name": "admin", "permissions": ALL_PERMISSIONS},
@@ -66,15 +62,11 @@ def _user(user_id: str, username: str, role_id: str, is_active: bool = True):
     }
 
 
-# ------------------------------------------------------------- the cursor
 
 _SELECT = re.compile(r"^SELECT (?P<cols>.+?) FROM `(?P<table>\w+)`(?P<rest>.*)$", re.S)
 _INSERT = re.compile(
     r"^INSERT INTO `(?P<table>\w+)` \((?P<cols>.+?)\) VALUES \((?P<vals>.+)\)$", re.S
 )
-# The access trail writes batches into a dated partition, so its INSERT
-# has a shape the plain one above cannot parse:
-#   INSERT INTO TABLE `t` PARTITION (`event_date` = %s) (cols) VALUES (..), (..)
 _INSERT_PARTITIONED = re.compile(
     r"^INSERT INTO TABLE `(?P<table>\w+)` "
     r"PARTITION \(`(?P<part>\w+)` = %s\) \((?P<cols>.+?)\) VALUES (?P<rows>.+)$",
@@ -83,22 +75,17 @@ _INSERT_PARTITIONED = re.compile(
 _UPDATE = re.compile(r"^UPDATE `(?P<table>\w+)` SET (?P<sets>.+?) WHERE `(?P<key>\w+)` = %s$", re.S)
 _DELETE = re.compile(r"^DELETE FROM `(?P<table>\w+)` WHERE `(?P<key>\w+)` = %s$", re.S)
 _DELETE_IN = re.compile(r"^DELETE FROM `(?P<table>\w+)` WHERE `(?P<key>\w+)` IN \((?P<slots>[%s, ]+)\)$", re.S)
-# Comparisons, not just equality: the log filters bound by date, and a
-# pattern that only matched `= %s` would skip those clauses while still
-# consuming their parameters -- silently comparing the wrong values.
 _WHERE = re.compile(r"`(?P<col>\w+)` (?P<op>=|>=|<=|<|>) %s")
 _COL = re.compile(r"`(\w+)`")
 
 
 class FakeHiveCursor:
-    """Answers the subset of HiveQL app/crud/* emits, against dict rows."""
 
     def __init__(self, store):
         self.store = store
         self.statements = []
         self._result = []
 
-    # -- DBAPI surface ----------------------------------------------------
 
     def execute(self, sql, params=()):
         normalised = " ".join(sql.split())
@@ -127,7 +114,6 @@ class FakeHiveCursor:
     def close(self):
         pass
 
-    # -- statement handlers -----------------------------------------------
 
     def _rows(self, table):
         if table not in self.store:
@@ -152,11 +138,9 @@ class FakeHiveCursor:
         if limit:
             rows = rows[: int(limit.group(1))]
 
-        # Positional tuples, in the order the SELECT listed them.
         return [tuple(_wire(r.get(c)) for c in columns) for r in rows]
 
     def _select_users_with_role(self, sql, params):
-        """The one JOIN in the codebase: users LEFT JOIN roles."""
         rows = list(self._rows("users"))
         where = re.search(r"WHERE u\.`(\w+)` = %s", sql)
         if where:
@@ -197,11 +181,6 @@ class FakeHiveCursor:
         return []
 
     def _insert_partitioned(self, match, params):
-        """A batched INSERT into one partition -- the access trail's shape.
-
-        The partition value is the first bound parameter, then one group
-        of placeholders per row, in column order.
-        """
         columns = _COL.findall(match.group("cols"))
         partition_value = params.pop(0)
 
@@ -255,12 +234,10 @@ class FakeHiveCursor:
 
 
 def _compare(rows, column, op, wanted):
-    """One WHERE clause, applied the way Hive would."""
     if op == "=":
         return [r for r in rows if r.get(column) == wanted]
 
     def key(row):
-        # Timestamps arrive as datetimes and bounds as strings.
         value = row.get(column)
         return str(value) if value is not None else ""
 
@@ -275,7 +252,6 @@ def _compare(rows, column, op, wanted):
 
 
 def _split_values(clause):
-    """Split a VALUES list or SET clause on its top-level commas."""
     parts, depth, start = [], 0, 0
     for index, char in enumerate(clause):
         if char == "(":
@@ -290,12 +266,10 @@ def _split_values(clause):
 
 
 def _eval_value(expression, params):
-    """One value expression, resolved to what Hive would store."""
     slots = expression.count("%s")
     if slots == 1:
         return params.pop(0)
     if slots > 1:
-        # array(%s, %s, ...) -- the one multi-slot expression in the codebase.
         return [params.pop(0) for _ in range(slots)]
     if expression.startswith("array("):
         return []
@@ -307,7 +281,6 @@ def _eval_value(expression, params):
 
 
 def _wire(value):
-    """Values as the driver would hand them back."""
     if isinstance(value, list):
         return json.dumps(value).encode("utf-8")
     if isinstance(value, (datetime, date)):
@@ -315,7 +288,6 @@ def _wire(value):
     return value
 
 
-# --------------------------------------------------------------- fixtures
 
 
 @pytest.fixture
@@ -330,7 +302,6 @@ def cursor(store):
 
 @pytest.fixture
 def client(cursor, monkeypatch):
-    """TestClient with Hive replaced by the fake, for requests and for the separate connection background audit writes open."""
     import contextlib
 
     @contextlib.contextmanager
@@ -339,6 +310,7 @@ def client(cursor, monkeypatch):
 
     monkeypatch.setattr("app.audit.hive_cursor", fake_hive_cursor)
     monkeypatch.setattr("app.deid.hive_cursor", fake_hive_cursor)
+    monkeypatch.setattr("app.deid_notices.hive_cursor", fake_hive_cursor)
     monkeypatch.setattr("app.submission.hive_cursor", fake_hive_cursor)
     monkeypatch.setattr("app.uploads.hive_cursor", fake_hive_cursor)
     monkeypatch.setattr("app.access_log.hive_cursor", fake_hive_cursor)
@@ -357,7 +329,6 @@ def as_admin(client):
 
 @pytest.fixture
 def storage_root(tmp_path, monkeypatch):
-    """Uploads land in tmp_path, never in the repo's storage/ directory."""
     root = tmp_path / "patient_files"
     monkeypatch.setattr("app.storage.STORAGE_ROOT", root)
     return root
@@ -365,12 +336,6 @@ def storage_root(tmp_path, monkeypatch):
 
 @pytest.fixture
 def access_events(cursor, monkeypatch):
-    """Access events, written on demand instead of on a timer.
-
-    The real writer flushes from a background thread every few seconds,
-    which a test outruns. Holding the thread back and flushing by hand
-    exercises the same enqueue and INSERT path, deterministically.
-    """
     from app import access_log
 
     monkeypatch.setattr(access_log, "_ensure_writer", lambda: None)
@@ -387,7 +352,6 @@ def access_events(cursor, monkeypatch):
         def of(self, action):
             return [row for row in self.rows if row["action"] == action]
 
-    # Anything a previous test left queued would land in this store.
     while True:
         try:
             access_log._queue.get_nowait()
@@ -399,7 +363,6 @@ def access_events(cursor, monkeypatch):
 
 @pytest.fixture
 def sent_emails(monkeypatch):
-    """Every notification the code tried to send, instead of an SMTP socket."""
     outbox = []
 
     def fake_send(to, subject, body, html=None):
@@ -414,7 +377,6 @@ def sent_emails(monkeypatch):
 
 
 def minimal_patient(**overrides):
-    """Only what the API requires: the source document, plus any one of fstname / lstname / ptemail."""
     return {"fstname": "Jane", "original_file_path": "/data/jane.pdf", **overrides}
 
 

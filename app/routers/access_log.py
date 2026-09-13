@@ -1,10 +1,3 @@
-"""Reading the access trail.
-
-Gated on `log:view`, the same grant as the change trail. Worth knowing
-what that grant now carries: this answers "who looked at this patient",
-so it is itself sensitive and should be given to reviewers rather than
-to everyone who can read an application.
-"""
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -37,11 +30,6 @@ def list_access_logs(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("log:view")),
 ):
-    """Who saw what, filtered.
-
-    Bound the dates where you can: they select partitions, so a query for
-    one week reads one week rather than every day on record.
-    """
     return crud.list_access_logs(
         cursor,
         actor_id=actor_id,

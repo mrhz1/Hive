@@ -21,7 +21,6 @@ export const Route = createFileRoute('/metadata/')({
   component: MetadataPage,
 })
 
-/** The formats app/file_metadata.py knows how to read. */
 const FILE_TYPES = ['pdf', 'dicom', 'word'] as const
 
 function formatDate(value: string): string {
@@ -35,7 +34,6 @@ function MetadataPage() {
   const [fileType, setFileType] = useState('')
   const [showing, setShowing] = useState<FileMetadataRow | null>(null)
 
-  // The search hits Hive, so it waits for a pause in the typing.
   const debouncedSearch = useDebounced(search, 300)
 
   const filters: FileMetadataFilters = useMemo(

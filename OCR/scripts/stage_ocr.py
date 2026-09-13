@@ -1,4 +1,3 @@
-"""Stage 1 entrypoint."""
 import argparse
 import json
 import logging

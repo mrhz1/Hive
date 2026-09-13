@@ -8,19 +8,10 @@ import { useApplications } from '@/hooks/useResources'
 import { patientName, type Patient } from '@/schemas/patient'
 import { applicationTone } from '@/schemas/patientApplication'
 
-/** Hive TIMESTAMPs arrive as naive ISO strings; the seconds add nothing. */
 function moment(value: string | null | undefined): string {
   return value ? value.slice(0, 16).replace('T', ' ') : '—'
 }
 
-/**
- * This patient's applications, without leaving the patient list.
- *
- * Finding one used to mean going to Applications and searching by name,
- * which only works if you can spell it the way it was entered and there
- * is only one of them. Opening a row goes to the wizard, which is where
- * an application is worked on either way.
- */
 export function PatientApplicationsModal({
   patient,
   onClose,

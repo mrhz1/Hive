@@ -89,7 +89,6 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
   }
 )
 
-/** Footer container for table navigation. */
 export const TablePagination = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   function TablePagination({ className, ...props }, ref) {
     return (
@@ -105,7 +104,6 @@ export const TablePagination = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDiv
   }
 )
 
-/** "Rows per page" plus the total record count. */
 export function TablePaginationInfo({
   total,
   pageSize,

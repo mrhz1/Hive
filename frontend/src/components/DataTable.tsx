@@ -20,17 +20,16 @@ import {
   TableRow,
 } from './ui/Table'
 
-/** Values a column can be sorted on. */
 export type SortValue = string | number | boolean | null | undefined
 
 export type Column<T> = {
-  /** Stable identity for React keys and sort state. */
+
   id: string
   header: string
-  /** Rendered per row -- keeps formatting out of the table itself. */
+
   cell: (row: T) => ReactNode
   sortValue?: (row: T) => SortValue
-  /** Right-aligns and tabular-nums the column. */
+
   isNumeric?: boolean
   className?: string
 }
@@ -43,14 +42,13 @@ export type DataTableProps<T> = {
   isFetching?: boolean
   error?: unknown
   emptyMessage?: string
-  /** Right-aligned per-row actions (edit/delete). */
+
   rowActions?: (row: T) => ReactNode
   loadingLabel?: string
 }
 
 type SortState = { id: string; direction: 'asc' | 'desc' }
 
-/** Nulls sort last in both directions; strings compare case-insensitively. */
 function compare(a: SortValue, b: SortValue): number {
   const aEmpty = a === null || a === undefined || a === ''
   const bEmpty = b === null || b === undefined || b === ''
@@ -116,7 +114,7 @@ export function DataTable<T>({
     setSort((current) => {
       if (current?.id !== columnId) return { id: columnId, direction: 'asc' }
       if (current.direction === 'asc') return { id: columnId, direction: 'desc' }
-      // Third click clears the sort and restores the API's own order.
+
       return null
     })
   }
@@ -124,9 +122,7 @@ export function DataTable<T>({
   return (
     <div className="flex flex-col space-y-4">
       <div className="relative">
-        {/* Refetch overlay: keeps the stale rows visible underneath but
-            makes it obvious the table is updating. Without this a slow
-            Hive refetch after a mutation looks like nothing happened. */}
+        {}
         {isRefreshing ? (
           <div
             className="absolute inset-0 z-20 flex items-start justify-center rounded-xl bg-[rgb(var(--surface))]/60 backdrop-blur-[1px]"

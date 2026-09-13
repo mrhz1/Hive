@@ -12,7 +12,7 @@ export function Spinner({
   size = 'md',
 }: {
   className?: string
-  /** Announced to screen readers; pass '' when a parent already labels it. */
+
   label?: string
   size?: keyof typeof SIZES
 }) {
@@ -34,7 +34,6 @@ export function Spinner({
   )
 }
 
-/** Full-area loading state for page bodies and cards. */
 export function LoadingBlock({
   label = 'Loading',
   className,

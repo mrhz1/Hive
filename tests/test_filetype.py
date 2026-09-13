@@ -1,9 +1,3 @@
-"""Recognising a document by its bytes when the name does not say.
-
-The case that drove this: a DICOM off a PACS arrives as `IM000001` with
-no extension at all, which left it un-de-identifiable (the button was
-disabled), unread for metadata, and headed for DEID_PDF_DIR.
-"""
 import pathlib
 
 import pytest
@@ -15,26 +9,24 @@ DICOM_BYTES = b"\0" * 128 + b"DICM" + b"\x02\x00\x00\x00UL\x04\x00"
 
 PDF_BYTES = b"%PDF-1.4 fake"
 
-# A minimal zip whose first entry names a word/ path, as a .docx does.
 DOCX_BYTES = b"PK\x03\x04" + b"\x14\x00" * 6 + b"[Content_Types].xml word/document.xml"
 
 OLE_BYTES = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 32
 
 
-# ------------------------------------------------------------- sniffing
 
 
 @pytest.mark.parametrize(
     "head,expected",
     [
         (DICOM_BYTES, "dcm"),
-        (b"DICM" + b"\0" * 32, "dcm"),  # preamble-less writers
+        (b"DICM" + b"\0" * 32, "dcm"),
         (PDF_BYTES, "pdf"),
         (DOCX_BYTES, "docx"),
         (OLE_BYTES, "doc"),
         (b"just some notes", None),
         (b"", None),
-        (b"PK\x03\x04 nothing wordy here", None),  # a zip that is not a .docx
+        (b"PK\x03\x04 nothing wordy here", None),
     ],
 )
 def test_sniffing_reads_the_format_off_the_bytes(head, expected):
@@ -42,8 +34,6 @@ def test_sniffing_reads_the_format_off_the_bytes(head, expected):
 
 
 def test_a_name_that_names_a_handled_format_is_believed():
-    # .dcm vs .dicom and .doc vs .docx are distinctions the magic numbers
-    # cannot make, so a name that carries one wins.
     assert resolve_extension("study.dicom", DICOM_BYTES) == "dicom"
     assert resolve_extension("letter.doc", OLE_BYTES) == "doc"
 
@@ -54,7 +44,6 @@ def test_the_bytes_decide_when_the_name_says_nothing():
 
 
 def test_the_bytes_decide_when_the_name_is_wrong():
-    """A PDF called .txt is still a PDF, and still has to be redactable."""
     assert resolve_extension("notes.txt", PDF_BYTES) == "pdf"
 
 
@@ -63,7 +52,6 @@ def test_an_unrecognised_file_keeps_whatever_its_name_claimed():
     assert resolve_extension("mystery", b"\x00\x01\x02") == ""
 
 
-# --------------------------------------------------------- through the API
 
 
 def _patient_and_application(client):
@@ -82,8 +70,6 @@ def _upload(client, application_id, name, data, endpoint="files"):
 
 
 def test_an_extensionless_dicom_can_be_de_identified(as_admin, storage_root):
-    """The reported bug: the De-identify button was disabled, because the
-    row said the file had no extension at all."""
     _, application_id = _patient_and_application(as_admin)
 
     record = _upload(as_admin, application_id, "IM000001", DICOM_BYTES).json()[0]
@@ -103,7 +89,6 @@ def test_an_extensionless_dicom_lands_in_the_dicom_folder_name(
     record = _upload(as_admin, application_id, "IM000001", DICOM_BYTES).json()[0]
 
     stored = pathlib.Path(record["file_path"])
-    # <patient>-dicom-<serial>.dcm, not <patient>-file-<serial>
     assert stored.name.startswith(f"{patient_id}-dicom-")
     assert stored.suffix == ".dcm"
 
@@ -111,8 +96,6 @@ def test_an_extensionless_dicom_lands_in_the_dicom_folder_name(
 def test_an_extensionless_dicom_files_to_the_dicom_directory(
     as_admin, storage_root
 ):
-    """deid_dir_for('') falls back to the PDF directory, so before this
-    an extensionless DICOM would have been filed with the PDFs."""
     from app.storage import DEID_DICOM_DIR, deid_dir_for
 
     _, application_id = _patient_and_application(as_admin)
@@ -135,8 +118,6 @@ def test_the_background_upload_sniffs_the_same_way(
 def test_metadata_is_extracted_from_an_extensionless_dicom(
     as_admin, storage_root
 ):
-    """Unread before: file_type_for('') is None, so the row said
-    'unsupported' and carried no fields."""
     _, application_id = _patient_and_application(as_admin)
 
     record = _upload(as_admin, application_id, "IM000001", DICOM_BYTES).json()[0]

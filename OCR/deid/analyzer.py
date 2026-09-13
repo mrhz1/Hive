@@ -1,4 +1,3 @@
-"""Presidio analyzer built on a transformers NLP engine."""
 import logging
 from typing import List
 
@@ -13,7 +12,6 @@ __all__ = ["PiiSpan", "analyze_text", "build_analyzer", "merge_overlapping"]
 
 
 def build_analyzer(config: Config):
-    """Construct the Presidio AnalyzerEngine."""
     from presidio_analyzer import AnalyzerEngine
     from presidio_analyzer.nlp_engine import (
         NerModelConfiguration,
@@ -65,7 +63,6 @@ def build_analyzer(config: Config):
 
 
 def analyze_text(analyzer, text: str, config: Config) -> List[PiiSpan]:
-    """Run detection over one page's text."""
     if not text.strip():
         return []
 
@@ -93,7 +90,6 @@ def analyze_text(analyzer, text: str, config: Config) -> List[PiiSpan]:
 
 
 def merge_overlapping(spans: List[PiiSpan]) -> List[PiiSpan]:
-    """Collapse overlapping detections into disjoint spans."""
     if not spans:
         return []
 
@@ -102,7 +98,7 @@ def merge_overlapping(spans: List[PiiSpan]) -> List[PiiSpan]:
 
     for span in ordered[1:]:
         current = merged[-1]
-        if span.start < current.end:  # overlap
+        if span.start < current.end:
             if span.score > current.score:
                 current.entity_type = span.entity_type
                 current.score = span.score

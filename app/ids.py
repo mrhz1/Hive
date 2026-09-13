@@ -1,4 +1,3 @@
-"""Application-generated identifiers."""
 import secrets
 import threading
 import time
@@ -18,14 +17,12 @@ _sequence = 0
 
 
 def random_patient_id() -> str:
-    """One candidate id. Callers must check it is free."""
     return "".join(
         secrets.choice(PATIENT_ID_ALPHABET) for _ in range(PATIENT_ID_LENGTH)
     )
 
 
 def new_patient_id(is_taken) -> str:
-    """A patient id that is free, per the `is_taken(candidate)` predicate."""
     for _ in range(PATIENT_ID_ATTEMPTS):
         candidate = random_patient_id()
         if not is_taken(candidate):
@@ -37,7 +34,6 @@ def new_patient_id(is_taken) -> str:
 
 
 def new_document_serial() -> str:
-    """A 16-digit serial: 13 digits of epoch milliseconds, 3 of counter."""
     global _last_millis, _sequence
 
     with _serial_lock:

@@ -1,4 +1,3 @@
-"""Audit log endpoints: create, get_all, get by id."""
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -32,7 +31,6 @@ def list_audit_logs(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("log:view")),
 ):
-    """Changes, filtered. See also GET /access-logs for who *read* what."""
     return crud.list_audit_logs(
         cursor,
         entity_type=entity_type,

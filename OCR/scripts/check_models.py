@@ -1,4 +1,3 @@
-"""Prove the staged models load offline, in this virtualenv."""
 import argparse
 import logging
 import sys
@@ -23,7 +22,6 @@ def check_paddle(config) -> bool:
     try:
         from deid.ocr_engine import OcrEngine
 
-        # _load() is the same call the stage makes, model dirs and all.
         OcrEngine(config)._load()
     except Exception as exc:
         log.error("  FAILED: %s", exc)

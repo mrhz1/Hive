@@ -1,4 +1,3 @@
-"""Apply sql/schema.sql and load seed fixtures."""
 import os
 import sys
 import uuid
@@ -18,7 +17,6 @@ SCHEMA_PATH = Path(__file__).resolve().parent.parent / "sql" / "schema.sql"
 
 ALL_PERMISSIONS = sorted(KNOWN_PERMISSIONS)
 
-# The read grant for each model, whatever it is called there.
 READONLY_PERMISSIONS = [
     f"{model}:{'read' if 'read' in actions else 'view'}"
     for model, actions in MODEL_ACTIONS.items()
@@ -66,7 +64,6 @@ def seed_roles(cursor) -> None:
 
 
 def seed_users(cursor) -> None:
-    """Seeds the two named accounts plus filler rows."""
     rows = [
         (ADMIN_USER_ID, "admin", "admin@example.com", "Ada", "Admin",
          "active", True, ADMIN_ROLE_ID),
@@ -97,7 +94,6 @@ def seed_users(cursor) -> None:
 
 
 def seed_patients(cursor) -> None:
-    """Seeds a subset of the patient columns."""
     base = datetime(2026, 7, 1, 12, 0, 0)
     columns = (
         "id", "instcode", "pname", "pemail", "phone1", "wphone1",

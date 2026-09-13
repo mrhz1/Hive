@@ -1,4 +1,3 @@
-"""Application document endpoints."""
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -98,7 +97,6 @@ async def upload_application_files(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:update")),
 ):
-    """Accepts many files at once -- the client sends a whole folder."""
     application = applications_crud.get_application_or_404(cursor, application_id)
 
     if not files:
@@ -120,7 +118,6 @@ async def upload_application_files(
         if len(data) > MAX_FILE_BYTES:
             raise _too_large(raw_name)
 
-        # A DICOM off a PACS often arrives with no extension at all.
         extension = resolve_extension(raw_name, data[:SNIFF_BYTES])
         record_id = str(uuid.uuid4())
 
@@ -173,13 +170,6 @@ async def upload_application_files_in_background(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:update")),
 ):
-    """Take the files now, move and record them afterwards.
-
-    Same batch as the endpoint above, but the response comes back as soon
-    as the bytes are safely staged rather than after every file has been
-    written, inserted and parsed. Poll GET /upload-jobs/{id} for progress;
-    the user the application is assigned to is emailed when it is over.
-    """
     applications_crud.get_application_or_404(cursor, application_id)
 
     if not files:
@@ -205,8 +195,6 @@ async def upload_application_files_in_background(
             uploads.register_file(job.id, raw_name)
             staged += 1
     except Exception as exc:
-        # Nothing has been recorded yet, so there is nothing to unwind
-        # beyond the bytes sitting in staging.
         uploads.abandon_job(job.id, str(exc))
         raise
 
@@ -235,19 +223,9 @@ async def upload_application_files_in_background(
 
 
 def _redacted_upload_name(patient_id: str, extension: str) -> str:
-    """What the pipeline would have called this, had it produced it.
-
-    Same scheme as an automatic run -- `<patient>-<type>-<date>-<serial>`
-    with the de-identification suffix -- so a hand-redacted document is
-    not the one file in the library that is named differently, and
-    nobody has to learn which of two conventions they are looking at.
-    """
     stem = document_name(
         patient_id or "unknown", document_type_for(extension), new_document_serial(), ""
     )
-    # The uploaded bytes' own extension, not the one the pipeline would
-    # have converted to: these bytes are the finished document, and
-    # calling a .doc a .docx would only stop anything from opening it.
     return f"{stem}{DEID_SUFFIX}.{extension.lower()}"
 
 
@@ -263,13 +241,6 @@ async def upload_deidentified_application_file(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:update")),
 ):
-    """Attach an already-redacted document, with no original behind it.
-
-    For work done outside the pipeline: a document redacted by hand, or
-    one that arrived from elsewhere already clean. It lands finished --
-    'done' and redacted -- because there is nothing left to run over it,
-    and it is filed and named exactly as an automatic output would be.
-    """
     application = applications_crud.get_application_or_404(cursor, application_id)
 
     raw_name = file.filename or "file"
@@ -280,8 +251,6 @@ async def upload_deidentified_application_file(
     if len(data) > MAX_FILE_BYTES:
         raise _too_large(raw_name)
 
-    # After the read: an extensionless DICOM is only recognisable from
-    # its bytes, and the name it was given says nothing.
     extension = resolve_extension(raw_name, data[:SNIFF_BYTES])
     if not is_deidentifiable(extension):
         raise ValidationError(
@@ -308,8 +277,6 @@ async def upload_deidentified_application_file(
         file_extension=extension,
         mime_type=guess_mime_type(raw_name, file.content_type),
         file_size=len(data),
-        # There is no original: the redacted copy is the only file there
-        # is, so both paths point at it rather than one of them dangling.
         file_path=str(stored_path),
         description=description or "Uploaded already de-identified",
     )
@@ -324,8 +291,6 @@ async def upload_deidentified_application_file(
         ),
     )
 
-    # Into the file, not into `file_metadata` -- that row is for what a
-    # document arrived carrying. See app/embed.py.
     embed_metadata(
         stored_path,
         extension,
@@ -351,7 +316,6 @@ def get_upload_job(
     job_id: str,
     _actor: User = Depends(require_permission("application:view")),
 ):
-    """Progress of one background batch."""
     job = uploads.get_job(job_id)
     if job is None:
         raise NotFoundError(
@@ -371,15 +335,6 @@ def get_application_file(
 
 
 def _metadata_of(cursor, document, deidentified: bool) -> FileMetadata:
-    """One document's metadata, from whichever copy was asked for.
-
-    The original's was extracted once, at upload, and stored -- it is
-    what the file arrived carrying, and it does not change. The redacted
-    copy's is read here and now instead: it is only worth looking at to
-    check that what the pipeline (or a person) produced no longer holds
-    the identifiers the original did, and storing a second row keyed by
-    the same file id would make the two indistinguishable afterwards.
-    """
     if not deidentified:
         record = metadata_crud.get_metadata_for_file(cursor, document.id)
         if record is None:
@@ -390,7 +345,6 @@ def _metadata_of(cursor, document, deidentified: bool) -> FileMetadata:
     file_type, metadata, status, error = extract_metadata(path, extension)
 
     return FileMetadata(
-        # Not a row in `file_metadata`; the id says which file it is of.
         id=f"{document.id}:deid",
         file_id=document.id,
         file_type=file_type,
@@ -408,12 +362,9 @@ def get_application_file_metadata(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
-    """The metadata of the original, or of its redacted copy."""
     document = crud.get_file_or_404(cursor, file_id)
     record = _metadata_of(cursor, document, deidentified)
 
-    # The original's own metadata is names, MRNs, whatever the format
-    # held -- a disclosure. The redacted copy's is not.
     _record_file_access(
         cursor, document, actor, READ, deidentified=deidentified, note="metadata"
     )
@@ -428,7 +379,6 @@ def export_application_file_metadata(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
-    """The metadata as an Excel workbook."""
     document = crud.get_file_or_404(cursor, file_id)
     record = _metadata_of(cursor, document, deidentified)
 
@@ -475,16 +425,6 @@ def read_application_file(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
-    """Serves the bytes, to be read in the viewer or kept.
-
-    The same bytes go over the wire either way, but the two are not the
-    same event: opening a document in the viewer is a read, and only
-    `download=true` -- what the viewer's Download button asks for -- puts
-    a copy somewhere this system can no longer see. Recording every
-    preview as a download made the trail useless for telling them apart,
-    so the caller says which one it is, and taking a copy needs the
-    permission for it.
-    """
     if download:
         assert_permission(actor, "files:download")
 
@@ -520,23 +460,11 @@ def read_application_file(
 
 
 def _patient_of(cursor, application_id: str) -> Optional[str]:
-    """Whose application this is, for the access record.
-
-    One extra SELECT per read. Denormalising `patient_id` onto the file
-    row would remove it, at the cost of a column that can drift.
-    """
     application = applications_crud.get_application(cursor, application_id)
     return getattr(application, "patient_id", None)
 
 
 def _document_name(record, deidentified: bool) -> str:
-    """What the document is called on screen.
-
-    Not the name it has on disk: sanitising strips accents and
-    punctuation, so the stored name can differ enough from the uploaded
-    one that nobody recognises the document -- which is the whole use of
-    naming it in the trail.
-    """
     if deidentified:
         return record.deidentified_file_name or record.sanitized_file_name
     return record.original_file_name
@@ -552,13 +480,6 @@ def _record_file_access(
     note: Optional[str] = None,
     **extra,
 ) -> None:
-    """One access event for a file, with what only this layer knows.
-
-    Every one of these names the document. A file id and a patient id
-    answer 'was there a disclosure'; they do not answer 'which document
-    did they open', which is what anybody reading the log actually wants
-    and had to go and look up by hand.
-    """
     name = _document_name(record, deidentified)
     record_access(
         action,
@@ -567,8 +488,6 @@ def _record_file_access(
         resource_id=record.id,
         patient_id=_patient_of(cursor, record.application_id),
         application_id=record.application_id,
-        # The same endpoints serve the original and the redacted copy;
-        # only one of those is a disclosure.
         identified=not deidentified,
         detail=f"{name} ({note})" if note else name,
         **extra,
@@ -576,13 +495,10 @@ def _record_file_access(
 
 
 def _preview_path(record, deidentified: bool):
-    """The file to preview, and the extension that says how to read it."""
     if deidentified:
         if not record.de_identified_file_path:
             raise ValidationError("This file has not been de-identified yet")
         path = resolve_stored_path(record.de_identified_file_path)
-        # The redacted copy of a Word document is always .docx, whatever
-        # the original was; DICOM and PDF keep their input format.
         extension = "docx" if record.file_extension in ("doc", "docx") else record.file_extension
     else:
         path = resolve_stored_path(record.file_path)
@@ -601,8 +517,6 @@ def _dicom_response(path, frame: int) -> Response:
         media_type="image/png",
         headers={
             "X-Frame-Count": str(frames),
-            # So the viewer can page through a multi-frame study without
-            # re-reading the header separately.
             "Access-Control-Expose-Headers": "X-Frame-Count",
         },
     )
@@ -616,7 +530,6 @@ def preview_application_file_image(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
-    """One DICOM frame as a PNG, so a browser can show it."""
     record = crud.get_file_or_404(cursor, file_id)
     path, extension = _preview_path(record, deidentified)
 
@@ -636,7 +549,6 @@ def preview_application_file_text(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
-    """A Word document's text, for a browser that would otherwise download it."""
     record = crud.get_file_or_404(cursor, file_id)
     path, extension = _preview_path(record, deidentified)
 
@@ -655,7 +567,6 @@ def deidentify_application_file(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:update")),
 ):
-    """Queues OCR + PII redaction for one file."""
     record = crud.get_file_or_404(cursor, file_id)
 
     if record.deid_status in ("queued", "processing"):
@@ -690,16 +601,6 @@ def application_deid_progress(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    """How far along every currently-running file on this application is.
-
-    One request for the whole list, deliberately. The page polls this
-    every few seconds, and a 100-page document takes the better part of
-    an hour -- asking per file would put a request per file per tick on
-    an API sized at one core.
-
-    Only files the database says are running are looked up: a stale
-    progress file left by a killed Job is then never read at all.
-    """
     applications_crud.get_application_or_404(cursor, application_id)
     records = crud.list_files(cursor, application_id)
 
@@ -733,14 +634,10 @@ def file_deid_progress(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    """Progress for one file, for a detail view watching a single run."""
     record = crud.get_file_or_404(cursor, file_id)
 
     state = deid_progress.read(file_id) or {}
 
-    # No progress file is not an error: the run may not have written one
-    # yet, or may be over. Answer from deid_status so the caller always
-    # gets a shape it can render.
     stage = state.get("stage")
     if not stage:
         stage = "done" if record.deid_status == "done" else (
@@ -775,12 +672,6 @@ def deidentify_all_application_files(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:update")),
 ):
-    """Queue every file on this application that can be de-identified.
-
-    One request rather than one per file: an application can hold
-    thousands, and the browser firing that many is both slow and a good
-    way to have half of them rejected.
-    """
     applications_crud.get_application_or_404(cursor, application_id)
     records = crud.list_files(cursor, application_id)
 
@@ -832,11 +723,6 @@ def approve_all_application_files(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:update")),
 ):
-    """Approve every document still awaiting a decision.
-
-    Files already rejected are left alone: a bulk approve is for clearing
-    the undecided pile, not for overturning somebody's verdict.
-    """
     applications_crud.get_application_or_404(cursor, application_id)
     records = crud.list_files(cursor, application_id)
 
@@ -852,10 +738,6 @@ def approve_all_application_files(
                 reasons.get("rejected, left alone", 0) + 1
             )
             continue
-        # Same rule as the single-file verdict: nothing is reviewable
-        # until there is a redacted copy to review. Without this the
-        # bulk button would approve in one click what the per-file
-        # action refuses.
         if not record.is_deidentified:
             reasons["not de-identified yet"] = (
                 reasons.get("not de-identified yet", 0) + 1
@@ -897,13 +779,8 @@ def review_application_file(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:update")),
 ):
-    """Record a reviewer's verdict on one document."""
     record = crud.get_file_or_404(cursor, file_id)
 
-    # A verdict is a verdict on the redacted copy: approving a document
-    # that still carries its identifiers says the reviewer saw something
-    # that does not exist yet. The original is all there is to look at
-    # until de-identification has produced one.
     if not record.is_deidentified:
         raise ValidationError(
             f"'{record.original_file_name}' has not been de-identified yet, "
@@ -933,15 +810,10 @@ def delete_application_file(
     record = crud.delete_file(cursor, file_id)
     metadata_crud.delete_metadata_for_files(cursor, [file_id])
 
-    # The run's own leftovers first, while the original's path is still
-    # the way to find them -- they sit in a folder beside it and are
-    # named after it. See app/deid.py: only the redacted document itself
-    # is recorded on the row, so the text and the report went nowhere.
     remove_deid_artifacts(record.file_path)
 
     remove_from_disk(record.file_path)
     if record.de_identified_file_path:
         remove_from_disk(record.de_identified_file_path)
 
-    # And the upload folder, if that was the last document in it.
     prune_stored_folders(record.file_path, record.de_identified_file_path)

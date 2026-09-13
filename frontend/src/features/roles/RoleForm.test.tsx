@@ -7,7 +7,7 @@ import { ALL_PERMISSIONS } from '@/schemas/common'
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
-  // FormLayout renders a cancel Link.
+
   Link: ({ children }: { children: ReactNode }) => <a href="#">{children}</a>,
 }))
 vi.mock('@/hooks/useResources', () => ({
@@ -44,7 +44,7 @@ describe('RoleForm permission editor', () => {
         screen.getByRole('checkbox', { name: `files:${action}` })
       ).toBeInTheDocument()
     }
-    // The CRUD names must not appear for files.
+
     expect(screen.queryByRole('checkbox', { name: 'files:view' })).toBeNull()
     expect(screen.queryByRole('checkbox', { name: 'files:create' })).toBeNull()
   })

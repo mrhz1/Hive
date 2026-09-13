@@ -1,4 +1,3 @@
-"""Application document CRUD, against `patient_application_files`."""
 import uuid
 from typing import List, Optional
 
@@ -51,7 +50,6 @@ def create_file(
     description: Optional[str] = None,
     file_id: Optional[str] = None,
 ) -> PatientApplicationFile:
-    """Records an uploaded document."""
     new_id = file_id or str(uuid.uuid4())
 
     placeholders = ", ".join(
@@ -66,18 +64,17 @@ def create_file(
             application_id,
             original_file_name,
             sanitized_file_name,
-            None,  # deidentified_file_name
+            None,
             file_extension,
             mime_type,
             file_size,
             "pending",
-            False,  # is_deidentified
-            # created_at is inlined above, not bound here.
+            False,
             description,
             file_path,
-            None,  # de_identified_file_path
-            "pending",  # review_status -- nobody has looked at it yet
-            None,  # review_note
+            None,
+            "pending",
+            None,
         ),
     )
     log.info(
@@ -105,14 +102,6 @@ def list_files(
 
 
 def oldest_with_status(cursor, deid_status: str) -> Optional[PatientApplicationFile]:
-    """The longest-waiting file in one de-identification state.
-
-    Asked of the database rather than answered in Python. The dispatcher
-    runs this on every pass, and reading every document row ever stored
-    in order to find the one that has waited longest is a table scan for
-    a single row -- which is most of the delay between clicking
-    de-identify and the job actually starting.
-    """
     execute(
         cursor,
         f"SELECT {_COLS} FROM `patient_application_files` "
@@ -137,8 +126,6 @@ def get_file_or_404(cursor, file_id: str) -> PatientApplicationFile:
     found = get_file(cursor, file_id)
 
     if found is None:
-        # A miss may only mean the query engine has not caught up with a
-        # row written a moment ago. Ask the engine that owns it first.
         with authoritative(cursor):
             found = get_file(cursor, file_id)
 
@@ -179,7 +166,6 @@ def delete_file(cursor, file_id: str) -> PatientApplicationFile:
 def delete_files_for_application(
     cursor, application_id: str
 ) -> List[PatientApplicationFile]:
-    """Used when an application is removed, so its documents do not linger as unreachable rows and orphaned bytes."""
     existing = list_files(cursor, application_id)
     if existing:
         execute(

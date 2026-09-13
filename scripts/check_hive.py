@@ -1,19 +1,3 @@
-"""Smoke test: confirm HiveServer2 is reachable via impyla with the same env vars used on Cloudera AI.
-
-Waits rather than failing on the first attempt. HiveServer2 binds port
-10000 before it can serve a session -- the embedded Derby metastore is
-still initialising behind it -- so a check run straight after
-`make up` connects fine and then has the socket closed under it:
-
-    FAILED to run SHOW DATABASES -- TSocket read 0 bytes
-
-That is the same message a real auth mismatch gives (see the header of
-conf/hive-site.xml), which made a container that was merely still
-starting look like a broken configuration. Retrying until the deadline
-tells the two apart: if it is the startup window, it clears on its own.
-
-Override the deadline with HIVE_CHECK_TIMEOUT (seconds, 0 = one attempt).
-"""
 import os
 import sys
 import time
@@ -23,8 +7,6 @@ from impala.dbapi import connect
 
 load_dotenv(".env.local")
 
-# Matches the compose healthcheck's start_period: a first run on an empty
-# volume has to build the metastore schema before it can answer anything.
 DEFAULT_TIMEOUT = 150.0
 
 RETRY_SECONDS = 5.0
@@ -38,7 +20,6 @@ def _timeout() -> float:
 
 
 def attempt(host, port, database, auth_mechanism, user):
-    """One connect + query. Returns the rows, or raises."""
     conn = connect(
         host=host,
         port=port,

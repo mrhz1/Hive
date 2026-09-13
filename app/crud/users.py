@@ -1,4 +1,3 @@
-"""User CRUD, including the roles join that inlines role_name + permissions onto every user read."""
 import uuid
 from typing import List, Optional
 
@@ -50,8 +49,6 @@ def get_user_or_404(cursor, user_id: str) -> User:
     user = get_user(cursor, user_id)
 
     if user is None:
-        # A miss may only mean the query engine has not caught up with a
-        # row written a moment ago. Ask the engine that owns it first.
         with authoritative(cursor):
             user = get_user(cursor, user_id)
 
@@ -66,7 +63,6 @@ def list_users(cursor) -> List[User]:
 
 
 def _find_by_username(cursor, username: str) -> Optional[User]:
-    """The whole user, role joined in -- not just their id."""
     execute(cursor, _SELECT_WITH_ROLE + " WHERE u.`username` = %s", (username,))
     row = cursor.fetchone()
     return _row_to_user(row) if row else None

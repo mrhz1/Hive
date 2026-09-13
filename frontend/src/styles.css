@@ -1,38 +1,27 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
-/* Tailwind v4 is CSS-first: dark mode is driven by a `dark` class on
-   <html> rather than a JS config, so useTheme() toggling it works. */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Design tokens are space-separated RGB triplets so they compose with
-   Tailwind's alpha syntax: rgb(var(--primary) / 0.15). */
 :root {
-  /* backgrounds */
   --background: 248 250 252;
   --background-secondary: 241 245 249;
   --surface: 255 255 255;
 
-  /* text */
   --foreground: 15 23 42;
   --foreground-muted: 100 116 139;
 
-  /* borders */
   --border: 203 213 225;
 
-  /* primary */
   --primary: 59 130 246;
   --primary-foreground: 255 255 255;
 
-  /* brand */
   --brand: 13 148 136;
   --brand-foreground: 15 23 42;
 
-  /* sidebar */
   --sidebar: 255 255 255;
   --sidebar-foreground: 15 23 42;
 
-  /* danger */
   --danger: 239 68 68;
 
   --nav-text: 71 85 105;
@@ -61,31 +50,24 @@
 }
 
 .dark {
-  /* backgrounds */
   --background: 2 6 23;
   --background-secondary: 15 23 42;
   --surface: 15 23 42;
 
-  /* text */
   --foreground: 248 250 252;
   --foreground-muted: 148 163 184;
 
-  /* borders */
   --border: 51 65 85;
 
-  /* primary */
   --primary: 96 165 250;
   --primary-foreground: 15 23 42;
 
-  /* brand */
   --brand: 45 212 191;
   --brand-foreground: 248 250 252;
 
-  /* sidebar */
   --sidebar: 15 23 42;
   --sidebar-foreground: 248 250 252;
 
-  /* danger */
   --danger: 248 113 113;
 
   --nav-text: 203 213 225;
@@ -129,8 +111,6 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Date inputs render their own picker chrome; keep it in step with the
-     app theme instead of always light. */
   input[type='date'] {
     color-scheme: light;
   }

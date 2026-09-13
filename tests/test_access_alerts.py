@@ -1,4 +1,3 @@
-"""The scheduled check that turns 'we could find out' into 'we did'."""
 from datetime import datetime, timezone
 
 import pytest
@@ -7,7 +6,6 @@ from scripts import access_alerts
 
 
 class _Cursor:
-    """Returns canned (actor, id, hits, patients) rows per action."""
 
     def __init__(self, by_action):
         self.by_action = by_action
@@ -40,13 +38,10 @@ def test_bulk_identified_downloads_are_raised():
     assert len(found) == 1
     assert found[0]["actor"] == "a.reyes"
     assert found[0]["hits"] == 180
-    # The number a breach assessment starts from.
     assert found[0]["patients"] == 47
 
 
 def test_the_export_threshold_is_much_lower_than_the_download_one():
-    """One export can carry thousands of records; one download is one
-    document."""
     exports = dict(
         (rule["name"], rule["limit"]) for rule in access_alerts.rules()
     )
@@ -84,8 +79,6 @@ def test_a_failing_query_does_not_stop_the_other_rules(monkeypatch):
 
 
 def test_the_window_is_pruned_to_partitions():
-    """A window that crosses midnight still has to read both days, but it
-    must not read the whole table."""
     cursor = _Cursor({})
     access_alerts.breaches(
         cursor, since=datetime.now(timezone.utc), day_from="2026-02-11"

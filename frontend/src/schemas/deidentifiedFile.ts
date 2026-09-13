@@ -18,7 +18,6 @@ export type DeidentifiedFile = z.infer<typeof deidentifiedFileSchema>
 
 export const deidentifiedFileListSchema = z.array(deidentifiedFileSchema)
 
-/** Everything a row can be searched by, lowercased once per row. */
 export function fileHaystack(file: DeidentifiedFile): string {
   return [file.name, file.original_file_name, file.patient_id, file.file_type]
     .filter(Boolean)

@@ -1,4 +1,3 @@
-"""Reading the access trail. Append-only: there is no update or delete."""
 from typing import List, Optional
 
 from app.access_log import COLUMNS, PARTITION_COLUMN
@@ -34,12 +33,6 @@ def list_access_logs(
     date_to: Optional[str] = None,
     limit: int = 100,
 ) -> List[AccessLog]:
-    """Filtered access events, newest first.
-
-    The date bounds are applied to the partition column, not to
-    `occurred_at`, so a bounded query reads only the days it needs
-    instead of scanning every day ever written.
-    """
     where, params = [], []
 
     if date_from:
@@ -81,10 +74,6 @@ def count_by_actor(
     outcome: Optional[str] = None,
     identified_only: bool = False,
 ) -> List[tuple]:
-    """(actor, count) for one action since a moment, busiest first.
-
-    What the alerting job asks: who has done a lot of this lately.
-    """
     where = [f"`{PARTITION_COLUMN}` >= %s", "`action` = %s", "`occurred_at` >= %s"]
     params = [date_from, action, since]
 

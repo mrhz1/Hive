@@ -1,17 +1,13 @@
 import { z } from 'zod'
 import { idSchema } from './common'
 
-
-/** A nullable STRING column. Absent and empty both mean "unknown". */
 const text = z.string().nullable().optional()
 
-/** Hive DATE, serialised by the API as 'YYYY-MM-DD'. */
 const dateText = z.string().nullable().optional()
 
 export const patientSchema = z.object({
   id: idSchema,
 
-  // provider / institution
   instcode: text,
   pname: text,
   pemail: text,
@@ -27,7 +23,6 @@ export const patientSchema = z.object({
   zip: text,
   country: text,
 
-  // patient
   fstname: text,
   lstname: text,
   ptemail: text,
@@ -43,7 +38,6 @@ export const patientSchema = z.object({
   ptzip: text,
   ptcountry: text,
 
-  // dates
   dt_reg: dateText,
   dt_b: dateText,
   dt_d: dateText,
@@ -55,8 +49,6 @@ export const patientSchema = z.object({
 export type Patient = z.infer<typeof patientSchema>
 
 export const patientListSchema = z.array(patientSchema)
-
-// ------------------------------------------------------------ the form
 
 const optionalText = (max = 128) => z.string().max(max, 'Too long')
 
@@ -76,7 +68,7 @@ const optionalDate = z.union([
 ])
 
 const patientFormFields = z.object({
-  // provider / institution
+
   instcode: optionalText(64),
   pname: optionalText(),
   pemail: optionalEmail,
@@ -92,7 +84,6 @@ const patientFormFields = z.object({
   zip: optionalText(16),
   country: optionalText(64),
 
-  // patient
   fstname: optionalText(64),
   lstname: optionalText(64),
   ptemail: optionalEmail,
@@ -108,7 +99,6 @@ const patientFormFields = z.object({
   ptzip: optionalText(16),
   ptcountry: optionalText(64),
 
-  // dates
   dt_reg: optionalDate,
   dt_b: optionalDate,
   dt_d: optionalDate,
@@ -131,7 +121,6 @@ export const patientFormSchema = patientFormFields.superRefine((values, ctx) => 
 
 export type PatientFormValues = z.infer<typeof patientFormFields>
 
-/** Every editable field, in the order the form declares them. */
 export const PATIENT_FIELD_NAMES = Object.keys(patientFormFields.shape) as Array<
   keyof PatientFormValues
 >
@@ -172,7 +161,6 @@ export const EMPTY_PATIENT_FORM: PatientFormValues = {
   deidentified_file_path: '',
 }
 
-/** A record from the API into the shape the form edits: null becomes ''. */
 export function toPatientFormValues(patient: Patient): PatientFormValues {
   const values: PatientFormValues = { ...EMPTY_PATIENT_FORM }
   for (const name of PATIENT_FIELD_NAMES) {
@@ -187,13 +175,6 @@ export function patientName(patient: Patient): string {
   return name || patient.ptemail || 'Unnamed patient'
 }
 
-/**
- * Whether a patient answers to a search term.
- *
- * The id is in here as well as the name: it is what appears on the
- * paperwork, so it is what somebody with a folder in front of them
- * actually has to hand.
- */
 export function patientMatches(patient: Patient, query: string): boolean {
   const term = query.trim().toLowerCase()
   if (!term) return true

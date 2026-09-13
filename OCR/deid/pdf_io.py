@@ -1,4 +1,3 @@
-"""PDF rasterisation and redaction via PyMuPDF."""
 import logging
 from dataclasses import dataclass
 from typing import List
@@ -12,13 +11,13 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class RenderedPage:
-    page_number: int  # 1-based
-    image: np.ndarray  # RGB
-    scale: float  # image pixels per PDF point
+    page_number: int
+    image: np.ndarray
+    scale: float
 
 
 def open_pdf(path: str):
-    import fitz  # PyMuPDF
+    import fitz
 
     try:
         return fitz.open(path)
@@ -27,7 +26,6 @@ def open_pdf(path: str):
 
 
 def render_pages(doc, dpi: int):
-    """Yield RenderedPage for each page, rasterised at `dpi`."""
     import fitz
 
     scale = dpi / 72.0
@@ -39,7 +37,7 @@ def render_pages(doc, dpi: int):
         image = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
             pix.height, pix.width, pix.n
         )
-        if pix.n == 4:  # CMYK-ish; drop to RGB
+        if pix.n == 4:
             image = image[:, :, :3]
         yield RenderedPage(
             page_number=page_index + 1, image=np.ascontiguousarray(image), scale=scale
@@ -48,7 +46,6 @@ def render_pages(doc, dpi: int):
 
 def apply_redactions(doc, page_number: int, boxes: List[RedactionBox], scale: float,
                      fill: str = "black") -> int:
-    """Apply redaction annotations to one page."""
     import fitz
 
     if not boxes:
@@ -87,7 +84,6 @@ def apply_redactions(doc, page_number: int, boxes: List[RedactionBox], scale: fl
 
 def save_pdf(doc, output_path: str) -> None:
     try:
-        # garbage/deflate keep the output tidy after content removal.
         doc.save(output_path, garbage=3, deflate=True)
     except Exception as exc:
         raise RuntimeError(f"Could not write redacted PDF {output_path}: {exc}") from exc
