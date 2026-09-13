@@ -1,4 +1,3 @@
-"""DICOM rasterisation, pixel redaction and tag scrubbing via pydicom."""
 import logging
 from typing import List
 
@@ -77,7 +76,6 @@ def has_pixels(dataset) -> bool:
 
 
 def _to_rgb(frame: np.ndarray) -> np.ndarray:
-    """One frame as contiguous 8-bit RGB, whatever it started as."""
     array = frame
 
     if array.dtype != np.uint8:
@@ -100,7 +98,6 @@ def _to_rgb(frame: np.ndarray) -> np.ndarray:
 
 
 def frames(dataset) -> List[np.ndarray]:
-    """Pixel data as a list of frames, one entry for a single-frame study."""
     if not has_pixels(dataset):
         return []
 
@@ -122,7 +119,6 @@ def frames(dataset) -> List[np.ndarray]:
 
 
 def render_frames(dataset, _dpi: int = 0):
-    """Yield RenderedPage per frame."""
     from deid.pdf_io import RenderedPage
 
     for index, frame in enumerate(frames(dataset)):
@@ -138,7 +134,6 @@ def apply_redactions(
     scale: float = 1.0,
     fill: str = "black",
 ) -> int:
-    """Paint boxes into the stored pixel data."""
     if not boxes:
         return 0
     if not has_pixels(dataset):
@@ -190,32 +185,18 @@ def _EXPLICIT_VR_LITTLE_ENDIAN():
     return ExplicitVRLittleEndian
 
 
-# The only VRs that hold free text, and so the only ones an entity tag
-# may be written into. The length is what the standard allows for each.
-#
-# CS is deliberately absent. It is a *code* -- 'MONOCHROME2', 'MR',
-# 'YES' -- and an analyzer trained on clinical prose will occasionally
-# call one of those a person. Writing '<PERSON>' into
-# PhotometricInterpretation produces a study nothing can decode, which is
-# exactly what happened. Codes are matched against enumerations, never
-# read, so there is nothing in them to de-identify.
 _REDACTABLE_VR_LIMITS = {
     "LO": 64,
     "LT": 10240,
     "PN": 64,
     "SH": 16,
     "ST": 1024,
-    "UC": 0,   # unlimited
+    "UC": 0,
     "UT": 0,
 }
 
-# Never touched at all: UIDs and binary are structural, and blanking
-# SOPInstanceUID or the transfer syntax produces a file nothing opens.
 _STRUCTURAL_VRS = frozenset({"UI", "OB", "OW", "OD", "OF", "OL", "OV", "UN", "SQ"})
 
-# Belt and braces over the VR rules: whatever any list says, these are
-# what the pixel decoder reads. A study is unreadable without them, and
-# none of them can identify anybody.
 NEVER_MODIFIED = frozenset(
     {
         "BitsAllocated",
@@ -251,7 +232,6 @@ def _fit(value: str, vr: str) -> str:
 
 
 def _deidentify_element(element, redact, touched: List[str], prefix: str = "") -> None:
-    """De-identify one element in place, respecting what its VR can hold."""
     from deid.metadata import PLACEHOLDER, deidentify_value
 
     keyword = element.keyword or str(element.tag)
@@ -262,10 +242,6 @@ def _deidentify_element(element, redact, touched: List[str], prefix: str = "") -
         return
 
     if element.VR not in _REDACTABLE_VR_LIMITS:
-        # Not free text: a code, a date, a number. Nothing in it can be
-        # read as prose, so there is nothing for the analyzer to find --
-        # but a date of birth still identifies, so the known list empties
-        # these outright. Empty is valid for every one of these VRs.
         if known_phi or keyword in _BLANKED_TAG_SET:
             if element.value not in (None, ""):
                 element.value = ""
@@ -287,18 +263,16 @@ def _deidentify_element(element, redact, touched: List[str], prefix: str = "") -
         element.value = _fit(replacement, element.VR)
         touched.append(label)
     elif known_phi and str(element.value or "").strip():
-        # Belt and braces: a known-PHI field never keeps its own value.
         element.value = _fit(PLACEHOLDER, element.VR)
         touched.append(label)
 
 
 def _walk(dataset, redact, touched: List[str], prefix: str = "", depth: int = 0) -> None:
-    """Every element, sequences included. PHI hides in nested datasets too."""
     if depth > 8:  # pragma: no cover - guards a pathological file
         return
 
     for element in dataset:
-        if element.tag == 0x7FE00010:  # PixelData: handled by the redactor
+        if element.tag == 0x7FE00010:
             continue
 
         if element.VR == "SQ":
@@ -316,13 +290,6 @@ def _walk(dataset, redact, touched: List[str], prefix: str = "", depth: int = 0)
 
 
 def scrub_metadata(dataset, redact=None) -> List[str]:
-    """De-identify the tags in place, keeping the study readable.
-
-    `redact` is the same analyzer-backed callable the page text goes
-    through. Without one this falls back to the old behaviour -- a
-    known-PHI tag is emptied rather than de-identified -- so a caller
-    that has no analyzer still produces a safe file.
-    """
     touched: List[str] = []
 
     if redact is None:
@@ -334,8 +301,6 @@ def scrub_metadata(dataset, redact=None) -> List[str]:
     except Exception as exc:  # pragma: no cover - defensive
         log.warning("metadata de-identification pass failed: %s", exc)
 
-    # Private tags are vendor-defined: their contents cannot be checked
-    # against anything, so they still go entirely.
     try:
         dataset.remove_private_tags()
         touched.append("<private tags>")
@@ -352,7 +317,6 @@ def save_dicom(dataset, output_path: str) -> None:
     try:
         dataset.save_as(output_path, enforce_file_format=True)
     except TypeError:
-        # pydicom < 3 spells it differently.
         dataset.save_as(output_path, write_like_original=False)
     except Exception as exc:
         raise RuntimeError(

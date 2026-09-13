@@ -26,7 +26,6 @@ function Muted({ value }: { value: string | null | undefined }) {
   return <span className="text-[rgb(var(--foreground-muted))]">{value || '—'}</span>
 }
 
-/** Hive TIMESTAMPs arrive as naive ISO strings; the seconds add nothing. */
 function shortTimestamp(value: string | null | undefined) {
   return value ? value.slice(0, 16).replace('T', ' ') : null
 }
@@ -77,8 +76,7 @@ function ApplicationsList() {
       {
         id: 'assigned_to',
         header: 'Assigned to',
-        // Sorted and searchable, because the question it answers is
-        // "which of these are mine".
+
         cell: (a) => <Muted value={a.assigned_to_username} />,
         sortValue: (a) => a.assigned_to_username ?? '',
       },
@@ -118,7 +116,7 @@ function ApplicationsList() {
         labelFor(application),
         application.status,
         application.description,
-        // So "show me mine" is a matter of typing your username.
+
         application.assigned_to_username,
       ]
         .filter(Boolean)

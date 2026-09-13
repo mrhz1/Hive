@@ -1,11 +1,4 @@
-/**
- * The rules that decide what the wizard will let somebody do.
- *
- * Each of these is a "no" the UI gives on a button, and each one used to
- * be spelled out inline at the call site. They are here because getting
- * one wrong is silent -- the button simply stays enabled, and something
- * that should not have gone for review does.
- */
+
 import { describe, expect, it } from 'vitest'
 import { rejectedCount, undecidedCount } from '@/schemas/applicationFile'
 import { canDelete, canReject, isReadOnly } from '@/schemas/patientApplication'
@@ -31,8 +24,7 @@ describe('counting what still stands in the way', () => {
 
 describe('rejecting an application', () => {
   it('is still on offer once it has already been rejected', () => {
-    // The first problem gets fixed, the next one surfaces, and it has to
-    // be possible to say so -- with its own reason.
+
     expect(canReject('rejected')).toBe(true)
   })
 

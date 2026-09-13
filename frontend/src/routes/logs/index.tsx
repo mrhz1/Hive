@@ -107,8 +107,7 @@ function LogsList() {
           value={entityId}
           onChange={(event) => setEntityId(event.target.value)}
         />
-        {/* Who and when: the question an access review and an incident
-            both start from, and which this page could not be asked. */}
+        {}
         <SelectField
           label="Who"
           placeholder="Anyone"

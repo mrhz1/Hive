@@ -19,7 +19,7 @@ beforeEach(() => {
 })
 
 function pdfFile(name: string): File {
-  const bytes = [0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34] // '%PDF-1.4'
+  const bytes = [0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]
   return new File([new Uint8Array(bytes)], name)
 }
 
@@ -40,8 +40,6 @@ describe('FolderPathField', () => {
     await user.click(screen.getByRole('button', { name: 'Choose files' }))
     await user.upload(screen.getByLabelText('Source folder input'), [textFile('notes.txt')])
 
-    // The picked file is rejected -- the path field still fills in from
-    // the raw pick, same as folderPathFromFiles does for any single file.
     expect(onSelect).toHaveBeenCalledWith('notes.txt', [])
     expect(toastError).toHaveBeenCalledTimes(1)
   })

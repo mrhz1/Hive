@@ -1,4 +1,3 @@
-"""Per-document / per-page results."""
 from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional
 
@@ -10,7 +9,6 @@ class PageResult:
     entities_found: int
     boxes_applied: int
     entity_counts: Dict[str, int] = field(default_factory=dict)
-    # Populated only when config.report_include_values is on.
     entity_values: List[dict] = field(default_factory=list)
 
 
@@ -56,7 +54,6 @@ class DocumentResult:
 
 
 def summarise(results: List[DocumentResult]) -> dict:
-    """The JSON the job prints on stdout for its caller to parse."""
     ok = [r for r in results if r.status == "ok"]
     failed = [r for r in results if r.status != "ok"]
 
@@ -77,7 +74,6 @@ def summarise(results: List[DocumentResult]) -> dict:
 
 
 def exit_code(results: List[DocumentResult]) -> int:
-    """0 all succeeded, 1 everything failed, 2 partial failure."""
     if not results:
         return 1
     failed = [r for r in results if r.status != "ok"]

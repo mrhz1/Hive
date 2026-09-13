@@ -1,9 +1,7 @@
-"""The application wizard's own path through the API, end to end."""
 from conftest import ADMIN_ID, VIEWER_ID, minimal_patient
 
 
 def _wizard_patient_payload(**overrides):
-    """What PatientForm actually posts: every field, blanks as null."""
     payload = {
         "fstname": "Jane",
         "lstname": "Doe",
@@ -23,8 +21,6 @@ def test_creating_a_patient_without_a_file_path_is_allowed(as_admin):
 
 
 def test_saving_that_patient_again_is_allowed(as_admin):
-    """Step 1 re-submitted: the wizard shows the saved patient and PUTs it
-    back. That must not fail on a field the form does not show."""
     created = as_admin.post("/patients", json=_wizard_patient_payload()).json()
 
     response = as_admin.put(
@@ -51,8 +47,6 @@ def test_creating_an_application_with_an_assignee(as_admin):
 
 
 def test_an_applications_folder_is_its_own(as_admin):
-    """Two applications for one patient, drawing on different folders --
-    which is why this lives on the application and not the patient."""
     patient = as_admin.post("/patients", json=minimal_patient()).json()
 
     first = as_admin.post(
@@ -67,7 +61,6 @@ def test_an_applications_folder_is_its_own(as_admin):
     assert first["original_file_path"] == "/data/X"
     assert second["original_file_path"] == "/data/Y"
 
-    # And neither has disturbed the other.
     assert (
         as_admin.get(f"/applications/{first['id']}").json()["original_file_path"]
         == "/data/X"

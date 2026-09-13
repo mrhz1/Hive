@@ -1,21 +1,3 @@
-"""Background upload batches.
-
-Uploading a folder of scans is slow, and almost none of the time goes on
-the network: it goes on writing the bytes out, on the per-file Hive
-INSERT, and on parsing each document for metadata. Holding the HTTP
-request open for all of that is what made the wizard feel hung.
-
-So the request does the one thing only it can do -- drain the multipart
-body -- and parks each file in a staging folder next to the final
-storage. A background task then moves every file into place, records it,
-and emails whoever the application is assigned to when the batch is over,
-whether it went well or not.
-
-Job state lives in this process, like the de-identification dispatcher's
-does. It is progress for a UI to poll, not a record of anything: the
-files and their rows are the record, and they are in storage and in Hive.
-A restart mid-batch loses the progress bar, not the documents.
-"""
 import shutil
 import threading
 import uuid
@@ -54,9 +36,6 @@ log = get_logger(__name__)
 
 STAGING_DIR_NAME = ".uploads"
 
-# How many finished jobs to keep answering for. Enough that a browser
-# polling every couple of seconds always finds the job it asked about,
-# small enough that a long-lived process does not accumulate them.
 MAX_REMEMBERED_JOBS = 200
 
 _jobs: "OrderedDict[str, UploadJob]" = OrderedDict()
@@ -66,7 +45,6 @@ _lock = threading.Lock()
 
 @dataclass
 class StagedFile:
-    """One file waiting in staging for the worker to pick up."""
 
     name: str
     content_type: Optional[str]
@@ -74,11 +52,9 @@ class StagedFile:
     size: int
 
 
-# --------------------------------------------------------------- staging
 
 
 def staging_root() -> Path:
-    """Inside the storage root, so moving out of it is a rename."""
     return Path(storage.STORAGE_ROOT) / STAGING_DIR_NAME
 
 
@@ -93,12 +69,9 @@ def stage(
     data: bytes,
     content_type: Optional[str] = None,
 ) -> StagedFile:
-    """Park one uploaded file on disk under a name that cannot collide."""
     directory = staging_dir(job_id)
     directory.mkdir(parents=True, exist_ok=True)
 
-    # The index keeps two files called 'scan.pdf' apart; the original
-    # name is carried on the record, not taken from this path.
     path = directory / f"{index:04d}_{sanitize_filename(name)}"
     path.write_bytes(data)
 
@@ -114,19 +87,12 @@ def stage(
 
 
 def abandon_job(job_id: str, reason: str) -> None:
-    """Give up on a batch before the worker ever sees it.
-
-    The request rejected it -- too large, or nothing in it -- so the
-    caller already knows. This is so the job does not sit in the registry
-    claiming to be pending forever.
-    """
     _fail_remaining(job_id, reason)
     _set_status(job_id, "failed", error=reason)
     discard_staging(job_id)
 
 
 def discard_staging(job_id: str) -> None:
-    """Whatever is left in staging is rubbish once the job is over."""
     with _lock:
         _staged.pop(job_id, None)
 
@@ -137,7 +103,6 @@ def discard_staging(job_id: str) -> None:
         log.warning("upload_staging_cleanup_failed", job_id=job_id, error=str(exc))
 
 
-# ------------------------------------------------------------- registry
 
 
 def create_job(application_id: str) -> UploadJob:
@@ -164,12 +129,10 @@ def get_job(job_id: str) -> Optional[UploadJob]:
 
 
 def _job(job_id: str) -> Optional[UploadJob]:
-    """The live object. Callers hold _lock around any mutation."""
     return _jobs.get(job_id)
 
 
 def register_file(job_id: str, name: str) -> None:
-    """Announce a file before the worker has touched it."""
     with _lock:
         job = _job(job_id)
         if job is None:
@@ -194,7 +157,6 @@ def _mark(job_id: str, name: str, status: str, **fields) -> None:
 
 
 def _set_folder(job_id: str, path: str) -> None:
-    """Where the batch landed. Set once, by the first file to arrive."""
     with _lock:
         job = _job(job_id)
         if job is not None and not job.folder:
@@ -214,7 +176,6 @@ def _set_status(job_id: str, status: str, error: Optional[str] = None) -> None:
 
 
 def _fail_remaining(job_id: str, reason: str) -> None:
-    """Nothing else is going to happen to these; say so rather than leave them pending."""
     with _lock:
         job = _job(job_id)
         if job is None:
@@ -227,11 +188,9 @@ def _fail_remaining(job_id: str, reason: str) -> None:
         job.failed = sum(1 for f in job.files if f.status == "failed")
 
 
-# ------------------------------------------------------- storing a file
 
 
 def known_patient_id(cursor, application) -> Optional[str]:
-    """The patient this application belongs to, if they are on file."""
     patient_id = getattr(application, "patient_id", None)
     if not patient_id:
         return None
@@ -240,7 +199,6 @@ def known_patient_id(cursor, application) -> Optional[str]:
 
 
 def record_metadata(cursor, file_id: str, path, extension: str) -> None:
-    """Extract and store metadata for one just-stored file."""
     file_type, metadata, status, error = extract(path, extension)
     try:
         metadata_crud.create_metadata(
@@ -266,9 +224,6 @@ def _store_staged(
     description: Optional[str],
     received_at: datetime,
 ):
-    """Move one staged file into storage and record it."""
-    # Read the type off the staged bytes, not the name: a DICOM off a
-    # PACS often arrives with no extension at all.
     extension = resolve_extension(staged.name, head_of(staged.path))
     record_id = str(uuid.uuid4())
 
@@ -297,7 +252,6 @@ def _store_staged(
     return record
 
 
-# ---------------------------------------------------------- the worker
 
 
 def run_upload_job(
@@ -308,11 +262,6 @@ def run_upload_job(
     received_at: Optional[datetime] = None,
     request_id: Optional[str] = None,
 ) -> None:
-    """Move a staged batch into storage, then tell someone how it went.
-
-    Never raises: it runs detached from any request, so a failure here
-    has nowhere to surface except the log and the notification email.
-    """
     if request_id:
         structlog.contextvars.bind_contextvars(
             request_id=request_id, background_task="run_upload_job"
@@ -334,8 +283,6 @@ def run_upload_job(
             received_at=received_at,
         )
     except Exception as exc:
-        # A Hive outage, most likely -- the per-file handler below catches
-        # anything narrower than that.
         log.exception("upload_job_failed", job_id=job_id, error=str(exc))
         _fail_remaining(job_id, str(exc))
         _set_status(job_id, "failed", error=str(exc))
@@ -368,7 +315,6 @@ def _process(
                     received_at=received_at,
                 )
             except Exception as exc:
-                # One bad file must not cost the rest of the batch.
                 log.error(
                     "upload_job_file_failed",
                     job_id=job_id,
@@ -383,7 +329,6 @@ def _process(
 
 
 def _finish(job_id: str, application_id: str, actor_id: Optional[str]) -> None:
-    """Settle the final status and send the email it calls for."""
     job = get_job(job_id)
     if job is None:  # pragma: no cover - only if the job was evicted mid-run
         return
@@ -410,7 +355,6 @@ def _finish(job_id: str, application_id: str, actor_id: Optional[str]) -> None:
 
 
 def _send_notice(job: UploadJob, application_id: str, actor_id: Optional[str]) -> None:
-    """Best effort. A batch that worked is not a failure because email is."""
     try:
         with hive_cursor() as cursor:
             recipients = upload_recipients(cursor, application_id, actor_id)

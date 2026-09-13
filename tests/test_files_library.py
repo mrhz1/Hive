@@ -1,4 +1,3 @@
-"""The de-identified file library and its own files:* permission."""
 import pathlib
 
 import pytest
@@ -49,7 +48,6 @@ def _patient_with_file(client, storage_root, name="scan.pdf", redacted=True):
     return patient_id, record
 
 
-# ------------------------------------------------------------- browsing
 
 def test_only_files_with_a_redacted_copy_are_listed(as_admin, storage_root):
     _patient_with_file(as_admin, storage_root, name="done.pdf", redacted=True)
@@ -62,7 +60,6 @@ def test_only_files_with_a_redacted_copy_are_listed(as_admin, storage_root):
 
 
 def test_rows_carry_the_columns_the_table_shows(as_admin, storage_root):
-    """name, type, date -- plus the patient id every row is filed under."""
     patient_id, _ = _patient_with_file(as_admin, storage_root)
 
     row = as_admin.get("/files-library").json()[0]
@@ -94,7 +91,6 @@ def test_downloading_serves_the_redacted_bytes_not_the_original(
     assert response.content == b"%PDF-1.4 redacted"
 
 
-# ---------------------------------------------------------- permissions
 
 def test_reading_requires_files_read(client, storage_root):
     client.headers.update({"REMOTE-USER": NOBODY_USER})
@@ -108,7 +104,6 @@ def test_reading_requires_files_read(client, storage_root):
 def test_a_read_only_role_can_browse_but_not_take_copies_away(
     as_admin, client, storage_root
 ):
-    """The point of a separate files:download."""
     _, record = _patient_with_file(as_admin, storage_root)
 
     client.headers.update({"REMOTE-USER": VIEWER_USER})
@@ -135,7 +130,6 @@ def test_every_files_action_exists(client):
 
 
 def test_files_actions_do_not_leak_into_other_models():
-    """A per-model action map, so nobody gets offered 'user:download'."""
     from app import security
 
     assert "user:download" not in security.KNOWN_PERMISSIONS
@@ -143,7 +137,6 @@ def test_files_actions_do_not_leak_into_other_models():
     assert "files:view" not in security.KNOWN_PERMISSIONS
 
 
-# -------------------------------------------------------------- uploads
 
 def test_uploading_a_new_manually_redacted_file(as_admin, storage_root, deid_dirs):
     patient_id, _ = _patient_with_file(as_admin, storage_root)
@@ -164,7 +157,6 @@ def test_uploading_a_new_manually_redacted_file(as_admin, storage_root, deid_dir
 def test_replacing_keeps_the_same_id_and_stays_done(
     as_admin, storage_root, deid_dirs
 ):
-    """The stated case: the pipeline missed an identifier, a human redacted it properly, and the corrected file goes in over the top."""
     patient_id, record = _patient_with_file(as_admin, storage_root)
     before = as_admin.get("/files-library").json()[0]
 
@@ -188,7 +180,6 @@ def test_replacing_keeps_the_same_id_and_stays_done(
 
 
 def test_replacing_across_patients_is_refused(as_admin, storage_root, deid_dirs):
-    """Otherwise one patient's document is attached to another's record."""
     _, record = _patient_with_file(as_admin, storage_root)
     other_patient = as_admin.post(
         "/patients", json=minimal_patient(ptemail="other@example.com")
@@ -221,8 +212,6 @@ def test_upload_rejects_a_format_the_library_does_not_handle(
 def test_upload_keeps_generated_facts_out_of_the_metadata_row(
     as_admin, storage_root, deid_dirs
 ):
-    """The row says what the document arrived carrying. What this system
-    works out afterwards goes into the file itself -- see app/embed.py."""
     patient_id, record = _patient_with_file(as_admin, storage_root)
 
     as_admin.post(
@@ -243,7 +232,6 @@ def test_upload_keeps_generated_facts_out_of_the_metadata_row(
         assert generated not in metadata, generated
 
 
-# -------------------------------------------------------------- deleting
 
 def test_deleting_removes_the_redacted_copy_but_keeps_the_original(
     as_admin, storage_root

@@ -29,7 +29,7 @@ describe('fileTally', () => {
   it('counts an empty application without dividing by zero', () => {
     const tally = fileTally([])
     expect(tally.total).toBe(0)
-    // An application with no documents is not "fully de-identified".
+
     expect(isFullyDeidentified(tally)).toBe(false)
     expect(isFullyReviewed(tally)).toBe(false)
   })
@@ -49,8 +49,6 @@ describe('fileTally', () => {
     expect(tally.deidFailed).toBe(1)
     expect(tally.deidPending).toBe(1)
 
-    // The buckets must partition the set, or the header would claim a
-    // batch was finished while something sat unaccounted for.
     expect(
       tally.deidentified + tally.deidRunning + tally.deidFailed + tally.deidPending
     ).toBe(tally.total)
@@ -77,8 +75,6 @@ describe('fileTally', () => {
     ])
     expect(isFullyDeidentified(done)).toBe(true)
 
-    // The case this whole thing exists for: 999 done, one failed hours
-    // ago, invisible in a list that long.
     const nearlyDone = fileTally([
       file({ is_deidentified: true, deid_status: 'done' }),
       file({ deid_status: 'failed' }),
@@ -88,8 +84,7 @@ describe('fileTally', () => {
   })
 
   it('does not count a rejected document as undecided', () => {
-    // Rejected IS a decision; treating it as outstanding would leave the
-    // header permanently claiming work remained.
+
     const tally = fileTally([file({ review_status: 'rejected' })])
     expect(isFullyReviewed(tally)).toBe(true)
     expect(tally.undecided).toBe(0)
@@ -117,8 +112,7 @@ describe('fileTally', () => {
 
 describe('approvableCount', () => {
   it('excludes documents that have no redacted copy yet', () => {
-    // The API refuses a verdict on these, so counting them would put a
-    // number on the Approve all button that it cannot deliver.
+
     const files = [
       file({ is_deidentified: true, review_status: 'pending' }),
       file({ is_deidentified: false, review_status: 'pending' }),

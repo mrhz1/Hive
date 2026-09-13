@@ -134,7 +134,6 @@ export function ForbiddenPage({ requiredPermission }: { requiredPermission?: str
   )
 }
 
-/** Router-level catch-all for unexpected render/loader errors. */
 export function AppErrorPage({ error }: { error: Error }) {
   useDocumentTitle('Something went wrong')
   return (

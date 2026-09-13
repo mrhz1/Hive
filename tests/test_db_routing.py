@@ -1,11 +1,3 @@
-"""Which engine runs which statement.
-
-Queries go to Impala; everything that writes goes to Hive, because these
-tables are full-ACID ORC and Impala will not write to those. Getting it
-wrong is quiet in one direction and loud in the other -- a query sent to
-Hive merely runs slower, while a write sent to Impala is refused -- so
-the mapping is pinned rather than left to be discovered in production.
-"""
 import pytest
 
 from app import db
@@ -20,8 +12,6 @@ from app.errors import DatabaseError
         ("  \n SELECT 1", db.IMPALA),
         ("WITH recent AS (SELECT 1) SELECT * FROM recent", db.IMPALA),
         ("(SELECT 1) UNION ALL (SELECT 2)", db.IMPALA),
-        # Not Impala: these tables are full-ACID ORC, and it will not
-        # write to those. Everything that writes belongs to Hive.
         ("INSERT INTO TABLE patient (id) VALUES (%s)", db.HIVE),
         ("insert into patient (id) values (%s)", db.HIVE),
         ("UPDATE patient SET fstname = %s WHERE id = %s", db.HIVE),
@@ -33,7 +23,6 @@ from app.errors import DatabaseError
         ("TRUNCATE TABLE t", db.HIVE),
         ("SHOW TABLES", db.HIVE),
         ("DESCRIBE patient", db.HIVE),
-        # Nothing recognisable goes to the engine that can run everything.
         ("", db.HIVE),
         ("   ", db.HIVE),
         ("GRANT SELECT ON t TO ROLE r", db.HIVE),
@@ -43,7 +32,6 @@ def test_the_engine_a_statement_goes_to(sql, engine):
     assert db.engine_for(sql) == engine
 
 
-# ------------------------------------------------------ the routing cursor
 
 
 class FakeCursor:
@@ -78,7 +66,6 @@ class FakeConnection:
 
 @pytest.fixture
 def engines(monkeypatch):
-    """Both engines, recording which one was asked for."""
     opened = {}
 
     def fake_connect(engine):
@@ -87,12 +74,7 @@ def engines(monkeypatch):
 
     monkeypatch.setattr(db, "_connect", fake_connect)
     monkeypatch.setattr(db, "impala_available", lambda: True)
-    # No database by default, so the routing tests below assert on the
-    # statements they ran and nothing else. The tests that care about it
-    # set it themselves.
     monkeypatch.setattr(db, "IMPALA_DB", "")
-    # Pooling is thread-local and outlives a test, so it starts and ends
-    # empty. The tests that are about pooling turn it on themselves.
     monkeypatch.setattr(db, "IMPALA_POOL", False)
     monkeypatch.setattr(db, "HIVE_POOL", False)
     db.discard_sessions()
@@ -118,7 +100,6 @@ def test_a_delete_only_request_never_opens_impala(engines):
 
 
 def test_one_request_can_use_both(engines):
-    """The ordinary shape: read the row, write it, record what happened."""
     cursor = db.RoutingCursor()
 
     cursor.execute("SELECT * FROM patient WHERE id = %s", ("P1",))
@@ -144,8 +125,6 @@ def test_each_engine_gets_one_cursor_not_one_per_statement(engines):
 
 
 def test_results_come_from_the_engine_that_ran_the_statement(engines):
-    """A fetch must read from the cursor that ran the statement, not from
-    whichever connection happened to be opened first."""
     cursor = db.RoutingCursor()
 
     cursor.execute("SELECT * FROM patient")
@@ -173,8 +152,6 @@ def test_closing_closes_every_connection_opened(engines):
 
 
 def test_without_impala_everything_goes_to_hive(monkeypatch):
-    """A laptop has no cml.data_v1 and no connection name. The split is a
-    deployment concern; local development must not need an Impala."""
     opened = {}
 
     def fake_connect(engine):
@@ -197,13 +174,9 @@ def test_impala_is_unavailable_without_a_connection_name(monkeypatch):
     assert db.impala_available() is False
 
 
-# ------------------------------------------------- pointing at a database
 
 
 def test_an_impala_session_is_pointed_at_the_database(engines, monkeypatch):
-    """The data connection carries no database, so an unqualified `users`
-    lands in `default` -- and Impala calls that a privilege error rather
-    than a missing table."""
     monkeypatch.setattr(db, "IMPALA_DB", "hive_app")
 
     cursor = db.RoutingCursor()
@@ -227,7 +200,6 @@ def test_the_database_is_set_once_per_session_not_per_statement(engines, monkeyp
 
 
 def test_hive_is_left_alone(engines, monkeypatch):
-    """It takes the database as a connection parameter already."""
     monkeypatch.setattr(db, "IMPALA_DB", "hive_app")
 
     cursor = db.RoutingCursor()
@@ -251,13 +223,10 @@ def test_no_database_configured_changes_nothing(engines, monkeypatch):
     "name", ["a; DROP TABLE users", "has space", "1leading", "back`tick", "-"]
 )
 def test_a_database_name_that_is_not_an_identifier_is_refused(name):
-    """It goes into the statement as an identifier, which cannot be bound
-    as a parameter -- so it is checked instead of trusted."""
     with pytest.raises(DatabaseError):
         db.use_database(FakeCursor("impala"), name)
 
 
-# ------------------------------------------- seeing what you just wrote
 
 
 @pytest.mark.parametrize(
@@ -280,10 +249,6 @@ def test_the_table_a_write_lands_on(sql, table):
 
 
 def test_a_row_can_be_read_back_in_the_call_that_wrote_it(engines):
-    """Creating a patient inserts, then reads the row back to return it.
-    Impala knows nothing of a Hive write until it is refreshed, so that
-    read came back empty and the API answered 404 for a patient it had
-    just created."""
     cursor = db.RoutingCursor()
 
     cursor.execute("INSERT INTO `patient` (id) VALUES (%s)", ("P1",))
@@ -294,7 +259,6 @@ def test_a_row_can_be_read_back_in_the_call_that_wrote_it(engines):
 
 
 def test_reads_before_any_write_still_go_to_impala(engines):
-    """The rule is read-your-own-write, not give-up-on-Impala."""
     cursor = db.RoutingCursor()
 
     cursor.execute("SELECT * FROM patient")
@@ -306,8 +270,6 @@ def test_reads_before_any_write_still_go_to_impala(engines):
 
 
 def test_impala_is_told_about_the_tables_that_were_written(engines, monkeypatch):
-    """Otherwise the next request -- the list the page reloads -- is
-    answered from what the table looked like before the write."""
     monkeypatch.setattr(db, "REFRESH_AFTER_WRITE", True)
     cursor = db.RoutingCursor()
 
@@ -343,8 +305,6 @@ def test_a_read_only_request_refreshes_nothing(engines, monkeypatch):
 
 
 def test_a_refresh_that_fails_does_not_fail_the_request(monkeypatch):
-    """The write already succeeded. A missed refresh costs a stale read,
-    not a lost row, so it must not turn a saved patient into an error."""
 
     class ExplodingCursor(FakeCursor):
         def execute(self, sql, params=()):
@@ -370,7 +330,7 @@ def test_a_refresh_that_fails_does_not_fail_the_request(monkeypatch):
     cursor = db.RoutingCursor()
     cursor.execute("INSERT INTO `patient` (id) VALUES (%s)", ("P1",))
 
-    cursor.close()  # must not raise
+    cursor.close()
 
 
 def test_refresh_can_be_switched_off(engines, monkeypatch):
@@ -383,12 +343,10 @@ def test_refresh_can_be_switched_off(engines, monkeypatch):
     assert db.IMPALA not in engines
 
 
-# -------------------------------------------- keeping the session open
 
 
 @pytest.fixture
 def pooled(engines, monkeypatch):
-    """As `engines`, but with connections kept between requests."""
     monkeypatch.setattr(db, "IMPALA_POOL", True)
     monkeypatch.setattr(db, "HIVE_POOL", True)
     db.discard_sessions()
@@ -397,9 +355,6 @@ def pooled(engines, monkeypatch):
 
 
 def test_a_second_request_does_not_authenticate_again(pooled):
-    """One page is several requests. Opening a connection for each meant
-    a Kerberos handshake apiece -- which is the wait, and the repeated
-    'using kerberos authentication' in the log."""
     for _ in range(4):
         cursor = db.RoutingCursor()
         cursor.execute("SELECT * FROM patient")
@@ -423,9 +378,6 @@ def test_the_database_is_set_once_for_the_whole_session(pooled, monkeypatch):
 
 
 def test_hive_is_pooled_too(pooled):
-    """A delete reads the row and then removes it, so it pays for a
-    connection at both ends. Opening a Hive session per request is most
-    of why a delete took ten seconds."""
     for _ in range(3):
         cursor = db.RoutingCursor()
         cursor.execute("DELETE FROM patient WHERE id = %s", ("P1",))
@@ -436,15 +388,11 @@ def test_hive_is_pooled_too(pooled):
 
 
 def test_a_session_that_died_while_parked_is_reopened(monkeypatch):
-    """An idle timeout, a restarted daemon, an expired ticket. The read
-    is idempotent, so it is simply asked again."""
     attempts = {"n": 0}
 
     class SometimesDead(FakeCursor):
         def execute(self, sql, params=()):
             attempts["n"] += 1
-            # The first request works and parks the session; the second
-            # finds it closed from the other end.
             if attempts["n"] == 2:
                 raise RuntimeError("session expired")
             return super().execute(sql, params)
@@ -471,11 +419,11 @@ def test_a_session_that_died_while_parked_is_reopened(monkeypatch):
 
     try:
         first = db.RoutingCursor()
-        first.execute("SELECT 1")  # opens the session
+        first.execute("SELECT 1")
         first.close()
 
         second = db.RoutingCursor()
-        second.execute("SELECT 2")  # the parked session is dead
+        second.execute("SELECT 2")
         second.close()
 
         assert len(opened) == 2, "did not reopen after the session died"
@@ -485,9 +433,6 @@ def test_a_session_that_died_while_parked_is_reopened(monkeypatch):
 
 
 def test_a_freshly_opened_session_is_not_retried(monkeypatch):
-    """Retrying is for a session that went stale while parked. A query
-    that fails on a brand-new connection has a real problem with it, and
-    running it twice only doubles the cost of finding that out."""
     attempts = {"n": 0}
 
     class AlwaysDead(FakeCursor):
@@ -515,11 +460,9 @@ def test_a_freshly_opened_session_is_not_retried(monkeypatch):
         db.discard_sessions()
 
 
-# ------------------------------------- not found, or merely not caught up
 
 
 class MissingFromImpala(FakeCursor):
-    """Impala has not been told about the row yet; Hive has it."""
 
     def fetchone(self):
         return None if self.engine == db.IMPALA else (self.engine,)
@@ -529,10 +472,6 @@ class MissingFromImpala(FakeCursor):
 
 
 def test_a_read_can_be_forced_onto_the_engine_that_owns_the_row(engines):
-    """Creating a patient and filing an application against them are two
-    requests. The second read the first request's row from Impala, which
-    had not caught up, and reported a patient that plainly existed as
-    'not found'."""
     cursor = db.RoutingCursor()
 
     cursor.execute("SELECT * FROM patient WHERE id = %s", ("P1",))
@@ -565,8 +504,6 @@ def test_it_is_restored_even_if_the_read_raises(engines):
 
 
 def test_a_row_impala_cannot_see_yet_is_still_found(monkeypatch):
-    """End to end through the crud helper: the miss on Impala is checked
-    against Hive before anybody is told the patient does not exist."""
     from app.crud import patients as patients_crud
 
     class Connection(FakeConnection):
@@ -589,9 +526,6 @@ def test_a_row_impala_cannot_see_yet_is_still_found(monkeypatch):
 
 
 def test_a_hive_write_is_not_retried_on_a_dropped_session(monkeypatch):
-    """Pooling is not retrying. A statement that reached the server just
-    before the connection dropped would be applied a second time, and a
-    duplicated row is worse than an error the caller can act on."""
     attempts = {"n": 0}
 
     class DeadOnReuse(FakeCursor):
@@ -612,7 +546,6 @@ def test_a_hive_write_is_not_retried_on_a_dropped_session(monkeypatch):
     monkeypatch.setattr(db, "IMPALA_DB", "")
     monkeypatch.setattr(db, "HIVE_POOL", True)
     monkeypatch.setattr(db, "IMPALA_POOL", False)
-    # Off, so the only statements counted here are the writes themselves.
     monkeypatch.setattr(db, "REFRESH_AFTER_WRITE", False)
     db.discard_sessions()
 
@@ -627,7 +560,6 @@ def test_a_hive_write_is_not_retried_on_a_dropped_session(monkeypatch):
 
         assert attempts["n"] == 2, "the write was run a second time"
 
-        # ...but the dead session is gone, so the next request is fine.
         third = db.RoutingCursor()
         third.execute("DELETE FROM patient WHERE id = %s", ("P3",))
     finally:
@@ -635,8 +567,6 @@ def test_a_hive_write_is_not_retried_on_a_dropped_session(monkeypatch):
 
 
 def test_a_session_left_parked_too_long_is_replaced(monkeypatch):
-    """Servers close idle sessions on their own schedule. Finding out by
-    having a request fail is worse than reconnecting on a timer."""
     opened = []
 
     def fake_connect(engine):
@@ -662,7 +592,6 @@ def test_a_session_left_parked_too_long_is_replaced(monkeypatch):
         db.discard_sessions()
 
 
-# ------------------------------------------------- the one engine switch
 
 
 @pytest.mark.parametrize(
@@ -674,8 +603,6 @@ def test_a_session_left_parked_too_long_is_replaced(monkeypatch):
         (" impala ", db.IMPALA),
         ("hive", db.HIVE),
         ("Hive", db.HIVE),
-        # A typo must not quietly leave the application unable to read.
-        # Hive can run everything, so it costs speed, not correctness.
         ("impla", db.HIVE),
         ("", db.IMPALA),
     ],
@@ -690,7 +617,6 @@ def test_the_read_engine_setting(configured, expected, monkeypatch):
 
 
 def test_choosing_hive_sends_queries_there_too(monkeypatch):
-    """The switch that puts everything back on one engine."""
     opened = {}
 
     def fake_connect(engine):
@@ -714,7 +640,6 @@ def test_choosing_hive_sends_queries_there_too(monkeypatch):
 
 
 def test_choosing_hive_also_stops_the_refresh(monkeypatch):
-    """Nothing to refresh: Impala is not answering anything."""
     opened = {}
 
     monkeypatch.setattr(

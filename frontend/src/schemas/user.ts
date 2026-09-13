@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import { idSchema, permissionSchema, timestampSchema } from './common'
 
-/** Mirrors app/schemas.py::User (the read model, role fields joined in). */
 export const userSchema = z.object({
   id: idSchema,
   username: z.string(),
@@ -20,7 +19,6 @@ export type User = z.infer<typeof userSchema>
 
 export const userListSchema = z.array(userSchema)
 
-/** 'Ada Lovelace (ada)', falling back to the username on its own. */
 export function userLabel(user: User): string {
   const name = `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim()
   return name ? `${name} (${user.username})` : user.username
@@ -42,7 +40,6 @@ export const userFormSchema = z.object({
 
 export type UserFormValues = z.infer<typeof userFormSchema>
 
-/** Self-service profile edit -- mirrors app/schemas.py::ProfileUpdate. */
 export const profileFormSchema = userFormSchema.pick({
   first_name: true,
   last_name: true,

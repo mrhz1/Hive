@@ -1,4 +1,3 @@
-"""Bridge between OCR geometry and Presidio character offsets."""
 import logging
 from typing import List, Tuple
 
@@ -37,7 +36,6 @@ def build_page_text(spans: List[OcrSpan]) -> PageText:
 def _sub_box(
     span: OcrSpan, local_start: int, local_end: int, whole_span: bool
 ) -> Tuple[float, float]:
-    """Horizontal extent to redact within one OCR span."""
     if whole_span:
         return span.x0, span.x1
 
@@ -60,13 +58,11 @@ def map_pii_to_boxes(
     padding: float = 2.0,
     whole_span: bool = False,
 ) -> List[RedactionBox]:
-    """Turn character-offset detections into pixel rectangles."""
     boxes: List[RedactionBox] = []
 
     for pii in pii_spans:
         matched = False
         for start, end, span in page_text.index:
-            # Half-open interval overlap.
             if pii.start >= end or pii.end <= start:
                 continue
             matched = True
@@ -98,7 +94,6 @@ def map_pii_to_boxes(
 
 
 def redact_text(text: str, pii_spans: List[PiiSpan]) -> str:
-    """Produce the de-identified text, replacing each entity with its type tag."""
     out = text
     for pii in sorted(pii_spans, key=lambda s: s.start, reverse=True):
         out = out[: pii.start] + f"<{pii.entity_type}>" + out[pii.end :]

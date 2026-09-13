@@ -20,7 +20,7 @@ export function useUpdateProfile() {
   return useMutation({
     mutationFn: (values: ProfileFormValues) => meApi.update(values),
     onSuccess: () => {
-      // The user's own row also appears in the users list/detail caches.
+
       void queryClient.invalidateQueries({ queryKey: queryKeys.me })
       void queryClient.invalidateQueries({ queryKey: queryKeys.users.all })
       toast.success('Profile updated')

@@ -4,15 +4,6 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Misc'
 import { useUploadDeidentifiedApplicationFile } from '@/hooks/useResources'
 
-/**
- * Attach a document that is already redacted.
- *
- * For work done outside the pipeline -- redacted by hand, or arriving
- * from elsewhere already clean. It goes straight in as finished: there
- * is no original behind it and nothing left to run over it, so it is
- * marked done and redacted, and named exactly as an automatic output
- * would have been.
- */
 export function DeidentifiedAttach({ applicationId }: { applicationId: string }) {
   const upload = useUploadDeidentifiedApplicationFile(applicationId)
   const inputRef = useRef<HTMLInputElement>(null)

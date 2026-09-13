@@ -57,7 +57,6 @@ function FilesPage() {
     return (data ?? []).filter((file) => fileHaystack(file).includes(term))
   }, [data, search])
 
-  /** Only a PDF needs its bytes here; the viewer renders the rest itself. */
   async function open(file: DeidentifiedFile) {
     if (previewKind(file.file_type) !== 'pdf') {
       setViewing({ file, url: null })
@@ -117,10 +116,7 @@ function FilesPage() {
   return (
     <RequirePermission permission="files:read">
       <div className="space-y-6">
-        {/* No upload here any more: a de-identified file belongs to an
-            application, and offering to add one from a page that lists
-            everybody's left it unclear what it would be attached to.
-            Step 2 of the application wizard is where it goes now. */}
+        {}
         <PageHeader
           title="Files"
           description="De-identified documents, across every patient. Read-only -- add one from the application it belongs to."

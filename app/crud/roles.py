@@ -1,4 +1,3 @@
-"""Role CRUD."""
 import json
 import uuid
 from typing import List, Optional
@@ -14,7 +13,6 @@ _COLS = "`id`, `name`, `permissions`"
 
 
 def _parse_permissions(raw) -> List[str]:
-    """impyla returns ARRAY<STRING> as bytes holding a JSON array, e.g."""
     if raw is None:
         return []
     if isinstance(raw, (bytes, bytearray)):
@@ -36,7 +34,6 @@ def _row_to_role(row) -> Role:
 
 
 def _array_literal(permissions: List[str]) -> tuple:
-    """Hive rejects a bound parameter for a whole ARRAY column, so the array() call is built with one placeholder per element."""
     if not permissions:
         return "array()", ()
     placeholders = ", ".join(["%s"] * len(permissions))

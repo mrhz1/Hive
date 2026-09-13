@@ -1,4 +1,3 @@
-"""Background upload batches, and who hears about them."""
 import pathlib
 import re
 
@@ -7,9 +6,6 @@ from conftest import ADMIN_ID, VIEWER_ID, minimal_patient
 
 from app import uploads
 
-# <patient id>-<document type>-<16-digit serial>.<ext>
-# <patient>-<type>-<date>-<serial>.<ext>. The date is in the name so a
-# directory listing can be read by eye.
 DOCUMENT = re.compile(r"^[A-Z0-9]{6}-[a-z0-9]+-\d{8}-\d{16}\.[a-z0-9]+$")
 
 
@@ -25,11 +21,6 @@ def _patient_and_application(client, assigned_to_id=None, original_file_path=Non
 
 
 def _upload_mail(sent_emails):
-    """The email about the batch, not the one about the assignment.
-
-    Creating an application with an assignee now emails them straight
-    away, so the upload notice is no longer whatever arrived first.
-    """
     return [
         mail for mail in sent_emails if "assigned to you" not in mail["subject"]
     ]
@@ -42,8 +33,6 @@ def _upload(client, application_id, files=None, **kwargs):
     )
 
 
-# TestClient runs background tasks before it hands the response back, so a
-# job is always finished by the time these assertions run.
 
 
 def test_the_batch_is_accepted_before_it_is_stored(as_admin, storage_root, sent_emails):
@@ -79,7 +68,6 @@ def test_the_files_land_where_the_synchronous_upload_puts_them(
     assert DOCUMENT.match(stored.name), stored.name
     assert stored.parent.name.startswith(f"{patient_id}-")
 
-    # The wizard records this against the patient as their source folder.
     assert job["folder"] == str(stored.parent)
 
 
@@ -116,9 +104,6 @@ def test_the_assigned_user_is_told_when_the_batch_is_done(
 
 
 def _set_creator(store, application_id, user_id):
-    """Rewrite who filed it. No endpoint does this -- created_by_id is
-    stamped from the caller -- but the two users have to differ for the
-    fallback order to be worth asserting at all."""
     for row in store["patient_applications"]:
         if row["id"] == application_id:
             row["created_by_id"] = user_id
@@ -127,9 +112,6 @@ def _set_creator(store, application_id, user_id):
 def test_an_unassigned_batch_goes_to_whoever_filed_the_application(
     as_admin, storage_root, sent_emails, store
 ):
-    """Explicitly asked for: with nobody assigned, the person waiting on
-    these documents is the one who filed the application -- not
-    necessarily whoever pushed the folder up on their behalf."""
     _, application_id = _patient_and_application(as_admin)
     _set_creator(store, application_id, VIEWER_ID)
 
@@ -141,8 +123,6 @@ def test_an_unassigned_batch_goes_to_whoever_filed_the_application(
 def test_an_unassigned_batch_falls_back_to_whoever_uploaded_it(
     as_admin, storage_root, sent_emails, store
 ):
-    """Nobody assigned and no creator on the row -- an old application,
-    or one filed by an account since removed. Somebody still hears."""
     _, application_id = _patient_and_application(as_admin)
     _set_creator(store, application_id, None)
 
@@ -174,7 +154,6 @@ def test_a_file_that_cannot_be_stored_emails_the_assigned_user(
     assert "failed" in batch[0]["subject"].lower()
     assert "the volume went away" in batch[0]["body"]
 
-    # Nothing half-recorded: a file that never moved has no row either.
     assert as_admin.get(f"/applications/{application_id}/files").json() == []
 
 
@@ -252,15 +231,12 @@ def test_assignment_survives_a_round_trip(as_admin, assignee):
 def test_the_email_links_to_the_application(
     as_admin, storage_root, sent_emails, monkeypatch
 ):
-    """An id alone means opening the dashboard, finding the list and
-    searching for eight characters of a uuid."""
     monkeypatch.setenv("APP_BASE_URL", "https://patients.example.org/")
     _, application_id = _patient_and_application(as_admin, assigned_to_id=VIEWER_ID)
 
     _upload(as_admin, application_id)
 
     body = sent_emails[0]["body"]
-    # The trailing slash on the setting must not become a double one.
     assert f"https://patients.example.org/applications/{application_id}" in body
 
 
@@ -280,8 +256,6 @@ def test_without_a_configured_address_the_email_still_names_the_application(
 def test_the_email_names_the_folder_it_was_uploaded_from(
     as_admin, storage_root, sent_emails
 ):
-    """The folder they sent, not the one the platform put it in -- an
-    internal /home/cdsw path answers a question nobody is asking."""
     _, application_id = _patient_and_application(
         as_admin, assigned_to_id=VIEWER_ID, original_file_path="/network/x/y/z"
     )
@@ -294,8 +268,6 @@ def test_the_email_names_the_folder_it_was_uploaded_from(
 
 
 def test_assigning_an_application_emails_the_assignee(as_admin, sent_emails, monkeypatch):
-    """Assignment used to be silent: the application appeared in a list
-    the assignee had no reason to reload."""
     monkeypatch.setenv("APP_BASE_URL", "https://patients.example.org")
     patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
 
@@ -325,8 +297,6 @@ def test_reassigning_emails_the_new_assignee(as_admin, sent_emails):
 
 
 def test_saving_an_application_again_does_not_re_email(as_admin, sent_emails):
-    """Only a change is news. Re-saving for some other reason must not
-    email somebody about work they already have."""
     patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
     application_id = as_admin.post(
         "/applications", json={"patient_id": patient_id, "assigned_to_id": VIEWER_ID}
@@ -342,7 +312,6 @@ def test_saving_an_application_again_does_not_re_email(as_admin, sent_emails):
 
 
 def test_assigning_to_yourself_is_not_emailed(as_admin, sent_emails):
-    """You know: you just did it."""
     patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
 
     as_admin.post(

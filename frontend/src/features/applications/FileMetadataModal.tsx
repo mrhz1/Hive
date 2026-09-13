@@ -20,11 +20,7 @@ export function FileMetadataModal({
   onClose,
 }: {
   file: MetadataSubject
-  /**
-   * Read the redacted copy's metadata instead of the original's. The
-   * two are different questions: what the document arrived carrying,
-   * against what is left in the copy that leaves here.
-   */
+
   deidentified?: boolean
   onClose: () => void
 }) {
@@ -52,7 +48,6 @@ export function FileMetadataModal({
     )
   }, [all, query])
 
-  /** Exports exactly what the filter is showing, not the whole table. */
   async function exportFiltered() {
     setIsExporting(true)
     try {
@@ -160,10 +155,7 @@ export function FileMetadataModal({
             </div>
           ) : error ? (
             <p className="text-sm text-[rgb(var(--foreground-muted))]">
-              {/* The redacted copy's is read on demand, so a failure
-                  here has a reason worth passing on -- 'not been
-                  de-identified yet' is a different problem from an
-                  original that carried nothing. */}
+              {}
               {error instanceof ApiError
                 ? error.message
                 : 'No metadata was recorded for this file.'}
@@ -194,8 +186,7 @@ export function FileMetadataModal({
                   <dt className="truncate font-mono text-xs text-[rgb(var(--foreground-muted))] sm:pt-0.5">
                     {name}
                   </dt>
-                  {/* break-words, not truncate: a UID or an XMP blob is
-                      long and unguessable from its first characters. */}
+                  {}
                   <dd className="mb-2 text-sm break-words text-[rgb(var(--foreground))] sm:mb-0">
                     {value}
                   </dd>

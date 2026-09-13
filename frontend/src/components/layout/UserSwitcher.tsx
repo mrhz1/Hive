@@ -43,7 +43,7 @@ export function UserSwitcher() {
 
       {open ? (
         <>
-          {/* Click-away layer. */}
+          {}
           <button
             type="button"
             aria-label="Close user switcher"

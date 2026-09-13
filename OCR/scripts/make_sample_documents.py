@@ -1,4 +1,3 @@
-"""Build sample DICOM and Word documents carrying known PHI."""
 import argparse
 import os
 import sys
@@ -15,7 +14,6 @@ PHONE = "555-0142"
 
 
 def burn_text(image, text: str, origin=(10, 10)):
-    """Draw text into a numpy image, the way a modality burns a banner in."""
     from PIL import Image, ImageDraw
 
     pil = Image.fromarray(image)
@@ -33,7 +31,6 @@ def make_dicom(output_path: Path) -> Path:
     rows, cols = 256, 512
     pixels = np.full((rows, cols), 40, dtype=np.uint8)
 
-    # Two banners, because burned-in PHI is rarely in one place.
     pixels = burn_text(pixels, f"{PATIENT_NAME}  {PATIENT_ID_VALUE}", (8, 8))
     pixels = burn_text(pixels, f"DOB {BIRTH_DATE}  {INSTITUTION}", (8, 30))
 
@@ -102,7 +99,6 @@ def make_docx(output_path: Path) -> Path:
     table.cell(1, 0).text = "MRN"
     table.cell(1, 1).text = PATIENT_ID_VALUE
 
-    # Header and footer, where a patient banner usually lives.
     section = document.sections[0]
     section.header.paragraphs[0].text = f"{PATIENT_NAME} - {PATIENT_ID_VALUE}"
     section.footer.paragraphs[0].text = f"Printed at {INSTITUTION}"

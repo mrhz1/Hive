@@ -56,9 +56,6 @@ def get_patient(
 ):
     record = crud.get_patient_or_404(cursor, patient_id)
 
-    # The detail view is the identified record itself. The list endpoint
-    # is deliberately not recorded: it is hit on every page load and
-    # would bury the reads that mean something.
     record_access(
         READ,
         actor=actor,
@@ -102,12 +99,6 @@ def delete_patient(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("patient:delete")),
 ):
-    # Refused rather than cascaded. Deleting an application does not
-    # remove it -- it is marked deleted and kept, with a reason, as the
-    # record of what happened to it. Taking the patient out from under
-    # those rows would leave them pointing at somebody who no longer
-    # exists, and would destroy the record the soft delete exists to
-    # preserve. So the patient goes only once nothing refers to them.
     existing = applications_crud.list_applications(cursor, patient_id)
     if existing:
         raise ConflictError(

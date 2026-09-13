@@ -2,7 +2,6 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 
-/** Surface panel used for forms, detail views and dashboard cards. */
 export function Card({
   children,
   className,
@@ -22,7 +21,6 @@ export function Card({
   )
 }
 
-/** Page title, supporting text and right-aligned actions. */
 export function PageHeader({
   title,
   description,
@@ -80,7 +78,6 @@ export function Badge({
   return <span className={cn(badgeVariants({ tone }), className)}>{children}</span>
 }
 
-/** Read-only key/value row, used by detail pages. */
 export function DescriptionItem({
   label,
   children,

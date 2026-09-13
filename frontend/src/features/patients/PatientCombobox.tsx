@@ -5,16 +5,6 @@ import { patientHooks } from '@/hooks/useResources'
 import { cn } from '@/lib/cn'
 import { patientMatches, patientName, type Patient } from '@/schemas/patient'
 
-/**
- * Pick a patient by typing, not by scrolling.
- *
- * A plain <select> is fine for a handful of options and unusable at a
- * few hundred: the only way to a patient near the end of the list is to
- * scroll to them, and the list is in whatever order the API returned.
- * This filters as you type on name, id, email or phone -- the id
- * included because that is what is written on the folder somebody is
- * holding.
- */
 export function PatientCombobox({
   value,
   onChange,
@@ -47,8 +37,6 @@ export function PatientCombobox({
     [all, query]
   )
 
-  // Clamped rather than reset: the list shrinks as the query narrows, and
-  // the highlight must not be left pointing past the end of it.
   const active = Math.min(highlighted, Math.max(0, results.length - 1))
 
   useEffect(() => {
@@ -97,9 +85,6 @@ export function PatientCombobox({
     }
   }
 
-  // The input shows what is typed while searching, and the chosen
-  // patient the rest of the time -- so the field always says what is
-  // selected without a second line of text under it.
   const shown = isOpen ? query : selected ? patientLabel(selected) : ''
 
   return (
@@ -175,8 +160,7 @@ export function PatientCombobox({
                   <li key={patient.id} role="option" aria-selected={isSelected}>
                     <button
                       type="button"
-                      // Chosen on mousedown: a click would land after the
-                      // blur that closes the list.
+
                       onMouseDown={(event) => {
                         event.preventDefault()
                         choose(patient)

@@ -11,9 +11,7 @@ export function DeidentifiedFileMetadataModal({
   return (
     <FileMetadataModal
       file={{ id: file.id, original_file_name: file.name }}
-      // This library only ever holds redacted copies, so the metadata
-      // worth reading here is theirs -- not the original's, which is
-      // what the row is a redaction of.
+
       deidentified
       onClose={onClose}
     />

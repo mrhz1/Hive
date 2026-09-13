@@ -1,20 +1,3 @@
-"""Look at the access trail and email whoever needs to know.
-
-Run as a Cloudera AI Job on a schedule -- the same mechanism the
-de-identification job uses, so this needs no new infrastructure.
-
-Detection latency is the number that matters here. HIPAA's breach
-notification clock runs from *discovery*, so a trail nobody reads is a
-trail that starts the clock late. Alerting is what turns "we could find
-out" into "we did find out".
-
-The thresholds below are starting points, not truths. Watch them for a
-fortnight against real traffic and move them: too low and the alert gets
-ignored, which is worse than not having one.
-
-    python scripts/access_alerts.py --window 60
-    python scripts/access_alerts.py --window 60 --dry-run
-"""
 import argparse
 import os
 import sys
@@ -59,7 +42,6 @@ def _threshold(name: str, default: int) -> int:
         return default
 
 
-# Each rule: what to count, and how much of it is too much.
 def rules():
     return (
         {
@@ -101,13 +83,11 @@ def rules():
 
 
 def recipients():
-    """Who hears about it. Comma-separated, from the environment."""
     raw = os.environ.get("ALERT_EMAIL_TO") or ""
     return [address.strip() for address in raw.split(",") if address.strip()]
 
 
 def breaches(cursor, since, day_from):
-    """Every (rule, actor, count) over its threshold in the window."""
     found = []
 
     for rule in rules():
@@ -180,7 +160,6 @@ def main(argv=None) -> int:
 
     now = datetime.now(timezone.utc)
     since = now - timedelta(minutes=args.window)
-    # Partition pruning: a window that crosses midnight needs both days.
     day_from = since.strftime("%Y-%m-%d")
 
     with hive_cursor() as cursor:

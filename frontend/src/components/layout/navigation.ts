@@ -17,7 +17,7 @@ export type NavItem = {
   label: string
   to: string
   icon: LucideIcon
-  /** Omitted for items everyone may see (dashboard, profile). */
+
   permission?: Permission
 }
 
@@ -43,8 +43,7 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'files:read',
   },
   {
-    // Reads what document uploads extracted, so it is gated on the same
-    // grant as the applications those documents belong to.
+
     label: 'Metadata',
     to: '/metadata',
     icon: Table2,
@@ -53,9 +52,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Roles', to: '/roles', icon: Shield, permission: 'role:view' },
   { label: 'Audit log', to: '/logs', icon: ClipboardList, permission: 'log:view' },
   {
-    // Who *saw* what, as opposed to who changed it. Same grant: this
-    // reveals which patients a person looked at, so it is sensitive in
-    // itself and belongs with reviewers rather than everyone.
+
     label: 'Access log',
     to: '/access-logs',
     icon: Eye,

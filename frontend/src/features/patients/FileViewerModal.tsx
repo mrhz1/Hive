@@ -24,7 +24,6 @@ export type ViewableFile = {
   deidentified_file_name?: string | null
 }
 
-/** Which set of endpoints backs this file. */
 export type ViewerSource = 'application' | 'library'
 
 function errorText(error: unknown, fallback: string): string {
@@ -33,24 +32,11 @@ function errorText(error: unknown, fallback: string): string {
   return fallback
 }
 
-// ------------------------------------------------------------ DICOM
-
-/**
- * DICOM has no browser-native form, so the API renders a frame to PNG --
- * see app/preview.py. Doing it there rather than here means every
- * transfer syntax a PACS emits works, including the compressed ones that
- * would otherwise need a WASM codec in the bundle.
- */
 type FrameState =
   | { status: 'loading' }
   | { status: 'ready'; url: string }
   | { status: 'error'; message: string }
 
-/**
- * One frame. Mounted under a key of its frame number, so switching frames
- * remounts it and the initial state is 'loading' again -- no effect has
- * to reach back and reset it.
- */
 function DicomFrame({
   fileId,
   source,
@@ -98,8 +84,7 @@ function DicomFrame({
 
     return () => {
       cancelled = true
-      // Each frame is its own object URL; without this, paging through a
-      // long study holds every frame in memory until the tab closes.
+
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [fileId, frame, isDeidentified, source, onFrameCount])
@@ -184,8 +169,6 @@ function DicomViewer({
     </div>
   )
 }
-
-// ------------------------------------------------------------- Word
 
 function WordViewer({
   fileId,
@@ -322,7 +305,7 @@ export function FileViewerModal({
 }: {
   file: ViewableFile
   fileId: string
-  /** Only a PDF needs one; the other formats are fetched as previews. */
+
   blobUrl?: string | null
   isDeidentified: boolean
   source?: ViewerSource
@@ -348,20 +331,12 @@ export function FileViewerModal({
       file.original_file_name)
     : file.original_file_name
 
-  // A de-identified Word document is always .docx, whatever went in.
   const extension =
     isDeidentified && ['doc', 'docx'].includes(file.file_extension)
       ? 'docx'
       : file.file_extension
   const kind = previewKind(extension)
 
-  /**
-   * Fetched again rather than saved from the bytes already in the iframe.
-   * The blob the viewer is showing was asked for as a read, and saving it
-   * from here would put a copy on somebody's disk with nothing in the
-   * access log to say so -- the second request is what records it as a
-   * download.
-   */
   async function saveACopy() {
     setIsDownloading(true)
     try {
@@ -374,9 +349,7 @@ export function FileViewerModal({
       const anchor = window.document.createElement('a')
       anchor.href = url
       anchor.download = displayName
-      // In the document and revoked a tick later: a detached anchor is
-      // ignored by some browsers, and revoking in the same turn can pull
-      // the blob out from under a save that has not started reading it.
+
       window.document.body.append(anchor)
       anchor.click()
       anchor.remove()
@@ -408,8 +381,7 @@ export function FileViewerModal({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {/* Only for those allowed to take a copy away. Reading it in
-                here needs no such thing, so the viewer opens either way. */}
+            {}
             {canDownload ? (
               <Button
                 variant="outline"

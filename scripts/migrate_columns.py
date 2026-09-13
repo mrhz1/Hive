@@ -1,4 +1,3 @@
-"""Add columns that sql/schema.sql has gained since a database was built."""
 import argparse
 import os
 import sys

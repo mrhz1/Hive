@@ -1,8 +1,3 @@
-"""The access trail: who saw what, who was refused, and from where.
-
-`audit_logs` answers "what changed"; none of this is a change, so none of
-it was recorded anywhere durable before.
-"""
 import pytest
 from conftest import ADMIN_ID, VIEWER_USER, minimal_patient
 
@@ -10,7 +5,6 @@ from app import access_log
 
 
 def _file_events(rows, action):
-    """Events about an application's documents, and nothing else."""
     return [
         row
         for row in rows
@@ -33,13 +27,11 @@ def _upload(client, application_id, name="scan.pdf", data=b"%PDF-1.4 fake"):
     ).json()[0]
 
 
-# ------------------------------------------------------- reading a file
 
 
 def test_opening_the_original_is_recorded_as_a_disclosure(
     as_admin, storage_root, access_events
 ):
-    """A read, not a download -- the viewer showed it, nothing was kept."""
     patient_id, application_id = _patient_and_application(as_admin)
     record = _upload(as_admin, application_id)
 
@@ -64,19 +56,15 @@ def test_opening_the_original_is_recorded_as_a_disclosure(
     assert event["user_agent"] == "Firefox/1"
     assert event["request_id"]
     assert event["outcome"] == "success"
-    # The whole point of the flag.
     assert event["identified"] is True
 
 
 def test_opening_the_redacted_copy_is_not_a_disclosure(
     as_admin, storage_root, access_events
 ):
-    """Same endpoint, same permission -- only the flag separates a
-    routine read from PHI leaving the building."""
     _, application_id = _patient_and_application(as_admin)
     record = _upload(as_admin, application_id)
 
-    # Inside the storage root, or resolve_stored_path refuses it.
     redacted = storage_root / "redacted.pdf"
     redacted.parent.mkdir(parents=True, exist_ok=True)
     redacted.write_bytes(b"%PDF-1.4 redacted")
@@ -93,9 +81,6 @@ def test_opening_the_redacted_copy_is_not_a_disclosure(
 def test_the_event_names_the_document_that_was_opened(
     as_admin, storage_root, access_events
 ):
-    """A file id says a document was opened; it does not say which one,
-    and the name it is stored under is not always the name it was
-    uploaded with -- sanitising strips accents and punctuation."""
     _, application_id = _patient_and_application(as_admin)
     record = _upload(as_admin, application_id, name="Muller, J - CT chest.pdf")
 
@@ -110,8 +95,6 @@ def test_the_event_names_the_document_that_was_opened(
 def test_taking_a_copy_away_is_recorded_as_a_download(
     as_admin, storage_root, access_events
 ):
-    """The same bytes as a read, but a copy of them now exists somewhere
-    this system cannot see -- which is the distinction the trail is for."""
     _, application_id = _patient_and_application(as_admin)
     record = _upload(as_admin, application_id)
 
@@ -134,8 +117,6 @@ def test_taking_a_copy_away_is_recorded_as_a_download(
 def test_a_viewer_may_read_a_file_but_not_download_it(
     as_admin, client, storage_root, access_events
 ):
-    """`application:view` opens it in the viewer; keeping a copy is
-    `files:download`, and the viewer hides its Download button to match."""
     _, application_id = _patient_and_application(as_admin)
     record = _upload(as_admin, application_id)
 
@@ -157,7 +138,6 @@ def test_a_viewer_may_read_a_file_but_not_download_it(
 def test_the_event_is_partitioned_by_the_day_it_happened(
     as_admin, storage_root, access_events
 ):
-    """A year of this is the one table queried by date."""
     _, application_id = _patient_and_application(as_admin)
     record = _upload(as_admin, application_id)
 
@@ -170,7 +150,6 @@ def test_the_event_is_partitioned_by_the_day_it_happened(
 def test_a_file_that_is_missing_is_not_recorded_as_read(
     as_admin, storage_root, access_events
 ):
-    """The record says what was served, not what was asked for."""
     _, application_id = _patient_and_application(as_admin)
     record = _upload(as_admin, application_id)
 
@@ -183,11 +162,9 @@ def test_a_file_that_is_missing_is_not_recorded_as_read(
     assert not _file_events(access_events.flush(), "read")
 
 
-# ------------------------------------------------------------- the bulk path
 
 
 def test_an_export_records_how_much_left(as_admin, storage_root, access_events):
-    """One click, the whole table. This is the exfiltration path."""
     _, application_id = _patient_and_application(as_admin)
     _upload(as_admin, application_id, name="a.pdf")
     _upload(as_admin, application_id, name="b.pdf")
@@ -232,8 +209,6 @@ def test_reading_a_patient_is_recorded(as_admin, access_events):
 
 
 def test_listing_patients_is_not_recorded(as_admin, access_events):
-    """Hit on every page load; recording it would bury the reads that
-    mean something."""
     as_admin.post("/patients", json=minimal_patient())
 
     as_admin.get("/patients")
@@ -245,7 +220,6 @@ def test_listing_patients_is_not_recorded(as_admin, access_events):
     ]
 
 
-# --------------------------------------------------------- refusals
 
 
 def test_a_permission_denial_is_recorded(client, access_events):
@@ -276,12 +250,9 @@ def test_a_missing_identity_header_is_recorded(client, access_events):
     assert "REMOTE-USER" in failures[-1]["detail"]
 
 
-# ------------------------------------------------------------ the writer
 
 
 def test_a_batch_is_one_statement_per_day(as_admin, storage_root, access_events, cursor):
-    """The cost of a Hive INSERT is per statement, not per row -- which
-    is the entire reason for buffering."""
     _, application_id = _patient_and_application(as_admin)
     record = _upload(as_admin, application_id)
 
@@ -301,7 +272,6 @@ def test_a_batch_is_one_statement_per_day(as_admin, storage_root, access_events,
 
 
 def test_a_write_failure_does_not_raise(as_admin, storage_root, access_events, monkeypatch):
-    """The trail failing must not take a request with it."""
     _, application_id = _patient_and_application(as_admin)
     record = _upload(as_admin, application_id)
     as_admin.get(f"/files/{record['id']}/content")
@@ -311,11 +281,10 @@ def test_a_write_failure_does_not_raise(as_admin, storage_root, access_events, m
 
     monkeypatch.setattr(access_log, "_write", explode)
 
-    assert access_log.flush_once() == 0  # logged, not raised
+    assert access_log.flush_once() == 0
 
 
 def test_the_queue_is_bounded(monkeypatch):
-    """Dropping is better than growing until the process dies of it."""
     monkeypatch.setattr(access_log, "_ensure_writer", lambda: None)
 
     for _ in range(access_log.MAX_QUEUED + 5):

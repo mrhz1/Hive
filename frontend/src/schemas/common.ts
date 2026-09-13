@@ -18,16 +18,6 @@ export const ALL_PERMISSIONS: Permission[] = [
   ...FILES_ACTIONS.map((action) => `files:${action}` as Permission),
 ]
 
-/**
- * How the role editor lays the grants out.
- *
- * Two groups, because `files` takes different action names and putting
- * read/upload/download under headers saying view/create/update would be
- * actively wrong. Anything added here appears in the editor
- * automatically -- a permission the API knows about but this does not
- * is one nobody can grant, which is how the Files section shipped
- * invisible.
- */
 export const PERMISSION_GROUPS: ReadonlyArray<{
   models: readonly string[]
   actions: readonly string[]
@@ -41,7 +31,6 @@ export const permissionSchema = z.custom<Permission>(
   { message: 'Unknown permission' }
 )
 
-/** Shape of the error envelope produced by app/errors.py. */
 export const apiErrorSchema = z.object({
   error: z.object({
     code: z.string(),

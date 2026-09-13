@@ -1,4 +1,3 @@
-"""File metadata CRUD, against `file_metadata`."""
 import json
 import uuid
 from typing import List, Optional
@@ -10,7 +9,6 @@ from app.schemas import FileMetadata, FileMetadataCreate
 
 log = get_logger(__name__)
 
-# Order must match sql/schema.sql -- Hive INSERT is positional.
 COLUMNS = (
     "id",
     "file_id",
@@ -27,7 +25,6 @@ _VALUES = ", ".join(NOW_SQL if c == "created_at" else "%s" for c in COLUMNS)
 
 
 def _dumps(value: Optional[dict]) -> str:
-    """Always a string, never NULL: '{}' is a real answer ("this file carries no metadata") and reads back without a special case."""
     return json.dumps(value or {}, default=str)
 
 
@@ -87,7 +84,6 @@ def _get_metadata(cursor, metadata_id: str) -> FileMetadata:
 
 
 def list_metadata(cursor) -> List[FileMetadata]:
-    """Every extraction on record, newest first."""
     execute(
         cursor,
         f"SELECT {_COLS} FROM `file_metadata` ORDER BY `created_at` DESC",
@@ -96,7 +92,6 @@ def list_metadata(cursor) -> List[FileMetadata]:
 
 
 def get_metadata_for_file(cursor, file_id: str) -> Optional[FileMetadata]:
-    """The newest row for a file."""
     execute(
         cursor,
         f"SELECT {_COLS} FROM `file_metadata` WHERE `file_id` = %s "
@@ -108,13 +103,6 @@ def get_metadata_for_file(cursor, file_id: str) -> Optional[FileMetadata]:
 
 
 def merge_metadata_for_file(cursor, file_id: str, extra: dict) -> Optional[FileMetadata]:
-    """Fold extra keys into a file's metadata blob.
-
-    Nothing in the application calls this any more: the row holds what a
-    document arrived carrying, and facts this system generates go into
-    the output file instead (app/embed.py). Kept because a corrected
-    extraction is a legitimate reason to amend a row.
-    """
     if not extra:
         return None
 
@@ -135,7 +123,6 @@ def merge_metadata_for_file(cursor, file_id: str, extra: dict) -> Optional[FileM
 
 
 def delete_metadata_for_files(cursor, file_ids: List[str]) -> None:
-    """Removed alongside the files themselves -- Hive has no cascade."""
     if not file_ids:
         return
     placeholders = ", ".join("%s" for _ in file_ids)

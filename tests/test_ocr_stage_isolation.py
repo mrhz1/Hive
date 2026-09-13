@@ -1,4 +1,3 @@
-"""Guards on the two-virtualenv split in OCR/."""
 import ast
 import subprocess
 import sys
@@ -8,26 +7,21 @@ import pytest
 
 OCR_ROOT = Path(__file__).resolve().parent.parent / "OCR"
 
-# Modules either stage may import, so they may not touch either stack.
 SHARED_MODULES = [
     "deid.config",
     "deid.spans",
     "deid.results",
     "deid.mapping",
     "deid.model_store",
-    # Written by both stages and by the orchestrator, so it has to load
-    # under all three interpreters -- it is stdlib only for that reason.
     "deid.progress",
 ]
 
-# (module, forbidden import prefixes)
 STAGE_BOUNDARIES = [
     ("deid/stage_ocr.py", ("deid.analyzer", "deid.recognizers", "deid.stage_nlp")),
     ("deid/ocr_engine.py", ("deid.analyzer", "deid.recognizers", "deid.stage_nlp")),
     ("deid/stage_nlp.py", ("deid.ocr_engine", "deid.stage_ocr")),
     ("deid/analyzer.py", ("deid.ocr_engine", "deid.stage_ocr")),
     ("deid/recognizers.py", ("deid.ocr_engine", "deid.stage_ocr")),
-    # The shared ones must reach into neither.
     ("deid/mapping.py", ("deid.analyzer", "deid.ocr_engine", "deid.recognizers")),
     ("deid/pdf_io.py", ("deid.analyzer", "deid.ocr_engine", "deid.recognizers")),
     ("deid/pipeline.py", ("deid.analyzer", "deid.ocr_engine", "deid.stage_ocr",
@@ -45,7 +39,6 @@ NLP_PACKAGES = ("presidio_analyzer", "presidio_anonymizer", "transformers",
 
 
 def _imported_names(path: Path):
-    """Every module name imported by `path`, at any nesting level."""
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     names = set()
     for node in ast.walk(tree):
@@ -97,7 +90,6 @@ def test_modules_do_not_import_the_wrong_stack(module_path, packages):
 
 
 def test_orchestrator_runs_with_nothing_installed():
-    """--preflight under an interpreter with no ML stack at all."""
     completed = subprocess.run(
         [sys.executable, str(OCR_ROOT / "scripts" / "run_deid.py"), "--preflight"],
         capture_output=True,
@@ -111,7 +103,6 @@ def test_orchestrator_runs_with_nothing_installed():
 
 
 def test_requirements_files_stay_apart():
-    """The two requirement sets must not name each other's stack, and the combined requirements.txt must stay deleted -- installing it is the exact thing that does not work."""
     assert not (OCR_ROOT / "requirements.txt").exists(), (
         "OCR/requirements.txt is back; a single combined requirement set "
         "cannot be resolved (paddlex pins PyYAML==6.0.2 against "
@@ -134,7 +125,6 @@ def test_requirements_files_stay_apart():
 
 @pytest.mark.parametrize("module", SHARED_MODULES)
 def test_shared_modules_import_under_the_api_venv(module):
-    """They are imported by the orchestrator, which runs wherever."""
     completed = subprocess.run(
         [sys.executable, "-c", f"import {module}"],
         capture_output=True,

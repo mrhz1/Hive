@@ -1,4 +1,3 @@
-"""Permission enforcement (RBAC)."""
 import structlog
 from fastapi import Depends, Request
 
@@ -27,7 +26,6 @@ KNOWN_PERMISSIONS = frozenset(
 
 
 def _current_username(request: Request) -> str:
-    """The authenticated principal, as the platform handed it over."""
     username = request.headers.get("REMOTE-USER")
     if not username:
         record_access(
@@ -41,7 +39,6 @@ def get_current_user(
     username: str = Depends(_current_username),
     cursor=Depends(get_cursor),
 ) -> User:
-    """Resolves the acting user, with role_name + permissions already joined in by crud.users."""
     user = _find_by_username(cursor, username)
     if user is None:
         record_access(
@@ -65,23 +62,12 @@ def get_current_user(
 
 
 def assert_permission(user: User, permission: str) -> User:
-    """Refuse the user unless they hold `permission`, and record it either way.
-
-    Separate from the dependency because some endpoints only need a second
-    permission for part of what they do -- serving a file's bytes to be
-    read is `application:view`, handing them over as a download is
-    `files:download` -- and a dependency cannot see the query parameters
-    that decide which one applies.
-    """
     if permission not in user.permissions:
         log.warning(
             "permission_denied",
             required=permission,
             granted=user.permissions,
         )
-        # One denial is somebody clicking the wrong thing; fifteen in
-        # a minute across different resources is enumeration, and
-        # that is only visible if each one is recorded.
         record_access(
             DENIED,
             outcome=DENIED,
@@ -96,7 +82,6 @@ def assert_permission(user: User, permission: str) -> User:
 
 
 def require_permission(permission: str):
-    """Dependency factory: require_permission('user:view')."""
 
     def dependency(current_user: User = Depends(get_current_user)) -> User:
         return assert_permission(current_user, permission)

@@ -1,4 +1,3 @@
-"""Build a small Excel workbook in memory."""
 from io import BytesIO
 from typing import Iterable, Sequence
 
@@ -11,14 +10,12 @@ def workbook_bytes(
     rows: Iterable[Sequence[object]],
     sheet_title: str = "Sheet1",
 ) -> bytes:
-    """One sheet, a bold header row, and columns sized to their content."""
     from openpyxl import Workbook
     from openpyxl.styles import Font
     from openpyxl.utils import get_column_letter
 
     book = Workbook()
     sheet = book.active
-    # Excel refuses some characters in a sheet name and truncates at 31.
     sheet.title = "".join(c for c in sheet_title if c not in r"[]:*?/\\")[:31] or "Sheet1"
 
     sheet.append(list(headers))

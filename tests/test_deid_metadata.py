@@ -1,9 +1,3 @@
-"""Where de-identification records what it produced.
-
-Two separate places, deliberately: `file_metadata` holds what a document
-arrived carrying, and the facts this system generates go into the output
-file's own metadata. See app/embed.py.
-"""
 import pathlib
 
 import pytest
@@ -43,7 +37,6 @@ def _row(record):
     return Row()
 
 
-# ------------------------------------------- what does NOT go in the row
 
 
 def test_generated_facts_stay_out_of_the_metadata_row(as_admin, storage_root):
@@ -57,7 +50,6 @@ def test_generated_facts_stay_out_of_the_metadata_row(as_admin, storage_root):
 
 
 def test_the_original_extraction_is_left_untouched(as_admin, storage_root, cursor):
-    """Recording the output must not disturb what was read off the input."""
     _, record = _file_with_patient(as_admin)
 
     for row in cursor.store["file_metadata"]:
@@ -71,10 +63,8 @@ def test_the_original_extraction_is_left_untouched(as_admin, storage_root, curso
 
 
 def test_a_missing_output_file_does_not_raise(as_admin, storage_root):
-    """The redaction already succeeded; a failed annotation must not turn that into a failed run."""
     _, record = _file_with_patient(as_admin)
 
-    # No such path -- embed_metadata logs and returns, it does not raise.
     deid._record_deid_metadata(_row(record), pathlib.Path("/out/nope_deid.pdf"))
 
 
@@ -90,13 +80,9 @@ def test_a_patient_lookup_failure_does_not_raise(
     deid._record_deid_metadata(_row(record), pathlib.Path("/out/x_deid.pdf"))
 
 
-# ------------------------------------------------ what goes into the file
 
 
 def test_the_facts_are_added_to_a_pdf_without_replacing_it(tmp_path):
-    """The pipeline has already de-identified these fields in place, so
-    'Author: <PERSON>' is the de-identified value, not a leak. Overwriting
-    it would throw away the fact that a person was named there."""
     fitz = pytest.importorskip("fitz")
 
     path = tmp_path / "out_deid.pdf"
@@ -117,11 +103,9 @@ def test_the_facts_are_added_to_a_pdf_without_replacing_it(tmp_path):
     info = reopened.metadata
     reopened.close()
 
-    # What the pipeline left is still there.
     assert info["author"] == "<PERSON>"
     assert info["title"] == "Discharge summary"
     assert info["producer"] == "Acme 4.1"
-    # And our own facts are alongside it.
     assert "patient_id=A7K2P9" in info["keywords"]
     assert "deidentified=yes" in info["keywords"]
 
@@ -207,11 +191,9 @@ def test_a_corrupt_file_is_logged_not_raised(tmp_path):
     assert embed_metadata(path, "pdf", generated_facts(patient_id="A7K2P9")) is None
 
 
-# ------------------------------------------------------------ xlsx export
 
 
 def _seed_metadata(cursor, record, values):
-    """Write straight to the store: the API no longer merges into a row."""
     import json
 
     for row in cursor.store["file_metadata"]:
@@ -237,7 +219,6 @@ def test_export_is_a_real_workbook(as_admin, storage_root, cursor):
     assert response.status_code == 200
     assert "spreadsheetml.sheet" in response.headers["content-type"]
     assert ".xlsx" in response.headers["content-disposition"]
-    # A real xlsx is a zip; a CSV renamed would not be.
     assert response.content[:2] == b"PK"
 
     rows = _read_workbook(response.content)
@@ -247,7 +228,6 @@ def test_export_is_a_real_workbook(as_admin, storage_root, cursor):
 
 
 def test_export_honours_the_filter(as_admin, storage_root, cursor):
-    """Exporting everything when the screen shows two rows would not be the data the user filtered down to."""
     _, record = _file_with_patient(as_admin)
     _seed_metadata(
         cursor, record, {"Author": "Dr Grant", "Pages": "3", "Producer": "Acme"}
@@ -264,7 +244,6 @@ def test_export_honours_the_filter(as_admin, storage_root, cursor):
 
 
 def test_export_keeps_long_numbers_as_text(as_admin, storage_root, cursor):
-    """Excel turns a 16-digit serial into 1.78633E+15 if it is left to guess, and the value does not survive a round trip."""
     _, record = _file_with_patient(as_admin)
     _seed_metadata(cursor, record, {"serial": "1786329822402000"})
 

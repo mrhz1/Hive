@@ -1,23 +1,3 @@
-"""Write what we know about a document into the document itself.
-
-The `file_metadata` table records what a file *arrived* carrying -- the
-PDF info dict, the DICOM tags, the Word core properties. Facts this
-system produces afterwards (that a file was de-identified, when, for
-which patient) are not that, and putting them in the same blob made the
-row a mixture of two different things: one read out of the file, one
-written by us, indistinguishable once stored.
-
-So they go where they belong -- inside the output file, in each format's
-own metadata, where they travel with the document when it leaves here.
-
-These facts are *added*. The pipeline has already de-identified the
-document's own metadata in place -- `Author: <PATIENT>` rather than no
-author -- and overwriting that would throw away the fact that a person
-was named there. See OCR/deid/metadata.py.
-
-Nothing in this module raises. A redaction that succeeded must not be
-reported as failed because a metadata write did not land.
-"""
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -29,7 +9,6 @@ log = get_logger(__name__)
 
 METHOD = "Hive OCR/NER de-identification"
 
-# DICOM LO (Long String) tops out at 64 characters per value.
 DICOM_LO_MAX = 64
 
 
@@ -39,7 +18,6 @@ def generated_facts(
     output_type: str = "",
     by: str = "",
 ) -> Dict[str, str]:
-    """The facts this system produces about a de-identified document."""
     facts = {
         "deidentified": "yes",
         "deidentified_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -61,7 +39,6 @@ def _as_pairs(values: Dict[str, str]) -> List[str]:
 
 
 def _appended(existing: Optional[str], addition: str) -> str:
-    """Our facts after whatever was already there, not instead of it."""
     current = (existing or "").strip()
     if not current:
         return addition
@@ -77,18 +54,12 @@ def _embed_pdf(path: Path, values: Dict[str, str]) -> None:
     temporary = path.with_name(path.name + ".embedding")
 
     try:
-        # Added to, not replaced. The pipeline has already de-identified
-        # these fields in place, and a de-identified 'Author: <PATIENT>'
-        # is worth more than no author at all -- it says a person was
-        # named there. Overwriting it would throw that away.
         existing = dict(document.metadata or {})
         existing["keywords"] = _appended(
             existing.get("keywords"), "; ".join(_as_pairs(values))
         )
         document.set_metadata(existing)
 
-        # XMP holds its own uncoordinated copy of the same fields, which
-        # pymupdf cannot rewrite selectively.
         try:
             document.del_xml_metadata()
         except Exception:  # pragma: no cover - absent on some builds
@@ -108,9 +79,6 @@ def _embed_dicom(path: Path, values: Dict[str, str]) -> None:
 
     dataset.PatientIdentityRemoved = "YES"
 
-    # DeidentificationMethod is LO with VM 1-n: a list of short strings,
-    # which is exactly the shape these facts have. The pipeline may have
-    # written its own entry already -- keep it and add to it.
     existing = dataset.get("DeidentificationMethod") or []
     if isinstance(existing, str):
         existing = [existing]
@@ -130,8 +98,6 @@ def _embed_word(path: Path, values: Dict[str, str]) -> None:
     document = docx.Document(str(path))
     properties = document.core_properties
 
-    # Added to, not replaced -- the pipeline has already de-identified
-    # these in place. See _embed_pdf.
     properties.comments = _appended(
         properties.comments, "; ".join(_as_pairs(values))
     )
@@ -149,11 +115,6 @@ _EMBEDDERS = {
 def embed_metadata(
     path: Path, extension: str, values: Dict[str, str]
 ) -> Optional[str]:
-    """Write `values` into the file's own metadata.
-
-    Returns the format written, or None when nothing was (unsupported
-    format, or the write failed -- both are logged, neither raises).
-    """
     if not values:
         return None
 

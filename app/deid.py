@@ -1,4 +1,3 @@
-"""De-identification orchestration."""
 import os
 import signal
 import subprocess
@@ -8,6 +7,7 @@ from typing import List, Optional
 
 import structlog
 
+from app import deid_notices
 from app import deid_progress
 from app import deid_queue
 from app.crud import patient_application_files as crud
@@ -33,12 +33,6 @@ DEID_SCRIPT = os.environ.get(
     "DEID_SCRIPT", str(REPO_ROOT / "OCR" / "scripts" / "run_deid.py")
 )
 
-# OCR is slow, and "generous" has to be measured against a real page
-# rate rather than guessed. On a 4-core job a page costs 19-31 seconds,
-# so the old 1800s default died on any document past ~60 pages -- and
-# reported it as a failure, which is the worst way to say "needed longer".
-# 5400s carries ~175 pages. Size it off the longest document you accept,
-# not the average one; the upload limit is 50MB, which is a lot of pages.
 DEID_TIMEOUT_SECONDS = int(os.environ.get("DEID_TIMEOUT_SECONDS", "5400"))
 
 DEID_SUFFIX = os.environ.get("DEID_OUTPUT_SUFFIX", "_deid")
@@ -61,34 +55,17 @@ def is_deidentifiable(extension: str) -> bool:
 
 
 def deid_output_extension(extension: str) -> str:
-    """The extension the pipeline will write for this input."""
     return DEID_OUTPUT_EXTENSIONS.get((extension or "").lower(), ".pdf")
 
 
 def _resolved_or_none(stored: str) -> Optional[Path]:
-    """The path, or nothing. Cleanup must not raise on the way past."""
     try:
         return resolve_stored_path(stored)
     except Exception:
-        # Outside the storage root, or unreadable -- the same judgement
-        # delete_file makes.
         return None
 
 
 def deid_artifacts(source_stored_path: str) -> List[Path]:
-    """Everything a de-identification run wrote for one source document.
-
-    The redacted document is only one of three: the pipeline also writes
-    `<stem>_deid.txt` -- the text it read out of the file -- and
-    `<stem>_deid.report.json`, saying what it found and redacted. Only
-    the first is moved out and recorded on the row, so those two are the
-    ones nothing else knows about, and deleting a document used to leave
-    them behind: the extracted text of a document that no longer exists,
-    sitting in the upload folder with nothing pointing at it.
-
-    Matched by name rather than globbed, because a stem comes from a
-    file name and `[` in one would quietly change what a glob means.
-    """
     source = _resolved_or_none(source_stored_path)
     if source is None:
         return []
@@ -110,7 +87,6 @@ def deid_artifacts(source_stored_path: str) -> List[Path]:
 
 
 def remove_deid_artifacts(source_stored_path: str) -> int:
-    """Delete a run's leftovers, and the folder if it held nothing else."""
     removed = 0
     for path in deid_artifacts(source_stored_path):
         remove_from_disk(str(path))
@@ -123,29 +99,16 @@ def remove_deid_artifacts(source_stored_path: str) -> int:
 
     source = _resolved_or_none(source_stored_path)
     if source is not None:
-        # Attempted even when there was nothing to remove: submission
-        # moves the redacted document out, and what it leaves behind is
-        # this folder with nothing in it. prune_empty_dirs stops the
-        # moment a directory is not empty, so another document's outputs
-        # in here keep it -- and the upload folder above it -- exactly
-        # as they are.
         prune_empty_dirs(source.parent / DEID_SUBFOLDER)
 
     return removed
 
 
 class DeidError(Exception):
-    """Raised internally so every failure path marks the row 'failed'."""
+    pass
 
 
 def _signal_name(returncode: int) -> str:
-    """The signal that killed the run, when one did.
-
-    subprocess reports a signal death as a negative return code, so -9
-    is SIGKILL. Nothing in the pipeline sends itself a signal, which
-    leaves the platform: SIGKILL almost always means the workload was
-    killed for using more memory than it was given.
-    """
     if returncode >= 0:
         return ""
     try:
@@ -155,7 +118,6 @@ def _signal_name(returncode: int) -> str:
 
 
 def _exit_description(returncode: int) -> str:
-    """How the run ended, in terms somebody can act on."""
     name = _signal_name(returncode)
     if not name:
         return f"exit {returncode}"
@@ -171,15 +133,6 @@ def _exit_description(returncode: int) -> str:
 
 
 def _failure_detail(stderr: str, stdout: str) -> str:
-    """The most useful ~500 characters of a failed run's output.
-
-    Error lines only, where there are any. That is not just for brevity:
-    the NLP stage's dependencies quote the document into their warnings
-    (`UserWarning: Skipping annotation ... for doc '<the document>'`),
-    so forwarding a failed run's output wholesale puts patient names in
-    the log -- re-leaking exactly what the pipeline removed. See the
-    gotchas in OCR/README.md.
-    """
     text = (stderr or stdout or "").strip()
     errors = [
         line
@@ -191,14 +144,12 @@ def _failure_detail(stderr: str, stdout: str) -> str:
 
 
 def queued_status() -> str:
-    """The status a freshly-queued file should be given."""
     return "queued" if DEID_BACKEND == "cml_job" else "processing"
 
 
 def dispatch_deidentification(
     file_id: str, request_id: Optional[str] = None
 ) -> None:
-    """Start de-identification by whichever route is configured."""
     if DEID_BACKEND == "inline":
         run_deidentification(file_id, request_id=request_id)
         return
@@ -218,7 +169,6 @@ def dispatch_deidentification(
 
 
 def _set_status(file_id: str, **fields) -> None:
-    """Status writes get their own connection: they must land even when the main work has failed."""
     try:
         with hive_cursor() as cursor:
             crud.update_file(cursor, file_id, PatientApplicationFileUpdate(**fields))
@@ -227,7 +177,6 @@ def _set_status(file_id: str, **fields) -> None:
 
 
 def _run_pipeline(source: Path, output_dir: Path, file_id: str = "") -> Path:
-    """Invokes the OCR job for one file and returns the redacted PDF."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
     command = [
@@ -241,9 +190,6 @@ def _run_pipeline(source: Path, output_dir: Path, file_id: str = "") -> Path:
         DEID_SUFFIX,
     ]
 
-    # Under cml_job this process is the Job, in its own container; the
-    # API that serves the progress bar is elsewhere. The path is on
-    # shared storage, which is the only thing the two can both see.
     if file_id:
         command += ["--progress-file", str(deid_progress.progress_path(file_id))]
 
@@ -269,7 +215,6 @@ def _run_pipeline(source: Path, output_dir: Path, file_id: str = "") -> Path:
 
     if completed.returncode != 0:
         detail = _failure_detail(completed.stderr, completed.stdout)
-        # Filtered and bounded, never the raw streams -- see _failure_detail.
         log.error(
             "deid_subprocess_failed",
             returncode=completed.returncode,
@@ -294,12 +239,6 @@ def _patient_id_for(cursor, application_id: str) -> str:
 
 
 def _record_deid_metadata(record, produced: Path) -> None:
-    """Write what came out of de-identification into the output file.
-
-    Deliberately not into `file_metadata`: that row holds what the
-    *original* arrived carrying, and mixing our own facts into it made
-    the two indistinguishable once stored. See app/embed.py.
-    """
     output_type = produced.suffix.lstrip(".").lower()
 
     try:
@@ -321,7 +260,6 @@ def _record_deid_metadata(record, produced: Path) -> None:
 
 
 def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None:
-    """De-identifies one stored file and records the result."""
     if request_id:
         structlog.contextvars.bind_contextvars(
             request_id=request_id, background_task="deidentify"
@@ -355,7 +293,6 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
         _set_status(
             file_id,
             deid_status="done",
-            # The redacted copy is what no longer carries identifiers.
             is_deidentified=True,
             deidentified_file_name=produced.name,
             de_identified_file_path=str(produced),
@@ -372,8 +309,6 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
         _set_status(file_id, deid_status="failed")
 
     finally:
-        # deid_status is now terminal and is what the UI should read, so
-        # the progress record has nothing left to say. Removing it also
-        # stops a finished file's leftover file being served as live
-        # progress if it is ever queued again.
         deid_progress.clear(file_id)
+
+    deid_notices.notify_if_finished(record.application_id)

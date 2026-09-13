@@ -20,14 +20,9 @@ export function FolderPathField({
   label: string
   value: string
   files: File[]
-  /** '' for path means "nothing derivable" -- keep the current value. */
+
   onSelect: (path: string, files: File[]) => void
-  /**
-   * The path, typed rather than picked. Separate from onSelect because
-   * an empty string means opposite things in the two cases: the picker
-   * yielding nothing must not wipe the path, but somebody clearing the
-   * box by hand must.
-   */
+
   onPathChange?: (path: string) => void
   required?: boolean
   disabled?: boolean
@@ -47,7 +42,7 @@ export function FolderPathField({
       input.removeAttribute('webkitdirectory')
       input.removeAttribute('directory')
     }
-    // Reset so re-picking the same folder still fires a change event.
+
     input.value = ''
     input.click()
   }
@@ -56,21 +51,13 @@ export function FolderPathField({
     const picked = Array.from(input.files ?? [])
     if (picked.length === 0) return
 
-    // Set by openPicker just before the dialog opened, and still there
-    // now: which button was clicked, not a guess from the result.
     const isDirectory = input.hasAttribute('webkitdirectory')
     const { supported, unsupported } = await partitionBySupport(picked)
 
-    // The path comes from the full, unfiltered pick -- the folder was
-    // still the folder the user chose, even if nothing supported turned
-    // up in it, and typing that name back in by hand is the annoyance
-    // this field exists to avoid.
     const path = folderPathFromFiles(picked)
 
     if (isDirectory) {
-      // A folder can hold anything; only DICOM, PDF and Word belong in
-      // the batch, and flagging every unrelated file in it would be
-      // noise, not help.
+
       if (unsupported.length > 0 && supported.length > 0) {
         toast.warning(
           `Skipped ${unsupported.length} unsupported file${unsupported.length === 1 ? '' : 's'} -- only ${SUPPORTED_FORMATS_LABEL} documents are uploaded.`
@@ -84,8 +71,6 @@ export function FolderPathField({
       return
     }
 
-    // Chosen by hand, not swept in with a folder: a file that does not
-    // belong here is a mistake worth stopping on, not skipping past.
     if (unsupported.length > 0) {
       const names = unsupported.map((file) => file.name)
       toast.error(
@@ -139,12 +124,7 @@ export function FolderPathField({
         ) : null}
       </div>
 
-      {/* Editable, because a browser will not tell us where the folder
-          it just handed over actually lives -- webkitRelativePath is the
-          folder's *name* and nothing above it. So the picker fills in
-          'samples' and whoever knows the rest can paste the full path
-          over it, which is what makes it findable by anyone reading it
-          later. */}
+      {}
       <input
         type="text"
         value={value}

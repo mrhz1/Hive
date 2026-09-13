@@ -1,4 +1,3 @@
-"""New patients get a 6-character alphanumeric id, not a UUID."""
 import re
 
 import pytest
@@ -22,7 +21,6 @@ def test_created_patient_gets_a_six_character_id(as_admin):
 
 
 def test_the_id_is_usable_as_a_key(as_admin):
-    """A short id is only worth having if every route still resolves it."""
     created = as_admin.post("/patients", json=minimal_patient()).json()
 
     fetched = as_admin.get(f"/patients/{created['id']}")
@@ -68,7 +66,6 @@ def test_alphabet_and_length():
         assert set(candidate) <= set(PATIENT_ID_ALPHABET)
 
 
-# ------------------------------------------------------- document serial
 
 def test_serial_is_exactly_sixteen_digits():
     for _ in range(200):
@@ -85,7 +82,6 @@ def test_serials_are_strictly_increasing_and_unique():
 
 
 def test_serials_are_unique_across_threads():
-    """The API hands out serials from request threads, so the generator is only useful if it is safe under concurrency."""
     import threading
 
     produced = []

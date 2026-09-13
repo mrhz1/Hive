@@ -95,9 +95,7 @@ function AccessLogPage() {
         const name = accessedName(entry)
         return (
           <div className="min-w-0">
-            {/* The name first: a file id says a document was opened, it
-                does not say which one, and looking that up by hand was
-                what made this table hard to read. */}
+            {}
             <span
               className="block truncate text-sm font-semibold"
               title={name ?? undefined}
@@ -131,7 +129,7 @@ function AccessLogPage() {
       header: 'Identified',
       cell: (entry) =>
         entry.identified ? (
-          // The distinction a breach assessment turns on.
+
           <Badge tone="danger">identified</Badge>
         ) : entry.identified === false ? (
           <Badge tone="success">de-identified</Badge>

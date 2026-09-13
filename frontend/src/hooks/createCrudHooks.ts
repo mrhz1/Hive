@@ -25,9 +25,9 @@ export function errorMessage(error: unknown, fallback: string): string {
 export function createCrudHooks<TEntity, TForm>(config: {
   api: ResourceApi<TEntity, TForm>
   keys: ResourceKeys
-  /** Singular, capitalised, e.g. 'User' -- used in toast copy. */
+
   label: string
-  /** Extra key prefixes to invalidate, e.g. audit logs after a write. */
+
   alsoInvalidate?: readonly (readonly unknown[])[]
 }) {
   const { api, keys, label, alsoInvalidate = [] } = config

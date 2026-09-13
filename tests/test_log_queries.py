@@ -1,16 +1,9 @@
-"""Finding a user's activity, which is where an investigation starts.
-
-Before this the change trail could only be filtered by entity: the actor
-was stored and not queryable, so "what did this person do, and when" had
-no answer through the application at all.
-"""
 from datetime import datetime
 
 from conftest import ADMIN_ID, VIEWER_ID, minimal_patient
 
 
 def _seed_changes(cursor):
-    """Two actors, three days, so the filters have something to separate."""
     rows = [
         ("a1", "CREATE", "patient", "P1", ADMIN_ID, "2026-02-10 09:00:00"),
         ("a2", "UPDATE", "patient", "P1", ADMIN_ID, "2026-02-11 09:00:00"),
@@ -51,7 +44,6 @@ def test_changes_can_be_filtered_by_date(as_admin, cursor):
 
 
 def test_the_end_of_the_range_includes_that_whole_day(as_admin, cursor):
-    """'to 2026-02-12' has to mean the end of the 12th, not its midnight."""
     _seed_changes(cursor)
 
     found = as_admin.get("/logs", params={"date_to": "2026-02-12"}).json()
@@ -60,7 +52,6 @@ def test_the_end_of_the_range_includes_that_whole_day(as_admin, cursor):
 
 
 def test_who_and_when_combine(as_admin, cursor):
-    """The incident question: what did this account do in this window."""
     _seed_changes(cursor)
 
     found = as_admin.get(
@@ -93,13 +84,11 @@ def test_the_existing_entity_filters_still_work(as_admin, cursor):
     assert {row["id"] for row in found} == {"a1", "a2"}
 
 
-# ------------------------------------------------------- the access trail
 
 
 def test_the_access_trail_answers_who_saw_this_patient(
     as_admin, storage_root, access_events
 ):
-    """Disclosure accounting, which has no answer without this."""
     patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
     application_id = as_admin.post(
         "/applications", json={"patient_id": patient_id}
@@ -122,8 +111,6 @@ def test_the_access_trail_answers_who_saw_this_patient(
 def test_the_access_trail_can_be_narrowed_to_disclosures(
     as_admin, storage_root, access_events
 ):
-    """Reading a redacted copy is routine; the identified reads are the
-    ones a breach assessment counts."""
     patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
     as_admin.get(f"/patients/{patient_id}")
     access_events.flush()
@@ -136,16 +123,10 @@ def test_the_access_trail_can_be_narrowed_to_disclosures(
 def test_the_time_an_event_happened_says_which_zone_it_is_in(
     as_admin, access_events
 ):
-    """Hive TIMESTAMP carries no zone, so what comes back out of it is a
-    bare wall-clock reading. Served without an offset a browser reads it
-    as local time and shows every event at the UTC hour -- which is what
-    put the access log four hours ahead of the people reading it."""
     patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
     as_admin.get(f"/patients/{patient_id}")
     access_events.flush()
 
-    # What a real read back hands over: the zone is gone, because the
-    # column never had one.
     for row in access_events.rows:
         row["occurred_at"] = row["occurred_at"].replace(tzinfo=None)
 
@@ -162,8 +143,6 @@ def test_the_access_trail_needs_the_log_permission(client, access_events):
 
 
 def test_a_bounded_query_reads_only_those_partitions(as_admin, cursor):
-    """The date filter has to select partitions, or a year of events is
-    scanned to answer a question about one week."""
     as_admin.get(
         "/access-logs", params={"date_from": "2026-02-01", "date_to": "2026-02-07"}
     )

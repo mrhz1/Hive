@@ -5,13 +5,6 @@ import { Badge } from '@/components/ui/Misc'
 import { metadataTone } from '@/schemas/applicationFile'
 import { metadataEntries, type FileMetadataRow } from '@/schemas/fileMetadata'
 
-/**
- * Everything one row carries.
- *
- * The browse table already holds the whole blob, so unlike the per-file
- * modal in features/applications this fetches nothing -- it is a reader
- * for a row that is already on screen.
- */
 export function FileMetadataDetailModal({
   row,
   onClose,

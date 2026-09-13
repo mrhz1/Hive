@@ -1,4 +1,3 @@
-"""Patient application CRUD."""
 import uuid
 from typing import Any, List, Optional
 
@@ -41,7 +40,6 @@ _COLS = ", ".join(f"`{c}`" for c in COLUMNS)
 
 
 def _value_sql(column: str, value: Any) -> tuple:
-    """The SQL text for one column's value, plus the params it binds."""
     if column in TIMESTAMP_COLUMNS:
         return (NOW_SQL if value is NOW else NULL_TIMESTAMP_SQL), ()
     return "%s", (value,)
@@ -65,8 +63,6 @@ def get_application_or_404(cursor, application_id: str) -> PatientApplication:
     found = get_application(cursor, application_id)
 
     if found is None:
-        # A miss may only mean the query engine has not caught up with a
-        # row written a moment ago. Ask the engine that owns it first.
         with authoritative(cursor):
             found = get_application(cursor, application_id)
 
@@ -90,7 +86,6 @@ def list_applications(
 
 
 def newest_for_patient(cursor, patient_id: str) -> Optional[PatientApplication]:
-    """The patient's most recent application, or None."""
     applications = list_applications(cursor, patient_id)
     return applications[0] if applications else None
 
@@ -155,9 +150,6 @@ def update_application(
         fields["submitted_by_id"] = actor_id
         fields["submitted_at"] = NOW
     elif status in ("approved", "rejected"):
-        # Not conditional on the status changing: rejecting an
-        # already-rejected application is a second verdict, by whoever
-        # gave it, and the record has to move on to that one.
         fields["reviewed_by_id"] = actor_id
         fields["reviewed_at"] = NOW
 

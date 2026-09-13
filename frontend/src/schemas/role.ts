@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import { ALL_PERMISSIONS, idSchema, permissionSchema } from './common'
 
-/** Mirrors app/schemas.py::Role. */
 export const roleSchema = z.object({
   id: idSchema,
   name: z.string(),

@@ -1,8 +1,3 @@
-"""Reading what a document arrived carrying.
-
-This is the half that lands in `file_metadata`. What the system works out
-afterwards goes into the output file instead -- test_deid_metadata.py.
-"""
 import pathlib
 
 import pytest
@@ -27,7 +22,6 @@ def _dicom(path: pathlib.Path, **attributes):
     return path
 
 
-# ------------------------------------------------------------------ dicom
 
 
 def test_a_dicom_gives_up_its_tags(tmp_path):
@@ -49,8 +43,6 @@ def test_a_dicom_gives_up_its_tags(tmp_path):
 
 
 def test_a_dicom_read_by_content_not_by_name(tmp_path):
-    """An extensionless DICOM is resolved to 'dcm' at upload, so by the
-    time extraction runs the format is known."""
     path = _dicom(tmp_path / "IM000001", PatientID="MRN4471")
 
     _, metadata, status, _ = extract(path, "dcm")
@@ -67,7 +59,6 @@ def test_pixel_data_is_not_dragged_into_the_row(tmp_path):
     assert "PixelData" not in metadata
 
 
-# ------------------------------------------------------------------- word
 
 
 def test_a_docx_gives_up_its_core_properties(tmp_path):
@@ -88,17 +79,16 @@ def test_a_docx_gives_up_its_core_properties(tmp_path):
 
 
 class _FakeProperties:
-    """Stands in for olefile's OleMetadata."""
 
     SUMMARY_ATTRIBS = ["title", "author", "last_saved_by", "num_pages"]
     DOCSUM_ATTRIBS = ["company", "category"]
 
-    title = b"Discharge summary\x00"      # olefile hands back bytes here
+    title = b"Discharge summary\x00"
     author = "Dr Grant"
     last_saved_by = "M Lapinsky"
     num_pages = 4
     company = "St Mary's"
-    category = None                        # unset properties are dropped
+    category = None
 
 
 class _FakeOle:
@@ -113,12 +103,6 @@ class _FakeOle:
 
 
 def test_a_legacy_doc_is_read_through_its_ole_streams(tmp_path, monkeypatch):
-    """python-docx reads only the 2007+ zip format, so before this every
-    pre-2007 .doc recorded 'failed' and no metadata at all.
-
-    Verified against a genuine Word 97 document as well as this stub: 26
-    fields, including author, template and creating_application.
-    """
     olefile = pytest.importorskip("olefile")
     monkeypatch.setattr(olefile, "OleFileIO", _FakeOle)
 
@@ -128,16 +112,14 @@ def test_a_legacy_doc_is_read_through_its_ole_streams(tmp_path, monkeypatch):
     file_type, metadata, status, error = extract(path, "doc")
 
     assert (file_type, status, error) == ("word", "ok", None)
-    assert metadata["title"] == "Discharge summary"   # bytes decoded, NUL stripped
+    assert metadata["title"] == "Discharge summary"
     assert metadata["author"] == "Dr Grant"
     assert metadata["company"] == "St Mary's"
     assert metadata["num_pages"] == "4"
-    assert "category" not in metadata                 # unset, so not stored
+    assert "category" not in metadata
 
 
 def test_the_container_decides_which_word_reader_runs(tmp_path, monkeypatch):
-    """A .docx misnamed .doc still reads, and vice versa -- the OLE2
-    signature is what picks the reader, not the extension."""
     docx = pytest.importorskip("docx")
 
     path = tmp_path / "actually_a_docx.doc"
@@ -162,7 +144,6 @@ def test_a_word_file_that_is_neither_records_the_failure(tmp_path):
     assert error
 
 
-# -------------------------------------------------------------------- pdf
 
 
 def test_a_pdf_gives_up_its_info_dictionary(tmp_path):

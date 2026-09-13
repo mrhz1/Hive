@@ -3,9 +3,9 @@ import { Button } from './ui/Button'
 
 export type ConfirmDeleteModalProps = {
   open: boolean
-  /** Capitalised entity name, e.g. 'User' -- used in the heading. */
+
   entityLabel: string
-  /** Human name of the record, so the user can confirm the target. */
+
   targetName?: string | undefined
   isDeleting?: boolean
   onCancel: () => void

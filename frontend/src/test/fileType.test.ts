@@ -7,7 +7,7 @@ function file(name: string, bytes: number[] = [], type = ''): File {
 
 function dicomBytes(): number[] {
   const preamble = new Array(128).fill(0)
-  const magic = [0x44, 0x49, 0x43, 0x4d] // 'DICM'
+  const magic = [0x44, 0x49, 0x43, 0x4d]
   return [...preamble, ...magic, 0, 0]
 }
 

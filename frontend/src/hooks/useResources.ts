@@ -187,24 +187,15 @@ export function useUploadApplicationFiles(applicationId: string) {
   })
 }
 
-/** How often to ask the API how a running batch is getting on. */
 const UPLOAD_POLL_MS = 1500
 
-/**
- * Hand a batch of files to the API and watch it from a distance.
- *
- * The upload itself returns as soon as the bytes are staged; the moving,
- * recording and metadata extraction happen after, and this polls the job
- * until they are over. The assigned user gets an email either way -- the
- * toasts here are for whoever is still sitting in front of the wizard.
- */
 export function useBackgroundUpload(
   applicationId: string,
   onFinished?: (job: UploadJob) => void
 ) {
   const queryClient = useQueryClient()
   const [jobId, setJobId] = useState<string | null>(null)
-  // Terminal state arrives on a poll, which can repeat; announce it once.
+
   const announced = useRef<string | null>(null)
 
   const start = useMutation({
@@ -230,7 +221,7 @@ export function useBackgroundUpload(
     queryKey: queryKeys.applicationFiles.uploadJob(jobId ?? ''),
     queryFn: () => applicationFilesApi.uploadJob(jobId as string),
     enabled: Boolean(jobId),
-    // Stop the moment the batch is settled, rather than polling forever.
+
     refetchInterval: (query) =>
       isUploadJobSettled(query.state.data) ? false : UPLOAD_POLL_MS,
     staleTime: 0,
@@ -265,9 +256,9 @@ export function useBackgroundUpload(
 
   return {
     start: start.mutateAsync,
-    /** True from the click until the batch has settled. */
+
     isUploading: start.isPending || isRunning,
-    /** True only while the bytes are still going up. */
+
     isSending: start.isPending,
     job: job.data,
     dismiss,
@@ -322,7 +313,6 @@ export function useDeidentifyFile(applicationId: string) {
   })
 }
 
-/** De-identify, or approve, every file on the application at once. */
 function useBulkFileAction(
   applicationId: string,
   action: (id: string) => Promise<BulkResult>,
@@ -383,12 +373,6 @@ export function useFileMetadata(
   })
 }
 
-/**
- * Attach a document that is already redacted.
- *
- * Nothing to de-identify and nothing to review against: it lands done,
- * named as the pipeline would have named its own output.
- */
 export function useUploadDeidentifiedApplicationFile(applicationId: string) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -427,7 +411,6 @@ export function useDeleteApplicationFile(applicationId: string) {
   })
 }
 
-/** Extracted metadata across every document, filtered by the API. */
 export function useFileMetadataRows(
   filters: FileMetadataFilters = {},
   enabled = true
@@ -436,8 +419,7 @@ export function useFileMetadataRows(
     queryKey: queryKeys.fileMetadata.list(filters),
     queryFn: () => fileMetadataApi.list(filters),
     enabled,
-    // The search box drives this key; keep the previous rows on screen
-    // while the next term is fetched rather than blanking the table.
+
     placeholderData: (previous) => previous,
   })
 }
@@ -462,7 +444,6 @@ export function useExportFileMetadata() {
   })
 }
 
-/** Audit logs are append-only; no create/update/delete hooks needed. */
 export function useAuditLogs(filters: AuditLogFilters = {}, enabled = true) {
   return useQuery({
     queryKey: queryKeys.logs.list(filters),
@@ -471,7 +452,6 @@ export function useAuditLogs(filters: AuditLogFilters = {}, enabled = true) {
   })
 }
 
-/** Who saw what. Bound the dates: they select Hive partitions. */
 export function useAccessLogs(filters: AccessLogFilters = {}, enabled = true) {
   return useQuery({
     queryKey: queryKeys.accessLogs.list(filters),

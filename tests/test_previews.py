@@ -1,9 +1,3 @@
-"""Rendering DICOM and Word so a browser shows them instead of downloading.
-
-An <iframe> renders a PDF on its own; for the other two formats there is
-nothing browser-native to point it at, so the API produces something
-there is -- a PNG frame, and text.
-"""
 import io
 import pathlib
 
@@ -21,7 +15,6 @@ def _application(client):
 
 
 def _dicom_bytes(frames=1, rows=32, columns=48, photometric="MONOCHROME2"):
-    """A small uncompressed study, built the way a modality would."""
     numpy = pytest.importorskip("numpy")
     pytest.importorskip("pydicom")
     from pydicom.dataset import Dataset, FileMetaDataset
@@ -82,7 +75,6 @@ def _upload(client, application_id, name, data):
     ).json()[0]
 
 
-# ------------------------------------------------------------------ dicom
 
 
 def test_a_dicom_frame_comes_back_as_a_png(as_admin):
@@ -93,12 +85,10 @@ def test_a_dicom_frame_comes_back_as_a_png(as_admin):
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/png"
-    # The PNG signature, so this is a real image and not an error page.
     assert response.content[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_an_extensionless_dicom_renders_too(as_admin):
-    """It is resolved to 'dcm' at upload, which is what makes it viewable."""
     application_id = _application(as_admin)
     record = _upload(as_admin, application_id, "IM000001", _dicom_bytes())
 
@@ -136,7 +126,6 @@ def test_a_frame_that_does_not_exist_is_rejected(as_admin):
 
 
 def test_monochrome1_is_inverted_so_it_is_not_shown_as_a_negative(as_admin):
-    """MONOCHROME1 counts white as zero. Rendered as-is it looks inverted."""
     from PIL import Image
 
     application_id = _application(as_admin)
@@ -151,7 +140,6 @@ def test_monochrome1_is_inverted_so_it_is_not_shown_as_a_negative(as_admin):
         content = as_admin.get(f"/files/{record['id']}/image").content
         return Image.open(io.BytesIO(content)).convert("L").getpixel((0, 0))
 
-    # The same gradient, so one must be the other's complement.
     assert first_pixel(normal) != first_pixel(inverted)
 
 
@@ -163,7 +151,6 @@ def test_a_pdf_is_not_offered_as_an_image(as_admin):
 
 
 def test_a_dicom_with_no_pixels_says_so(as_admin):
-    """A structured report is a valid DICOM with nothing to display."""
     pytest.importorskip("pydicom")
     from pydicom.dataset import Dataset, FileMetaDataset
     from pydicom.uid import ExplicitVRLittleEndian
@@ -186,7 +173,6 @@ def test_a_dicom_with_no_pixels_says_so(as_admin):
     assert "no image data" in response.json()["error"]["detail"]
 
 
-# ------------------------------------------------------------------- word
 
 
 def test_a_word_document_comes_back_as_text(as_admin):
@@ -241,8 +227,6 @@ def test_a_dicom_is_not_offered_as_text(as_admin):
 
 
 def test_a_legacy_doc_says_why_it_cannot_be_previewed(as_admin):
-    """python-docx reads only the 2007+ format; the message has to say so
-    rather than just failing."""
     from app.filetype import OLE_MAGIC
 
     application_id = _application(as_admin)
@@ -254,7 +238,6 @@ def test_a_legacy_doc_says_why_it_cannot_be_previewed(as_admin):
     assert ".docx" in response.json()["error"]["detail"]
 
 
-# ------------------------------------------------------------ permissions
 
 
 def test_previews_need_the_application_view_permission(client, as_admin):

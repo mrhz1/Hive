@@ -1,4 +1,3 @@
-"""Patient endpoints, end to end through permissions -> router -> CRUD."""
 from conftest import (
     ADMIN_ID,
     NOBODY_USER,
@@ -8,23 +7,17 @@ from conftest import (
 )
 
 
-# ------------------------------------------------------------ the shape
 
 def test_model_exposes_every_requested_field(as_admin):
-    """The full column set, verified through an actual response body."""
     created = as_admin.post("/patients", json=minimal_patient()).json()
 
     expected = {
-        # provider / institution
         "instcode", "pname", "pemail", "phone1", "phone2", "wphone1", "wphone2",
         "street", "street2", "street3", "city", "state", "zip", "country",
-        # patient
         "fstname", "lstname", "ptemail", "ptphone", "ptphone2", "ptwphone",
         "ptwphone2", "ptstreet", "ptstreet2", "ptstreet3", "ptcity", "ptstate",
         "ptzip", "ptcountry",
-        # dates
         "dt_reg", "dt_b", "dt_d",
-        # source documents
         "original_file_path", "deidentified_file_path",
         "id",
     }
@@ -33,7 +26,6 @@ def test_model_exposes_every_requested_field(as_admin):
 
 
 def test_round_trips_every_field(as_admin):
-    """Every one of the 34 columns survives write -> read unchanged."""
     payload = minimal_patient(
         instcode="INST001", pname="Springfield Clinic",
         pemail="clinic@example.com", phone1="+1 555 100 0001",
@@ -59,7 +51,6 @@ def test_round_trips_every_field(as_admin):
 
 
 def test_provider_and_patient_blocks_stay_distinct(as_admin):
-    """`street` and `ptstreet` are different columns -- a sed-style rename could easily collapse one onto the other."""
     created = as_admin.post(
         "/patients",
         json=minimal_patient(
@@ -80,7 +71,6 @@ def test_provider_and_patient_blocks_stay_distinct(as_admin):
     assert created["ptemail"] == "patient@example.com"
 
 
-# ------------------------------------------------------------- optional
 
 def test_only_the_document_and_one_identifier_are_required(as_admin):
     response = as_admin.post("/patients", json=minimal_patient())
@@ -93,7 +83,6 @@ def test_only_the_document_and_one_identifier_are_required(as_admin):
 
 
 def test_any_one_identifier_satisfies_the_rule(as_admin):
-    """fstname, lstname or ptemail -- the ingested systems disagree about which of them they populate, so any one has to be enough."""
     for identifier in (
         {"fstname": "Jane"},
         {"lstname": "Doe"},
@@ -115,7 +104,6 @@ def test_a_patient_with_no_identifier_at_all_is_rejected(as_admin):
 
 
 def test_blank_identifiers_do_not_count_as_present(as_admin):
-    """'' normalises to NULL, so a form submitted with the name fields cleared must be rejected rather than stored as a nameless row."""
     response = as_admin.post(
         "/patients",
         json={"original_file_path": "/data/x.pdf", "fstname": "  ", "lstname": ""},
@@ -124,7 +112,6 @@ def test_blank_identifiers_do_not_count_as_present(as_admin):
 
 
 def test_a_patient_can_be_created_before_any_documents_exist(as_admin):
-    """The source path is no longer asked for at creation."""
     response = as_admin.post("/patients", json={"fstname": "Jane"})
 
     assert response.status_code == 201, response.text
@@ -132,7 +119,6 @@ def test_a_patient_can_be_created_before_any_documents_exist(as_admin):
 
 
 def test_a_blank_source_path_is_stored_as_nothing(as_admin):
-    """Whitespace is not a path, and must not be kept as if it were."""
     for value in ("", "   "):
         response = as_admin.post(
             "/patients", json={"fstname": "Jane", "original_file_path": value}
@@ -142,7 +128,6 @@ def test_a_blank_source_path_is_stored_as_nothing(as_admin):
 
 
 def test_the_source_path_can_still_be_set_afterwards(as_admin):
-    """Which is what the wizard does once the upload folder is known."""
     created = as_admin.post("/patients", json={"fstname": "Jane"}).json()
 
     updated = as_admin.put(
@@ -154,7 +139,6 @@ def test_the_source_path_can_still_be_set_afterwards(as_admin):
 
 
 def test_blank_strings_are_stored_as_null(as_admin):
-    """A cleared HTML input submits ''."""
     created = as_admin.post(
         "/patients",
         json=minimal_patient(instcode="   ", dt_b="", ptemail="", ptcity=""),
@@ -166,7 +150,6 @@ def test_blank_strings_are_stored_as_null(as_admin):
     assert created["ptcity"] is None
 
 
-# ---------------------------------------------------------------- dates
 
 def test_dates_round_trip_as_iso_strings(as_admin):
     created = as_admin.post(
@@ -180,7 +163,6 @@ def test_dates_round_trip_as_iso_strings(as_admin):
 
 
 def test_date_columns_are_cast_in_sql(as_admin, cursor):
-    """Hive will not coerce a bound STRING into a DATE column."""
     as_admin.post("/patients", json=minimal_patient(dt_b="1990-01-02"))
 
     insert = next(s for s, _ in cursor.statements if s.startswith("INSERT INTO `patient`"))
@@ -198,7 +180,6 @@ def test_a_malformed_date_is_rejected(as_admin):
     assert response.status_code == 422
 
 
-# ------------------------------------------------------------ uniqueness
 
 def test_patient_email_and_phone_stay_unique(as_admin):
     as_admin.post(
@@ -217,7 +198,6 @@ def test_patient_email_and_phone_stay_unique(as_admin):
 
 
 def test_absent_contact_details_never_collide(as_admin):
-    """Two patients with no email are not duplicates of each other."""
     assert as_admin.post("/patients", json=minimal_patient()).status_code == 201
     assert (
         as_admin.post("/patients", json=minimal_patient(fstname="John")).status_code
@@ -238,7 +218,6 @@ def test_saving_a_record_unchanged_does_not_conflict_with_itself(as_admin):
     assert response.json()["ptcity"] == "Shelbyville"
 
 
-# ---------------------------------------------------------------- update
 
 def test_update_touches_only_the_fields_sent(as_admin):
     created = as_admin.post(
@@ -255,14 +234,12 @@ def test_update_touches_only_the_fields_sent(as_admin):
 
 
 def test_update_cannot_clear_the_last_identifier(as_admin):
-    """The rule holds over the row the update leaves behind, not over the patch -- a patch clearing fstname is only invalid because nothing already stored would identify the row afterwards."""
     created = as_admin.post("/patients", json=minimal_patient()).json()
 
     response = as_admin.put(f"/patients/{created['id']}", json={"fstname": ""})
     assert response.status_code == 422
     assert "fstname, lstname or ptemail" in response.json()["error"]["detail"]
 
-    # ... and the stored row is untouched.
     assert as_admin.get(f"/patients/{created['id']}").json()["fstname"] == "Jane"
 
 
@@ -278,11 +255,6 @@ def test_update_can_clear_an_identifier_while_another_remains(as_admin):
 
 
 def test_a_patients_source_folder_is_optional(as_admin):
-    """It is a default, nothing more: the folder that matters belongs to
-    an application, and a second application for the same patient
-    routinely draws on a different one. Requiring it here made the
-    wizard's own 'save and continue' unsatisfiable, because the form it
-    posts does not carry the field."""
     created = as_admin.post("/patients", json=minimal_patient()).json()
 
     response = as_admin.put(
@@ -315,7 +287,6 @@ def test_list_and_delete(as_admin):
     assert len(as_admin.get("/patients").json()) == 1
 
 
-# ----------------------------------------------------------- permissions
 
 def test_permissions_are_named_patients(as_admin):
     granted = as_admin.get("/me/permissions").json()
@@ -342,7 +313,6 @@ def test_identity_is_required(client):
     assert client.get("/patients").status_code == 401
 
 
-# ---------------------------------------------------------------- audit
 
 def test_writes_are_audited_as_patient(as_admin, store):
     created = as_admin.post("/patients", json=minimal_patient()).json()
@@ -355,7 +325,6 @@ def test_writes_are_audited_as_patient(as_admin, store):
 
 
 def test_the_audit_row_names_who_made_the_change(as_admin, store):
-    """user_id comes from the authenticated caller, never the body -- an audit table that cannot say who acted is not an audit table."""
     created = as_admin.post("/patients", json=minimal_patient()).json()
     as_admin.put(f"/patients/{created['id']}", json={"ptcity": "Shelbyville"})
 
@@ -364,7 +333,6 @@ def test_the_audit_row_names_who_made_the_change(as_admin, store):
 
 
 def test_the_audit_snapshot_serialises_dates(as_admin, store):
-    """model_dump(mode='json') has to run before the row hits Hive -- a date object would not survive the JSON-in-STRING column."""
     import json
 
     as_admin.post("/patients", json=minimal_patient(dt_b="1990-01-02"))

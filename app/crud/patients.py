@@ -1,4 +1,3 @@
-"""Patient CRUD, against the singular `patient` table."""
 from datetime import date, datetime
 from typing import List, Optional
 
@@ -19,10 +18,8 @@ log = get_logger(__name__)
 
 COLUMNS = (
     "id",
-    # patient identity
     "fstname",
     "lstname",
-    # provider / institution
     "instcode",
     "pname",
     "street",
@@ -37,7 +34,6 @@ COLUMNS = (
     "wphone1",
     "wphone2",
     "pemail",
-    # patient's own contact details
     "ptstreet",
     "ptstreet2",
     "ptstreet3",
@@ -50,11 +46,9 @@ COLUMNS = (
     "ptwphone",
     "ptwphone2",
     "ptemail",
-    # dates
     "dt_reg",
     "dt_b",
     "dt_d",
-    # source documents
     "original_file_path",
     "deidentified_file_path",
 )
@@ -69,7 +63,6 @@ def _placeholder(column: str) -> str:
 
 
 def _to_date(value) -> Optional[date]:
-    """Hive drivers hand DATE back as either a date or an ISO string depending on the transport, so both are accepted."""
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -99,9 +92,6 @@ def get_patient_or_404(cursor, patient_id: str) -> Patient:
     patient = get_patient(cursor, patient_id)
 
     if patient is None:
-        # A miss may only mean the query engine has not caught up with a
-        # row written a moment ago, in this request or the one before it.
-        # Ask the engine that owns the row before saying it is not there.
         with authoritative(cursor):
             patient = get_patient(cursor, patient_id)
 
@@ -129,7 +119,6 @@ _UNIQUE_COLUMNS = (("ptemail", "Email"), ("ptphone", "Phone number"))
 
 
 def _assert_unique(cursor, values: dict, exclude_id: Optional[str] = None) -> None:
-    # No UNIQUE constraints in Hive -- pre-check SELECTs, non-atomic.
     for column, label in _UNIQUE_COLUMNS:
         value = values.get(column)
         if not value:

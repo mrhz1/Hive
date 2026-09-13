@@ -1,20 +1,3 @@
-"""Turn a document into something a browser will actually display.
-
-A PDF an `<iframe>` renders on its own. A DICOM and a Word document it
-downloads instead -- which is what made "Original" a download button for
-half the files in an application.
-
-Neither format has a browser-native representation, so one is made here:
-a DICOM frame becomes a PNG, a Word document becomes its text. Both
-happen server-side because the alternative is shipping a DICOM codec and
-a docx parser into the bundle, and because the transfer syntaxes a PACS
-actually emits need the same decoders `OCR/` needs -- see the note in
-OCR/requirements-ocr.txt.
-
-This renders the file as it is. Previewing an original shows the original,
-burned-in identifiers and all; that is the same content the download
-already served, behind the same permission.
-"""
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -23,20 +6,15 @@ from app.logging_setup import get_logger
 
 log = get_logger(__name__)
 
-# Downscale anything larger. A mammography frame is 4000+ pixels square
-# and nobody is inspecting that in a modal.
 MAX_DIMENSION = 2400
 
-# Word documents can be long; the viewer is a preview, not an editor.
 MAX_PARAGRAPHS = 2000
 MAX_TABLE_ROWS = 500
 
 
-# ------------------------------------------------------------------ dicom
 
 
 def _to_display_array(dataset, frame_index: int):
-    """One frame as 8-bit RGB or greyscale, windowed the way it is meant to be seen."""
     import numpy as np
 
     try:
@@ -61,15 +39,12 @@ def _to_display_array(dataset, frame_index: int):
     else:
         frame = pixels
 
-    # Window/level, when the study says how it wants to be displayed.
     if samples == 1:
         try:
             from pydicom.pixels import apply_voi_lut
 
             frame = apply_voi_lut(frame, dataset, index=0)
         except Exception:
-            # No LUT, or one this file cannot honour -- fall through to
-            # the plain min/max stretch below, which always works.
             pass
 
     frame = np.asarray(frame)
@@ -82,7 +57,6 @@ def _to_display_array(dataset, frame_index: int):
             frame = np.zeros_like(frame, dtype=np.float64)
         frame = (frame * 255.0).astype(np.uint8)
 
-    # MONOCHROME1 counts white as zero; shown as-is it is a negative.
     if str(getattr(dataset, "PhotometricInterpretation", "")) == "MONOCHROME1":
         frame = 255 - frame
 
@@ -90,7 +64,6 @@ def _to_display_array(dataset, frame_index: int):
 
 
 def frame_number(dataset, pixels=None) -> int:
-    """How many frames this study holds."""
     declared = int(getattr(dataset, "NumberOfFrames", 1) or 1)
     if declared > 1:
         return declared
@@ -104,7 +77,6 @@ def frame_number(dataset, pixels=None) -> int:
 
 
 def render_dicom_png(path: Path, frame_index: int = 0) -> Tuple[bytes, int]:
-    """One frame as PNG bytes, plus the number of frames available."""
     import pydicom
     from PIL import Image
 
@@ -141,7 +113,6 @@ def render_dicom_png(path: Path, frame_index: int = 0) -> Tuple[bytes, int]:
     return buffer.getvalue(), total
 
 
-# ------------------------------------------------------------------- word
 
 
 def _table_rows(table) -> List[List[str]]:
@@ -152,12 +123,6 @@ def _table_rows(table) -> List[List[str]]:
 
 
 def read_word_document(path: Path) -> Dict:
-    """A Word document's text, as structure rather than markup.
-
-    Deliberately not HTML: this is somebody's uploaded document, and
-    handing the browser markup out of it invites the obvious injection.
-    The client renders these strings as text nodes.
-    """
     import docx
 
     try:

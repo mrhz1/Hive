@@ -1,4 +1,3 @@
-"""The de-identified file library."""
 from typing import List, Optional
 
 from fastapi import (
@@ -53,7 +52,6 @@ MAX_FILE_BYTES = 50 * 1024 * 1024
 
 
 def _patient_index(cursor):
-    """application id -> patient id, for labelling rows."""
     return {
         application.id: application.patient_id
         for application in applications_crud.list_applications(cursor)
@@ -81,7 +79,6 @@ def list_deidentified_files(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("files:read")),
 ):
-    """Every file that has a redacted copy, newest first."""
     patients = _patient_index(cursor)
     rows = [
         _as_library_row(record, patients.get(record.application_id, ""))
@@ -116,11 +113,6 @@ def read_deidentified_file(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("files:download")),
 ):
-    """The redacted bytes. Never the original -- this library does not expose it.
-
-    As on the application copy: opening it in the viewer is a read, and
-    only `download=true` is a copy leaving.
-    """
     record = crud.get_file_or_404(cursor, file_id)
     if not record.de_identified_file_path:
         raise ValidationError("This file has not been de-identified yet")
@@ -140,7 +132,6 @@ def read_deidentified_file(
 
 
 def _record_library_access(cursor, record, actor, action: str) -> None:
-    """This library only ever serves redacted copies, so identified=False."""
     application = applications_crud.get_application(cursor, record.application_id)
     record_access(
         action,
@@ -151,15 +142,11 @@ def _record_library_access(cursor, record, actor, action: str) -> None:
         application_id=record.application_id,
         identified=False,
         byte_count=record.file_size,
-        # The name the library lists it under, so the trail and the page
-        # call the same file the same thing.
         detail=record.deidentified_file_name or record.sanitized_file_name,
     )
 
 
 def _redacted_path(cursor, file_id: str):
-    """The record, its redacted copy and how to read it. Never the
-    original -- this library does not expose it, nor do its previews."""
     record = crud.get_file_or_404(cursor, file_id)
     if not record.de_identified_file_path:
         raise ValidationError("This file has not been de-identified yet")
@@ -179,14 +166,11 @@ def preview_deidentified_image(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("files:download")),
 ):
-    """One DICOM frame of the redacted copy, as a PNG."""
     record, path, extension = _redacted_path(cursor, file_id)
     if extension not in ("dcm", "dicom"):
         raise ValidationError(f"'{extension}' files are not rendered as images")
 
     content, frames = render_dicom_png(path, frame)
-    # After the render, so a refused or failed request is not recorded as
-    # a read that happened.
     _record_library_access(cursor, record, actor, READ)
     return Response(
         content=content,
@@ -204,7 +188,6 @@ def preview_deidentified_text(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("files:download")),
 ):
-    """The redacted Word document's text."""
     record, path, extension = _redacted_path(cursor, file_id)
     if extension not in ("doc", "docx"):
         raise ValidationError(f"'{extension}' files are not rendered as text")
@@ -226,7 +209,6 @@ async def _read_upload(upload: UploadFile) -> bytes:
 
 
 def _write_redacted(patient_id: str, extension: str, data: bytes, name: str):
-    """Put a manually redacted file straight into its final directory."""
     directory = deid_dir_for(extension)
     directory.mkdir(parents=True, exist_ok=True)
 
@@ -245,14 +227,11 @@ async def upload_deidentified_file(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("files:upload")),
 ):
-    """Add a manually de-identified file, or replace an existing one."""
     patients_crud.get_patient_or_404(cursor, patient_id)
 
     raw_name = file.filename or "file"
     data = await _read_upload(file)
 
-    # After the read, not before: an extensionless DICOM is only
-    # recognisable from its bytes.
     extension = resolve_extension(raw_name, data[:SNIFF_BYTES])
     if not is_deidentifiable(extension):
         raise ValidationError(
@@ -328,8 +307,6 @@ async def upload_deidentified_file(
         )
         action = "CREATE"
 
-    # Into the file, not into `file_metadata` -- that row is for what the
-    # document arrived carrying. See app/embed.py.
     embed_metadata(
         stored,
         extension,
@@ -369,16 +346,11 @@ def delete_deidentified_file(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("files:delete")),
 ):
-    """Remove the redacted copy, keeping the original and the row."""
     record = crud.get_file_or_404(cursor, file_id)
     if not record.de_identified_file_path:
         raise NotFoundError(f"File '{file_id}' has no de-identified copy")
 
     remove_from_disk(record.de_identified_file_path)
-    # The rest of that run goes with it: the text and report describe a
-    # redaction whose output no longer exists, and the text in
-    # particular is the document's contents in the clear. Re-running
-    # de-identification writes all three again.
     remove_deid_artifacts(record.file_path)
 
     crud.update_file(

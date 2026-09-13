@@ -29,7 +29,6 @@ log = get_logger(__name__)
 
 
 def _origin_only(value: str) -> str:
-    """`https://host:port` out of whatever was pasted into the variable."""
     cleaned = value.strip()
     if not cleaned or cleaned == "*":
         return cleaned
@@ -41,14 +40,6 @@ def _origin_only(value: str) -> str:
 
 
 def _cors_origins() -> list[str]:
-    """Allowed browser origins.
-
-    An origin is scheme + host + port and nothing else, so
-    `https://example.org/` and `https://example.org/app` are both misses
-    -- and the browser then reports a CORS failure that looks exactly
-    like the server ignoring the setting. Trailing slashes and paths are
-    trimmed here rather than left to be found out that way.
-    """
     configured = os.environ.get("CORS_ORIGINS")
     if configured:
         return [
@@ -57,7 +48,6 @@ def _cors_origins() -> list[str]:
             if origin
         ]
 
-    # The Vite dev server, wherever it landed when 5173 was taken.
     return [
         f"http://{host}:{port}"
         for host in ("localhost", "127.0.0.1")
@@ -70,19 +60,12 @@ CORS_ORIGINS = _cors_origins()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Say at boot whether de-identification can actually be dispatched."""
-    # A browser will not say which origin it was refused for, and the
-    # failure looks identical to the API being down. Printing the list
-    # turns 'why the CORS error' into reading one line of the log.
     log.info(
         "cors_origins_allowed",
         origins=CORS_ORIGINS,
         configured=bool(os.environ.get("CORS_ORIGINS")),
     )
 
-    # Which engine is answering queries, said out loud. The difference is
-    # invisible from the outside until something is slow, and then it is
-    # the first thing worth knowing.
     log.info(
         "read_engine",
         engine=db.READ_ENGINE,
@@ -114,7 +97,6 @@ async def lifespan(_app: FastAPI):
     if deid.DEID_BACKEND == "cml_job":
         deid_queue.stop()
 
-    # Whatever is still buffered goes to Hive before the process exits.
     access_log.stop()
 
 
@@ -136,7 +118,6 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    # So the browser can read the correlation id off a response.
     expose_headers=["X-Request-ID"],
 )
 
@@ -175,5 +156,4 @@ app.include_router(access_log_router.router)
 
 @app.get("/health", tags=["meta"])
 def health():
-    """Liveness only -- deliberately does not touch Hive, so a slow metastore cannot make the app look dead to a health checker."""
     return {"status": "ok"}

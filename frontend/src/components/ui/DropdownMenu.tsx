@@ -19,35 +19,24 @@ export type MenuAction = {
   icon?: ReactNode
   onSelect: () => void
   disabled?: boolean
-  /** Shown instead of the label's normal styling for destructive items. */
+
   tone?: 'default' | 'danger'
   isLoading?: boolean
-  /** Explains a disabled item, which is otherwise a dead end. */
+
   title?: string
-  /** Starts a new group, separated by a rule. */
+
   separatorBefore?: boolean
 }
 
-/** Gap between the trigger and the menu, and from the viewport edge. */
 const OFFSET = 4
 const MARGIN = 8
 
-/** Below this, dropping downwards is not worth it -- flip instead. */
 const MIN_DROP_SPACE = 180
 
-/**
- * Where the menu goes, in viewport coordinates.
- *
- * Anchored to the trigger's rect rather than positioned by the normal
- * flow, because the menu is portalled to <body>: a table cell cannot
- * clip it and a sticky cell's stacking context cannot bury it.
- */
 function placementFor(rect: DOMRect, align: 'left' | 'right'): CSSProperties {
   const spaceBelow = window.innerHeight - rect.bottom - OFFSET - MARGIN
   const spaceAbove = rect.top - OFFSET - MARGIN
 
-  // Prefer downwards, but flip when the row is near the bottom of the
-  // window -- which is exactly where the last rows of a table are.
   const dropUp = spaceBelow < MIN_DROP_SPACE && spaceAbove > spaceBelow
 
   const horizontal: CSSProperties =
@@ -64,19 +53,6 @@ function placementFor(rect: DOMRect, align: 'left' | 'right'): CSSProperties {
   }
 }
 
-/**
- * A row's actions behind one button.
- *
- * The file table had six buttons per row, which is wider than the file
- * name it belongs to and turns a scan of the table into a scan of the
- * buttons. Everything still one click away, just not all at once.
- *
- * The menu renders in a portal. Inside the table it was clipped by the
- * wrapper's `overflow-x-auto` (a non-visible overflow on one axis clips
- * the other as well) and painted under the refetch overlay, because the
- * sticky actions cell it sat in creates its own stacking context. Neither
- * can reach it out here.
- */
 export function DropdownMenu({
   actions,
   label = 'Actions',
@@ -121,7 +97,7 @@ export function DropdownMenu({
 
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as Node
-      // The menu is portalled, so it is not inside the trigger's parent.
+
       if (triggerRef.current?.contains(target)) return
       if (menuRef.current?.contains(target)) return
       close()
@@ -146,8 +122,6 @@ export function DropdownMenu({
       })
     }
 
-    // Fixed coordinates go stale the moment anything scrolls. Capture,
-    // so a scroll inside the table body counts too.
     const onScroll = () => reposition()
 
     document.addEventListener('mousedown', onPointerDown)

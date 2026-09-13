@@ -1,4 +1,3 @@
-"""Whole-application actions, for the piles a per-row button cannot clear."""
 from conftest import minimal_patient
 
 
@@ -15,18 +14,11 @@ def _upload(client, application_id, name, data=b"%PDF-1.4 fake"):
 
 
 def _reviewable(client, application_id, name):
-    """An uploaded file with a redacted copy, so a verdict is allowed.
-
-    Approve-all skips anything not de-identified yet -- there is nothing
-    to review until the redacted copy exists. Tests about the approving
-    itself start past that.
-    """
     record = _upload(client, application_id, name)
     client.put(f"/files/{record['id']}", json={"is_deidentified": True})
     return record
 
 
-# ------------------------------------------------------------- approve all
 
 
 def test_approve_all_clears_the_undecided_pile(as_admin, storage_root):
@@ -49,8 +41,6 @@ def test_approve_all_clears_the_undecided_pile(as_admin, storage_root):
 
 
 def test_approve_all_does_not_overturn_a_rejection(as_admin, storage_root):
-    """A bulk approve clears what nobody has looked at. Reversing somebody
-    else's rejection is a decision, not a convenience."""
     application_id = _application(as_admin)
     keep = _reviewable(as_admin, application_id, "a.pdf")
     rejected = _reviewable(as_admin, application_id, "b.pdf")
@@ -98,7 +88,6 @@ def test_approve_all_on_an_empty_application(as_admin, storage_root):
     assert body == {"total": 0, "changed": 0, "skipped": 0, "reasons": {}}
 
 
-# ---------------------------------------------------------- de-identify all
 
 
 def test_deidentify_all_queues_every_eligible_file(as_admin, storage_root, monkeypatch):
@@ -162,7 +151,6 @@ def test_deidentify_all_does_not_restart_what_is_running(
     assert body["reasons"] == {"already running": 1}
 
 
-# ------------------------------------------------------------- permissions
 
 
 def test_bulk_actions_need_the_update_permission(client, as_admin, storage_root):
@@ -188,15 +176,8 @@ def test_bulk_actions_on_an_unknown_application_are_404(as_admin):
     )
 
 
-# ------------------------------------- nothing is reviewable before redaction
 
 def test_approve_all_skips_what_has_not_been_de_identified(as_admin, storage_root):
-    """A verdict is a verdict on the redacted copy.
-
-    Without this the bulk button would approve in one click exactly what
-    the per-file action refuses -- and an application could be signed off
-    with documents still carrying their identifiers.
-    """
     application_id = _application(as_admin)
     ready = _reviewable(as_admin, application_id, "done.pdf")
     _upload(as_admin, application_id, "waiting.pdf")
@@ -237,7 +218,6 @@ def test_a_file_cannot_be_approved_before_it_is_de_identified(
 def test_a_file_cannot_be_rejected_before_it_is_de_identified(
     as_admin, storage_root
 ):
-    """Rejecting is a verdict too, and there is still nothing to look at."""
     application_id = _application(as_admin)
     record = _upload(as_admin, application_id, "waiting.pdf")
 

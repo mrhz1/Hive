@@ -1,4 +1,3 @@
-"""Verify a redacted PDF by re-OCRing it and looking for known PII."""
 import argparse
 import logging
 import sys
@@ -56,7 +55,6 @@ def main() -> int:
 
     layer_text = "".join(doc[i].get_text() for i in range(doc.page_count))
 
-    # 2. What the pixels actually show now.
     engine = OcrEngine(config)
     ocr_text_parts = []
     for rendered in render_pages(doc, config.dpi):

@@ -31,7 +31,7 @@ export function FilePicker({
       input.removeAttribute('webkitdirectory')
       input.removeAttribute('directory')
     }
-    // Reset so re-picking the same folder still fires a change event.
+
     input.value = ''
     input.click()
   }
@@ -40,15 +40,11 @@ export function FilePicker({
     const picked = Array.from(input.files ?? [])
     if (picked.length === 0) return
 
-    // Set by openPicker just before the dialog opened, and still there
-    // now: which button was clicked, not a guess from the result.
     const isDirectory = input.hasAttribute('webkitdirectory')
     const { supported, unsupported } = await partitionBySupport(picked)
 
     if (isDirectory) {
-      // A folder can hold anything; only DICOM, PDF and Word belong in
-      // the batch, and flagging every unrelated file in it would be
-      // noise, not help.
+
       if (unsupported.length > 0 && supported.length > 0) {
         toast.warning(
           `Skipped ${unsupported.length} unsupported file${unsupported.length === 1 ? '' : 's'} -- only ${SUPPORTED_FORMATS_LABEL} documents are uploaded.`
@@ -62,8 +58,6 @@ export function FilePicker({
       return
     }
 
-    // Chosen by hand, not swept in with a folder: a file that does not
-    // belong here is a mistake worth stopping on, not skipping past.
     if (unsupported.length > 0) {
       const names = unsupported.map((file) => file.name)
       toast.error(

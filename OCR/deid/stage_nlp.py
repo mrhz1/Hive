@@ -1,4 +1,3 @@
-"""Stage 2: text in, redacted document out."""
 import json
 import logging
 import os
@@ -27,7 +26,6 @@ log = logging.getLogger(__name__)
 
 
 class Deidentifier:
-    """Holds the loaded analyzer."""
 
     def __init__(self, config: Config):
         self.config = config
@@ -43,12 +41,6 @@ class Deidentifier:
         return self._analyzer
 
     def redactor(self):
-        """A plain str -> str redaction, for metadata values.
-
-        The page pipeline needs each entity's offsets so it can map them
-        back to pixel boxes. A metadata field has no geometry -- there is
-        nothing to paint -- so it only needs the replaced text.
-        """
 
         def redact(text: str) -> str:
             return redact_text(text, analyze_text(self.analyzer, text, self.config))
@@ -62,7 +54,6 @@ class Deidentifier:
         output_text: Optional[str] = None,
         output_report: Optional[str] = None,
     ) -> DocumentResult:
-        """De-identify a Word document."""
         from deid.docx_io import open_docx, read_blocks, redact_document
 
         started = time.perf_counter()
@@ -348,17 +339,9 @@ class Deidentifier:
 
 
 def run_stage(jobs: List[Dict[str, Any]], config: Config) -> List[DocumentResult]:
-    """Process a batch."""
     deidentifier = Deidentifier(config)
     results: List[DocumentResult] = []
 
-    # One transition, not per-page: this stage took 15s of a 606s run,
-    # so there is nothing here worth a progress bar of its own. It marks
-    # the point where OCR is over and the redacted file is being written.
-    # Adopted, not fresh: stage 1 wrote the page counts and this is a
-    # different process, so starting clean would blank "58 of 64" the
-    # moment redaction began -- and that is the number a stalled run is
-    # diagnosed from.
     first = jobs[0] if jobs else {}
     progress = progress_writer(
         first.get("progress"), file_total=int(first.get("file_total") or len(jobs) or 1)

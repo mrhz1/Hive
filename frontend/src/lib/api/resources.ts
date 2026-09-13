@@ -76,13 +76,6 @@ async function request<T>(
   }
 }
 
-/**
- * A rendered preview plus the frame count the API reports alongside it.
- *
- * The caller owns the object URL and must revoke it -- these are images,
- * and a modal that opens a hundred frames without revoking leaks them
- * all until the tab closes.
- */
 async function fetchImagePreview(
   path: string,
   frame: number,
@@ -106,10 +99,6 @@ async function fetchImagePreview(
   }
 }
 
-/**
- * Errors from a responseType:'blob' request arrive as a Blob too, so the
- * API's message is in there rather than on the parsed body.
- */
 async function blobError(error: unknown): Promise<unknown> {
   if (axios.isAxiosError(error) && error.response?.data instanceof Blob) {
     try {
@@ -128,7 +117,6 @@ async function blobError(error: unknown): Promise<unknown> {
   return toApiError(error)
 }
 
-/** '' from a <select> means "no role"; the API wants null. */
 function toUserPayload(values: UserFormValues) {
   return { ...values, role_id: values.role_id === '' ? null : values.role_id }
 }
@@ -178,12 +166,11 @@ export type ApplicationPayload = {
   patient_id?: string
   status?: string
   description?: string | null
-  /** '' from the assignee <select> means "nobody"; the API wants null. */
+
   assigned_to_id?: string | null
   original_file_path?: string | null
 }
 
-/** Blank means "not set", which the API spells as null. */
 function toApplicationPayload(values: ApplicationPayload) {
   const payload: ApplicationPayload = { ...values }
   if ('assigned_to_id' in values) {
@@ -260,7 +247,6 @@ export const applicationFilesApi = {
       api.get(`/applications/${applicationId}/files`)
     ),
 
-  /** Uploads a whole folder's worth of files in one multipart request. */
   upload: (applicationId: string, files: File[], description?: string) => {
     const form = new FormData()
     for (const file of files) {
@@ -275,11 +261,6 @@ export const applicationFilesApi = {
     )
   },
 
-  /**
-   * The same batch, handed off rather than waited on: the response comes
-   * back once the bytes are staged, and the job says how the moving and
-   * recording went afterwards.
-   */
   uploadInBackground: (
     applicationId: string,
     files: File[],
@@ -301,11 +282,9 @@ export const applicationFilesApi = {
   uploadJob: (jobId: string) =>
     request(uploadJobSchema, () => api.get(`/upload-jobs/${jobId}`)),
 
-  /** One DICOM frame as a PNG, plus how many frames there are. */
   previewImage: (fileId: string, frame = 0, deidentified = false) =>
     fetchImagePreview(`/files/${fileId}/image`, frame, deidentified),
 
-  /** A Word document as text -- see app/preview.py for why not HTML. */
   previewText: (fileId: string, deidentified = false) =>
     request(wordPreviewSchema, () =>
       api.get(`/files/${fileId}/text`, {
@@ -324,11 +303,6 @@ export const applicationFilesApi = {
   deidentify: (fileId: string) =>
     request(applicationFileSchema, () => api.post(`/files/${fileId}/deidentify`)),
 
-  /**
-   * One request for the whole application. An application can hold
-   * thousands of documents, and the browser firing that many is both
-   * slow and a good way to have half of them rejected.
-   */
   deidentifyAll: (applicationId: string) =>
     request(bulkResultSchema, () =>
       api.post(`/applications/${applicationId}/files/deidentify-all`)
@@ -347,7 +321,6 @@ export const applicationFilesApi = {
       })
     ),
 
-  /** The original's stored metadata, or the redacted copy's, read live. */
   metadata: (fileId: string, deidentified = false) =>
     request(fileMetadataSchema, () =>
       api.get(`/files/${fileId}/metadata`, {
@@ -374,11 +347,6 @@ export const applicationFilesApi = {
     }
   },
 
-  /**
-   * A document that is already redacted, attached as it stands. There is
-   * no original behind it and nothing to run over it, so it arrives
-   * done -- see the endpoint in app/routers/patient_application_files.py.
-   */
   uploadDeidentified: (
     applicationId: string,
     file: File,
@@ -395,11 +363,6 @@ export const applicationFilesApi = {
     )
   },
 
-  /**
-   * The bytes. `download` is what separates the two events in the access
-   * log -- opening a document in the viewer is a read, and only the
-   * Download button takes a copy away, which needs `files:download`.
-   */
   fetchContent: async (
     fileId: string,
     deidentified = false,
@@ -425,7 +388,7 @@ export const applicationFilesApi = {
             parsed.error.detail
           )
         } catch (parseError) {
-          // Not the API envelope: fall through to the generic mapping.
+
           if (parseError instanceof ApiError) throw parseError
         }
       }
@@ -440,7 +403,6 @@ export const fileMetadataApi = {
       api.get('/file-metadata', { params: activeFilters(filters) })
     ),
 
-  /** The filtered table as a workbook -- same filters, same rows. */
   export: async (filters: FileMetadataFilters = {}): Promise<Blob> => {
     try {
       const response = await api.get('/file-metadata/export', {

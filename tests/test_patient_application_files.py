@@ -1,4 +1,3 @@
-"""Application document endpoints."""
 import io
 import pathlib
 import re
@@ -6,20 +5,15 @@ import re
 import pytest
 from conftest import ADMIN_USER, VIEWER_USER, minimal_patient
 
-# <patient id>-<time received>
 FOLDER = re.compile(r"^[A-Z0-9]{6}-\d{8}T\d{6}Z$")
-# <patient>-<type>-<date>-<serial>.<ext>. The date is in the name so a
-# directory listing can be read by eye.
 DOCUMENT = re.compile(r"^[A-Z0-9]{6}-[a-z0-9]+-\d{8}-\d{16}\.[a-z0-9]+$")
 
 
 def _application(client):
-    """A patient and an application for them -- files hang off the latter."""
     return _patient_and_application(client)[1]
 
 
 def _patient_and_application(client, **patient_overrides):
-    """Both ids, for the tests that care where a document lands on disk."""
     patient_id = client.post(
         "/patients", json=minimal_patient(**patient_overrides)
     ).json()["id"]
@@ -49,7 +43,6 @@ def test_upload_lands_under_the_patient(as_admin, storage_root):
     assert record["file_extension"] == "pdf"
     assert record["file_size"] == len(b"%PDF-1.4 fake")
 
-    # Fresh uploads are not de-identified, and must not claim to be.
     assert record["deid_status"] == "pending"
     assert record["is_deidentified"] is False
     assert record["de_identified_file_path"] is None
@@ -65,8 +58,6 @@ def test_upload_lands_under_the_patient(as_admin, storage_root):
 def test_document_type_comes_from_the_format(as_admin, storage_root):
     patient_id, application_id = _patient_and_application(as_admin)
 
-    # Content matched to the name: an extension is only believed when it
-    # names a format we handle, so a .txt full of PDF bytes is a PDF.
     for name, data, expected in (
         ("scan.pdf", b"%PDF-1.4 fake", "pdf"),
         ("study.dcm", b"%PDF-1.4 fake", "dicom"),
@@ -109,7 +100,6 @@ def test_one_batch_shares_one_folder(as_admin, storage_root):
 
 
 def test_upload_name_never_reaches_the_filesystem(as_admin, storage_root):
-    """An upload name is arbitrary and often identifying in itself, so the stored path is built entirely from ids."""
     _, application_id = _patient_and_application(as_admin)
 
     record = _upload(as_admin, application_id, name="Jane Doe referral.pdf").json()[0]
@@ -121,7 +111,6 @@ def test_upload_name_never_reaches_the_filesystem(as_admin, storage_root):
 
 
 def test_the_file_row_matches_the_cloudera_columns(as_admin, storage_root):
-    """Including the two spellings the metastore actually has: `deidentified_file_name` against `de_identified_file_path`."""
     application_id = _application(as_admin)
     record = _upload(as_admin, application_id).json()[0]
 
@@ -135,7 +124,6 @@ def test_the_file_row_matches_the_cloudera_columns(as_admin, storage_root):
 
 
 def test_a_folder_upload_sanitises_paths(as_admin, storage_root):
-    """webkitRelativePath sends 'sub/dir/x.pdf'; '../' must never be honoured against the storage root."""
     application_id = _application(as_admin)
 
     response = as_admin.post(
@@ -170,7 +158,6 @@ def test_listing_is_scoped_to_one_application(as_admin, storage_root):
 
 
 def test_files_for_an_unknown_application_are_a_404(as_admin):
-    """404 rather than an empty list, so a wrong id is distinguishable from an application with no documents."""
     assert as_admin.get("/applications/nope/files").status_code == 404
     assert _upload(as_admin, "nope").status_code == 404
 
@@ -215,8 +202,6 @@ def test_deleting_an_application_removes_its_documents(as_admin, storage_root):
 def test_a_patient_with_documents_two_levels_down_is_not_deleted(
     as_admin, storage_root
 ):
-    """patient -> applications -> files. The refusal at the top is what
-    keeps the bottom: nothing is removed, and the bytes stay on disk."""
     patient_id = as_admin.post("/patients", json=minimal_patient()).json()["id"]
     application_id = as_admin.post(
         "/applications", json={"patient_id": patient_id}
@@ -242,12 +227,6 @@ def test_deleting_one_file_removes_its_bytes(as_admin, storage_root):
 
 
 def _fake_deid_run(record) -> dict:
-    """The three files a de-identification run leaves on disk.
-
-    Written by hand rather than by running the pipeline: the OCR stack
-    is not installed in this suite, and what is being tested is what
-    happens to the outputs afterwards, not how they were produced.
-    """
     source = pathlib.Path(record["file_path"])
     output_dir = source.parent / "deidentified"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -265,11 +244,6 @@ def _fake_deid_run(record) -> dict:
 def test_deleting_a_file_takes_the_whole_de_identification_run_with_it(
     as_admin, storage_root
 ):
-    """The redacted document is one of three the pipeline writes. The
-    other two -- the text it read out of the file, and the report of
-    what it redacted -- are recorded nowhere, so deleting a document
-    used to leave the document's contents in the clear on disk with
-    nothing pointing at them."""
     application_id = _application(as_admin)
     record = _upload(as_admin, application_id).json()[0]
     produced = _fake_deid_run(record)
@@ -283,7 +257,6 @@ def test_deleting_a_file_takes_the_whole_de_identification_run_with_it(
 def test_deleting_a_file_leaves_another_document_s_outputs_alone(
     as_admin, storage_root
 ):
-    """A batch shares one output folder, so the sweep has to be by name."""
     application_id = _application(as_admin)
     uploaded = _upload(as_admin, application_id).json()[0]
     other = _upload(as_admin, application_id, name="second.pdf").json()[0]
@@ -321,7 +294,6 @@ def test_deleting_a_file_removes_its_metadata_row(as_admin, storage_root, store)
     assert store["file_metadata"] == []
 
 
-# ------------------------------------------------------ de-identification
 
 def test_deidentify_rejects_an_unsupported_format(as_admin, storage_root):
     application_id = _application(as_admin)
@@ -348,7 +320,6 @@ def test_deidentify_rejects_an_unsupported_format(as_admin, storage_root):
 def test_deidentify_accepts_every_supported_format(
     as_admin, storage_root, monkeypatch, name, mime
 ):
-    """PDF was the only format for a long time; DICOM and Word have to be accepted at the API boundary too, or the pipeline never sees them."""
     monkeypatch.setattr("app.deid.dispatch_deidentification", lambda **kwargs: None)
     application_id = _application(as_admin)
     record = as_admin.post(
@@ -362,7 +333,6 @@ def test_deidentify_accepts_every_supported_format(
 
 
 def test_deidentify_marks_the_row_processing(as_admin, storage_root, monkeypatch):
-    """The row is marked before the job starts, so the UI reflects it on the very next read."""
     monkeypatch.setattr(
         "app.routers.patient_application_files.dispatch_deidentification",
         lambda **kw: None,
@@ -379,7 +349,6 @@ def test_deidentify_marks_the_row_processing(as_admin, storage_root, monkeypatch
 def test_deidentify_marks_the_row_queued_on_the_job_backend(
     as_admin, storage_root, monkeypatch
 ):
-    """Under DEID_BACKEND=cml_job nothing is processing yet -- a Job run has only been asked for."""
     monkeypatch.setattr(
         "app.routers.patient_application_files.dispatch_deidentification",
         lambda **kw: None,
@@ -397,7 +366,6 @@ def test_deidentify_marks_the_row_queued_on_the_job_backend(
 def test_deidentify_rejects_a_file_already_in_flight(
     as_admin, storage_root, monkeypatch
 ):
-    """A second click must not start a second run."""
     monkeypatch.setattr(
         "app.routers.patient_application_files.dispatch_deidentification",
         lambda **kw: None,
@@ -414,7 +382,6 @@ def test_deidentify_rejects_a_file_already_in_flight(
     assert "already queued" in second.json()["error"]["detail"]
 
 
-# -------------------------------------------------------------- metadata
 
 def _pdf_with_metadata() -> bytes:
     from pypdf import PdfWriter
@@ -515,7 +482,6 @@ def test_dicom_metadata_is_extracted_on_upload(as_admin, storage_root):
 def test_an_unreadable_document_records_why_rather_than_failing_the_upload(
     as_admin, storage_root
 ):
-    """The bytes are already on disk by the time extraction runs -- a malformed PDF is a missing panel, not a lost document."""
     application_id = _application(as_admin)
     response = _upload(as_admin, application_id, data=b"not really a pdf")
 
@@ -527,7 +493,6 @@ def test_an_unreadable_document_records_why_rather_than_failing_the_upload(
 
 
 def test_a_format_we_do_not_read_is_recorded_unsupported(as_admin, storage_root):
-    """A row still exists, so the UI can tell "nothing to show" apart from "never looked"."""
     application_id = _application(as_admin)
     record = as_admin.post(
         f"/applications/{application_id}/files",
@@ -540,7 +505,6 @@ def test_a_format_we_do_not_read_is_recorded_unsupported(as_admin, storage_root)
 
 
 def test_metadata_is_stored_as_a_json_string(as_admin, storage_root, store):
-    """ORC has no JSON type -- the column is a STRING, the same convention audit_logs uses."""
     import json
 
     application_id = _application(as_admin)
@@ -555,10 +519,8 @@ def test_metadata_for_an_unknown_file_is_a_404(as_admin):
     assert as_admin.get("/files/nope/metadata").status_code == 404
 
 
-# ----------------------------------------------------------- permissions
 
 def test_empty_uploads_are_skipped_not_fatal(as_admin, storage_root):
-    """Picking a folder can yield directory entries and hidden files."""
     application_id = _application(as_admin)
 
     response = as_admin.post(
@@ -573,7 +535,6 @@ def test_empty_uploads_are_skipped_not_fatal(as_admin, storage_root):
 
 
 def test_file_access_uses_the_application_permissions(client, storage_root):
-    """These documents are part of a submission, so anyone who may read an application may read them -- and changing them is application:update."""
     admin = {"REMOTE-USER": ADMIN_USER}
     patient_id = client.post(
         "/patients", json=minimal_patient(), headers=admin
@@ -584,11 +545,9 @@ def test_file_access_uses_the_application_permissions(client, storage_root):
     record = _upload(client, application_id, headers=admin).json()[0]
 
     client.headers.update({"REMOTE-USER": VIEWER_USER})
-    # application:view covers reading documents and their metadata...
     assert client.get(f"/applications/{application_id}/files").status_code == 200
     assert client.get(f"/files/{record['id']}").status_code == 200
     assert client.get(f"/files/{record['id']}/metadata").status_code == 200
-    # ...but changing them needs application:update.
     assert _upload(client, application_id).status_code == 403
     assert client.delete(f"/files/{record['id']}").status_code == 403
     assert client.post(f"/files/{record['id']}/deidentify").status_code == 403
@@ -605,12 +564,6 @@ def test_a_file_starts_undecided(as_admin, storage_root):
 
 
 def _reviewable(client, application_id, name="scan.pdf"):
-    """An uploaded file with a redacted copy, so it can be reviewed.
-
-    A verdict is a verdict on the redacted copy, so the endpoint refuses
-    one until de-identification has produced it -- these tests are about
-    the verdict, not about that rule.
-    """
     record = _upload(client, application_id, name=name).json()[0]
     client.put(f"/files/{record['id']}", json={"is_deidentified": True})
     return record
@@ -643,7 +596,6 @@ def test_rejecting_a_file_keeps_the_reason(as_admin, storage_root):
 
 
 def test_rejecting_without_a_reason_is_refused(as_admin, storage_root):
-    """'Rejected' with no reason gives whoever has to fix it nothing."""
     application_id = _application(as_admin)
     record = _reviewable(as_admin, application_id)
 
@@ -690,12 +642,10 @@ def test_review_needs_application_update(client, storage_root):
     assert response.status_code == 403
 
 
-# ------------------------------------------- uploading an already-redacted file
 
 def _upload_deidentified(
     client, application_id, name="clean.pdf", data=None, **kwargs
 ):
-    # `is None`, not `or`: b'' is a case one of these tests is about.
     content = _pdf_with_metadata() if data is None else data
     return client.post(
         f"/applications/{application_id}/files/deidentified",
@@ -704,13 +654,10 @@ def _upload_deidentified(
     )
 
 
-# <patient>-<type>-<date>-<serial>_deid.<ext>, as the pipeline names its own.
 REDACTED_DOCUMENT = re.compile(r"^[A-Z0-9]{6}-[a-z0-9]+-\d{8}-\d{16}_deid\.[a-z0-9]+$")
 
 
 def test_an_uploaded_redacted_file_arrives_finished(as_admin, storage_root):
-    """Nothing is left to run over it, so it must not sit in 'pending'
-    waiting for a pass that would only redact what is already redacted."""
     patient_id, application_id = _patient_and_application(as_admin)
 
     response = _upload_deidentified(as_admin, application_id)
@@ -731,7 +678,6 @@ def test_an_uploaded_redacted_file_is_named_like_a_produced_one(as_admin, storag
 
     assert REDACTED_DOCUMENT.match(name), name
     assert name.startswith(f"{patient_id}-")
-    # The name it was uploaded under is kept, but only as the label.
     assert record["original_file_name"] == "clean.pdf"
     assert record["sanitized_file_name"] == name
 
@@ -765,11 +711,8 @@ def test_an_empty_redacted_upload_is_refused(as_admin, storage_root):
     assert response.status_code == 422
 
 
-# --------------------------------------- the redacted copy's own metadata
 
 def test_the_redacted_copy_has_its_metadata_read_on_demand(as_admin, storage_root):
-    """Read from the file each time rather than stored: the point of
-    looking is to check what the redaction actually left behind."""
     _, application_id = _patient_and_application(as_admin)
     record = _upload_deidentified(as_admin, application_id).json()
 
@@ -807,6 +750,4 @@ def test_the_original_and_the_redacted_copy_report_different_metadata(
     original = as_admin.get(f"/files/{record['id']}/metadata").json()
 
     assert original["metadata"]["title"] == "Discharge Summary"
-    # The stored row is the original's, and asking for it must not have
-    # been quietly answered from the file on disk.
     assert original["id"] != f"{record['id']}:deid"

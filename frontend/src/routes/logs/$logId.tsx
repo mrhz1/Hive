@@ -8,7 +8,6 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useAuditLog } from '@/hooks/useResources'
 import { ApiError } from '@/lib/api/client'
 
-/** Renders old_values/new_values, which arrive as arbitrary JSON objects. */
 function ValueBlock({
   title,
   values,

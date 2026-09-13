@@ -1,9 +1,3 @@
-"""Who gets told what, when a background upload finishes or falls over.
-
-Kept apart from app/mailer.py on purpose: that module knows how to talk
-to an SMTP relay and nothing about this application; this one knows the
-domain and nothing about sockets.
-"""
 import os
 from typing import List, Optional, Sequence
 
@@ -11,26 +5,16 @@ from app.crud import patient_applications as applications_crud
 from app.crud import users as users_crud
 from app.logging_setup import get_logger
 from app.mailer import send_email
-from app.schemas import UploadJob, User
+from app.schemas import DeidBatchSummary, UploadJob, User
 
 log = get_logger(__name__)
 
 
 def application_link(application_id: str) -> Optional[str]:
-    """A link straight to the application, when the dashboard's address is known.
-
-    An id alone means finding the application by hand: open the
-    dashboard, go to the list, search for eight characters of a uuid.
-    APP_BASE_URL is what turns it into one click. Unset -- a laptop, or
-    a deployment nobody has told where it lives -- and the email falls
-    back to naming the id, which is what it did before.
-    """
     base = (os.environ.get("APP_BASE_URL") or "").strip().rstrip("/")
     if not application_id:
         return None
     if not base:
-        # Warned, not passed over: an email without the link is the
-        # symptom, and this is the only place that says why.
         log.warning(
             "application_link_unavailable",
             application_id=application_id,
@@ -41,12 +25,6 @@ def application_link(application_id: str) -> Optional[str]:
 
 
 def _link_lines(application_id: str) -> List[str]:
-    """The one line worth reading in any of these emails.
-
-    The wizard's address, not the id: the id leaves the reader to open
-    the dashboard, find the list and search for eight characters of a
-    uuid, which is the errand this is here to save them.
-    """
     link = application_link(application_id)
     if link:
         return [f"Open the application: {link}"]
@@ -59,7 +37,6 @@ def _display_name(user: User) -> str:
 
 
 def assignee_for_application(cursor, application_id: str) -> Optional[User]:
-    """The user an application is assigned to, if it is assigned to anyone."""
     application = applications_crud.get_application(cursor, application_id)
     assigned_to = getattr(application, "assigned_to_id", None)
     if not assigned_to:
@@ -68,21 +45,11 @@ def assignee_for_application(cursor, application_id: str) -> Optional[User]:
 
 
 def source_folder_for(cursor, application_id: str) -> Optional[str]:
-    """Where the documents were uploaded *from*, as the sender knows it.
-
-    The application's own folder -- the path chosen or typed in the
-    wizard, on somebody's machine or a network share. Not where the
-    files ended up on the platform: that is an internal path under
-    /home/cdsw, which answers a question nobody reading the email is
-    asking. What they want is the folder they sent, so they can go back
-    to it.
-    """
     application = applications_crud.get_application(cursor, application_id)
     return getattr(application, "original_file_path", None)
 
 
 def creator_of_application(cursor, application_id: str) -> Optional[User]:
-    """Whoever filed the application, if they are still on file."""
     application = applications_crud.get_application(cursor, application_id)
     created_by = getattr(application, "created_by_id", None)
     if not created_by:
@@ -93,15 +60,6 @@ def creator_of_application(cursor, application_id: str) -> Optional[User]:
 def upload_recipients(
     cursor, application_id: str, fallback_user_id: Optional[str] = None
 ) -> List[User]:
-    """Who to tell about an upload on this application.
-
-    The assigned user is the intended audience. With nobody assigned the
-    application's creator is told instead: they are the one waiting on
-    these documents, whereas the uploader may be a colleague who moved
-    the folder on their behalf and has nothing to do next. The uploader
-    is the last resort, because a batch that failed silently is worse
-    than one email to the wrong-ish inbox.
-    """
     assignee = assignee_for_application(cursor, application_id)
     if assignee is not None:
         return [assignee]
@@ -132,12 +90,6 @@ def upload_recipients(
 
 
 def notify_assigned(assignee: User, application_id: str, assigned_by: User) -> bool:
-    """Tell somebody an application is now theirs.
-
-    Assignment was silent before: the application appeared in a list the
-    assignee had no reason to reload. The link is the whole point of the
-    message -- an id would leave them to go and find it.
-    """
     if not assignee or not assignee.email:
         log.info("assignment_notice_no_recipient", application_id=application_id)
         return False
@@ -154,15 +106,22 @@ def notify_assigned(assignee: User, application_id: str, assigned_by: User) -> b
     return _send([assignee], "An application has been assigned to you", "\n".join(lines))
 
 
+def _name_lines(names: Sequence[str], limit: int = 20) -> List[str]:
+    lines = [f"  - {name}" for name in names[:limit]]
+    if len(names) > limit:
+        lines.append(f"  ... and {len(names) - limit} more")
+    return lines
+
+
 def _file_lines(job: UploadJob, status: str, limit: int = 20) -> List[str]:
     entries = [f for f in job.files if f.status == status]
-    lines = [
-        f"  - {entry.name}" + (f" ({entry.error})" if entry.error else "")
-        for entry in entries[:limit]
-    ]
-    if len(entries) > limit:
-        lines.append(f"  ... and {len(entries) - limit} more")
-    return lines
+    return _name_lines(
+        [
+            f"{entry.name}" + (f" ({entry.error})" if entry.error else "")
+            for entry in entries
+        ],
+        limit,
+    )
 
 
 def _body(
@@ -178,9 +137,6 @@ def _body(
     lines.append(f"Stored: {job.stored}")
     lines.append(f"Failed: {job.failed}")
 
-    # The folder they sent, not the one the platform put them in. The
-    # latter is an internal path under /home/cdsw that answers a question
-    # nobody is asking; this one they can go back to.
     if source_folder:
         lines.append(f"Uploaded from: {source_folder}")
 
@@ -208,7 +164,6 @@ def notify_upload_finished(
     job: UploadJob,
     source_folder: Optional[str] = None,
 ) -> bool:
-    """Success, or success-with-casualties. Both are worth an email."""
     if not recipients:
         return False
 
@@ -239,7 +194,6 @@ def notify_upload_failed(
     job: UploadJob,
     source_folder: Optional[str] = None,
 ) -> bool:
-    """The batch never got off the ground, or every file in it failed."""
     if not recipients:
         return False
 
@@ -253,3 +207,60 @@ def notify_upload_failed(
     return _send(
         recipients, subject, _body(job, greeting, headline, source_folder)
     )
+
+
+def notify_deid_finished(
+    recipients: Sequence[User],
+    summary: DeidBatchSummary,
+    source_folder: Optional[str] = None,
+) -> bool:
+    if not recipients:
+        return False
+
+    greeting = f"Hello {_display_name(recipients[0])},"
+
+    if summary.failed and not summary.deidentified:
+        subject = (
+            f"De-identification failed -- application {summary.application_id[:8]}"
+        )
+        headline = (
+            f"None of the {summary.total} document(s) could be de-identified. "
+            "The originals are untouched; the run needs to be retried."
+        )
+    elif summary.failed:
+        subject = (
+            f"De-identification partly failed -- {summary.failed} of "
+            f"{summary.total} files"
+        )
+        headline = (
+            f"{summary.deidentified} of {summary.total} document(s) were "
+            f"de-identified; {summary.failed} could not be."
+        )
+    else:
+        subject = (
+            f"De-identification complete -- {summary.deidentified} file(s) ready"
+        )
+        headline = (
+            f"All {summary.deidentified} document(s) have been de-identified "
+            "and are ready for review."
+        )
+
+    lines = [greeting, "", headline, ""]
+    lines += _link_lines(summary.application_id)
+    lines.append("")
+    lines.append(f"Documents de-identified: {summary.deidentified}")
+    lines.append(f"Failed: {summary.failed}")
+
+    if source_folder:
+        lines.append(f"Uploaded from: {source_folder}")
+
+    failed = _name_lines(summary.failed_names)
+    if failed:
+        lines += ["", "These documents were not de-identified:"] + failed
+
+    ready = _name_lines(summary.deidentified_names)
+    if ready:
+        lines += ["", "De-identified:"] + ready
+
+    lines += ["", "-- Hive"]
+    return _send(recipients, subject, "\n".join(lines))

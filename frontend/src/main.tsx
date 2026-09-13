@@ -31,9 +31,7 @@ createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
-      {/* richColors gives success/error distinct styling; closeButton so a
-          stuck error toast can be dismissed. Bottom-right keeps toasts
-          clear of the header and the page title. */}
+      {}
       <Toaster position="bottom-right" richColors closeButton />
     </QueryClientProvider>
   </StrictMode>

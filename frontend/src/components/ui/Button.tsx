@@ -6,7 +6,7 @@ import { Spinner } from './Spinner'
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> &
   VariantProps<typeof buttonVariants> & {
-    /** Shows a spinner and blocks interaction while a request is in flight. */
+
     isLoading?: boolean
     leadingIcon?: ReactNode
   }

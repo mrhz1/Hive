@@ -7,16 +7,6 @@ import {
   type FileTally,
 } from '@/schemas/applicationFile'
 
-/**
- * One line answering "is this batch finished?".
- *
- * An application can hold a thousand documents. At that size the table
- * itself answers nothing -- a single file that failed six hours ago sits
- * on page 40 and nobody finds it by scrolling. These are the counts you
- * would otherwise have to derive by eye, and the two headline claims
- * ("all redacted", "all reviewed") are stated outright rather than left
- * for the reader to work out from them.
- */
 export function FileTallyBar({ tally }: { tally: FileTally }) {
   if (tally.total === 0) return null
 
@@ -33,9 +23,7 @@ export function FileTallyBar({ tally }: { tally: FileTally }) {
 
       <Divider />
 
-      {/* De-identification. The headline is the redacted count; the rest
-          only appear when there is something to act on, so a finished
-          application reads as one clean line. */}
+      {}
       <Stat
         icon={
           allRedacted ? (
@@ -112,8 +100,6 @@ export function FileTallyBar({ tally }: { tally: FileTally }) {
   )
 }
 
-// Defined in both themes (src/styles.css), so these read correctly in
-// light and dark without a fallback.
 const TONES = {
   default: 'text-[rgb(var(--foreground))]',
   success: 'text-[rgb(var(--success-foreground))]',

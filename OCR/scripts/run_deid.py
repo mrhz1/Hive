@@ -1,4 +1,3 @@
-"""Job entrypoint: de-identify one PDF, a list of PDFs, or a directory."""
 import argparse
 import json
 import logging
@@ -7,7 +6,6 @@ import sys
 from pathlib import Path
 from typing import List
 
-# Allow running as `python scripts/run_deid.py` from the OCR directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from deid.pipeline import (  # noqa: E402
@@ -27,13 +25,11 @@ def configure_logging(level: str) -> None:
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
-        # stderr, so the summary on stdout stays machine-readable.
         stream=sys.stderr,
     )
 
 
 def collect_inputs(raw_inputs: List[str], recursive: bool) -> List[Path]:
-    """Every supported document under the given paths, in order."""
     found: List[Path] = []
     for raw in raw_inputs:
         path = Path(raw).expanduser()
@@ -51,7 +47,6 @@ def collect_inputs(raw_inputs: List[str], recursive: bool) -> List[Path]:
                 )
         else:
             logging.warning("input not found, skipping: %s", path)
-    # Deduplicate while preserving order.
     seen, unique = set(), []
     for p in sorted(found):
         rp = p.resolve()
@@ -164,7 +159,6 @@ def main(argv=None) -> int:
         progress_path=args.progress_file,
     )
 
-    # Printed as JSON so the calling job/service can parse it from stdout.
     print(json.dumps(summarise(results), indent=2))
     return exit_code(results)
 

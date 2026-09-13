@@ -1,4 +1,3 @@
-"""Cloudera AI job entrypoint: drain the de-identification queue."""
 import argparse
 import os
 import sys
@@ -6,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 def _repo_root():
-    """Locate the repo root without assuming how we were started."""
     candidates = []
     here = globals().get("__file__")
     if here:
@@ -60,7 +58,6 @@ CLAIMABLE = ("queued", "pending")
 
 
 def _under_ipython_kernel() -> bool:
-    """Whether sys.argv belongs to a Jupyter kernel rather than to us."""
     prog = Path(sys.argv[0]).name if sys.argv else ""
     if prog.startswith("ipykernel_launcher"):
         return True
@@ -73,7 +70,6 @@ def _under_ipython_kernel() -> bool:
 
 
 def _cli_argv():
-    """Args for argparse: the real ones, or none at all under a kernel."""
     if _under_ipython_kernel():
         return []
     return sys.argv[1:]
@@ -125,7 +121,6 @@ def _is_stale(created_at, minutes: int) -> bool:
 
 
 def collect_pending(limit: int, retry_stale_minutes: int):
-    """Files awaiting de-identification, most-wanted first."""
     with hive_cursor() as cursor:
         every = crud.list_files(cursor)
 
@@ -151,7 +146,6 @@ def collect_pending(limit: int, retry_stale_minutes: int):
 
 
 def collect_one(file_id: str):
-    """The single file a triggered run was started for."""
     with hive_cursor() as cursor:
         record = crud.get_file(cursor, file_id)
 
@@ -164,7 +158,6 @@ def collect_one(file_id: str):
 def process(record) -> bool:
     run_deidentification(record.id)
 
-    # run_deidentification never raises; re-read to see what it did.
     with hive_cursor() as cursor:
         after = crud.get_file(cursor, record.id)
 

@@ -7,7 +7,7 @@ import { roleFormSchema } from '@/schemas/role'
 
 describe('permissions', () => {
   it('enumerates exactly the 24 grants the API recognises', () => {
-    // Five CRUD models × four actions, plus the four files:* grants.
+
     expect(ALL_PERMISSIONS).toHaveLength(24)
     expect(ALL_PERMISSIONS).toContain('user:view')
     expect(ALL_PERMISSIONS).toContain('log:delete')
@@ -20,7 +20,7 @@ describe('permissions', () => {
   })
 
   it('does not leak the files actions onto the CRUD models', () => {
-    // A cross-product would put 'user:download' in the role editor.
+
     expect(ALL_PERMISSIONS).not.toContain('user:download')
     expect(ALL_PERMISSIONS).not.toContain('role:upload')
     expect(ALL_PERMISSIONS).not.toContain('files:view')
@@ -96,9 +96,7 @@ describe('patientFormSchema', () => {
   })
 
   it('does not require an original file path', () => {
-    // The form no longer asks for it: a patient is created before
-    // anything has been uploaded for them, and the path is recorded
-    // from where the documents actually land in wizard step 2.
+
     expect(
       patientFormSchema.safeParse({ ...valid, original_file_path: '' }).success
     ).toBe(true)
@@ -128,7 +126,7 @@ describe('patientFormSchema', () => {
     })
 
     expect(result.success).toBe(false)
-    // Reported against an input, not floating above the form.
+
     expect(result.error?.issues.map((i) => i.path.join('.'))).toContain('fstname')
   })
 
