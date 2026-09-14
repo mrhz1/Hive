@@ -220,6 +220,35 @@ A file that is neither recognised nor named keeps whatever its name
 claimed — an unknown format stays unknown rather than being guessed into
 the wrong pipeline.
 
+### Document names
+
+An uploaded document is stored as
+`<patient code>-<type>-<date>-<16-digit serial>.<ext>` --
+`app/storage.py::document_name`, with the serial from `app/ids.py`
+(milliseconds plus a per-millisecond sequence, so it is unique and sorts
+by arrival).
+
+A **de-identified** copy follows the same scheme with `_deid` before the
+extension:
+`<patient code>-<type>-<de-id date>-<16-digit serial>_deid.<ext>`. The
+date and the serial are the *redaction run's* own, not the original
+upload's -- `app/deid.py::deid_output_name`. Reading the name tells you
+when the redacted copy was made, and a re-run is plainly a new document
+rather than the old one wearing the same name.
+
+The OCR pipeline cannot know that name: it writes its three outputs (the
+copy, the extracted text, the report) named after the file it read. So
+`_rename_run_outputs` renames the set once the run succeeds -- all three
+together, because `deid_artifacts` finds them by their shared stem. That
+is also why cleanup now passes the recorded `deidentified_file_name` in:
+the source-derived prefix no longer matches it, though that prefix is
+still tried, for rows written before this and for a run that died before
+it could record anything.
+
+Both manual paths -- the wizard's *attach a de-identified document* and a
+`/files-library` upload -- call the same `deid_output_name`, so every
+redacted file in the system reads the same way.
+
 ### Email
 
 `app/mailer.py` talks to an SMTP relay -- plain, port 25, no credentials,

@@ -343,8 +343,6 @@ export function ApplicationWizard({
                 submitLabel={patient ? 'Save and continue' : 'Create and continue'}
                 onBeforeSubmit={stepOneIsComplete}
                 onSaved={onPatientSaved}
-
-                showFilePath={false}
                 readOnly={locked}
               />
             </>

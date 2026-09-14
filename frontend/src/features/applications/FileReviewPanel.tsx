@@ -22,7 +22,6 @@ import { DropdownMenu, type MenuAction } from '@/components/ui/DropdownMenu'
 import { DeidentifiedAttach } from '@/features/applications/DeidentifiedAttach'
 import { FileMetadataModal } from '@/features/applications/FileMetadataModal'
 import { FileViewerModal } from '@/features/patients/FileViewerModal'
-import { FolderUpload } from '@/features/patients/FolderUpload'
 import {
   useApplicationFiles,
   useApproveAllFiles,
@@ -347,16 +346,6 @@ export function FileReviewPanel({
         </Card>
       ) : (
         <>
-          <FolderUpload
-            isUploading={upload.isSending}
-            onUpload={async (files, description) => {
-              await upload.start({
-                files,
-                ...(description ? { description } : {}),
-              })
-            }}
-          />
-
           <DeidentifiedAttach applicationId={applicationId} />
 
           {upload.job ? (
@@ -422,7 +411,7 @@ export function FileReviewPanel({
             ? `No document matches "${search.trim()}".`
             : readOnly
               ? 'No documents were attached to this application.'
-              : 'No documents yet. Choose a folder above to add them.'
+              : "No documents yet. Pick this application's source folder in step 1 to add them."
         }
         rowActions={(file) => (
           <DropdownMenu

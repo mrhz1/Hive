@@ -13,8 +13,8 @@ from app.crud import patient_application_files as crud
 from app.crud import patient_applications as applications_crud
 from app.db import get_cursor
 from app.deid import (
-    DEID_SUFFIX,
     DEIDENTIFIABLE_LABEL,
+    deid_output_name,
     dispatch_deidentification,
     is_deidentifiable,
     queued_status,
@@ -25,7 +25,6 @@ from app.errors import NotFoundError, ValidationError
 from app.access_log import DOWNLOAD, EXPORT, READ, record_access
 from app.file_metadata import extract as extract_metadata
 from app.filetype import SNIFF_BYTES, resolve_extension
-from app.ids import new_document_serial
 from app.logging_setup import get_logger
 from app.preview import read_word_document, render_dicom_png
 from app.schemas import (
@@ -47,8 +46,6 @@ from app.xlsx import workbook_bytes
 from app.storage import (
     deid_dir_for,
     delete_file as remove_from_disk,
-    document_name,
-    document_type_for,
     file_extension,
     guess_mime_type,
     prune_stored_folders,
@@ -222,13 +219,6 @@ async def upload_application_files_in_background(
     return uploads.get_job(job.id)
 
 
-def _redacted_upload_name(patient_id: str, extension: str) -> str:
-    stem = document_name(
-        patient_id or "unknown", document_type_for(extension), new_document_serial(), ""
-    )
-    return f"{stem}{DEID_SUFFIX}.{extension.lower()}"
-
-
 @router.post(
     "/applications/{application_id}/files/deidentified",
     response_model=PatientApplicationFile,
@@ -259,7 +249,7 @@ async def upload_deidentified_application_file(
         )
 
     patient_id = _known_patient_id(cursor, application) or ""
-    stored_name = _redacted_upload_name(patient_id, extension)
+    stored_name = deid_output_name(patient_id, extension)
 
     directory = deid_dir_for(extension)
     if patient_id:
@@ -810,7 +800,7 @@ def delete_application_file(
     record = crud.delete_file(cursor, file_id)
     metadata_crud.delete_metadata_for_files(cursor, [file_id])
 
-    remove_deid_artifacts(record.file_path)
+    remove_deid_artifacts(record.file_path, record.deidentified_file_name or "")
 
     remove_from_disk(record.file_path)
     if record.de_identified_file_path:
