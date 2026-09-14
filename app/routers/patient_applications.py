@@ -255,7 +255,7 @@ def delete_application(
     metadata_crud.delete_metadata_for_files(cursor, [f.id for f in orphaned])
 
     for record in orphaned:
-        remove_deid_artifacts(record.file_path)
+        remove_deid_artifacts(record.file_path, record.deidentified_file_name or "")
         remove_from_disk(record.file_path)
         if record.de_identified_file_path:
             remove_from_disk(record.de_identified_file_path)

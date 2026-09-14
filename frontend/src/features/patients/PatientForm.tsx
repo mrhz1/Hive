@@ -2,7 +2,6 @@ import { useNavigate } from '@tanstack/react-router'
 import { type ReactNode } from 'react'
 import { FormLayout, FullWidth } from '@/components/FormLayout'
 import { TextField } from '@/components/ui/Field'
-import { FolderPathField } from '@/features/patients/FolderPathField'
 import { applyServerErrors, useApiForm } from '@/hooks/useApiForm'
 import { patientHooks } from '@/hooks/useResources'
 import {
@@ -36,7 +35,6 @@ export function PatientForm({
   onBeforeSubmit,
   cancelTo = '/patients',
   submitLabel,
-  showFilePath = true,
   readOnly = false,
 }: {
   patient?: Patient
@@ -45,8 +43,6 @@ export function PatientForm({
   onBeforeSubmit?: () => boolean
   cancelTo?: string
   submitLabel?: string
-
-  showFilePath?: boolean
 
   readOnly?: boolean
 }) {
@@ -64,8 +60,6 @@ export function PatientForm({
     register,
     handleSubmit,
     setError,
-    setValue,
-    watch,
     formState: { errors },
   } = form
 
@@ -107,7 +101,7 @@ export function PatientForm({
           ? `${patient ? patientName(patient) : 'This patient'}'s details, as they stand. They cannot be changed from here.`
           : patient
             ? `Editing ${patientName(patient)}`
-            : 'An original file path and at least one of first name, last name or email are required. The patient email and phone must be unique.'
+            : 'At least one of first name, last name or email is required. The patient email and phone must be unique.'
       }
     >
       <Section
@@ -277,25 +271,6 @@ export function PatientForm({
         error={errors.dt_reg?.message}
         {...register('dt_reg')}
       />
-
-      {showFilePath ? (
-        <FullWidth>
-          <FolderPathField
-            label="Source folder"
-            value={watch('original_file_path') ?? ''}
-            files={[]}
-            disabled={isSubmitting}
-            onSelect={(path) =>
-              setValue('original_file_path', path, { shouldDirty: true })
-            }
-            onPathChange={(path) =>
-              setValue('original_file_path', path, { shouldDirty: true })
-            }
-            error={errors.original_file_path?.message}
-            hint="Optional. Where this patient's documents usually come from -- an application picks its own folder, which may be a different one."
-          />
-        </FullWidth>
-      ) : null}
     </FormLayout>
   )
 }

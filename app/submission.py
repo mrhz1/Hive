@@ -99,7 +99,7 @@ def _discard_original(record, final: Path) -> None:
         log.info("submission_original_is_the_output", file_id=record.id)
         return
 
-    remove_deid_artifacts(record.file_path)
+    remove_deid_artifacts(record.file_path, record.deidentified_file_name or "")
 
     try:
         remove_from_disk(record.file_path)

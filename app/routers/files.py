@@ -20,6 +20,7 @@ from app.crud import patients as patients_crud
 from app.db import get_cursor
 from app.deid import (
     DEIDENTIFIABLE_LABEL,
+    deid_output_name,
     is_deidentifiable,
     remove_deid_artifacts,
 )
@@ -38,11 +39,9 @@ from app.security import require_permission
 from app.storage import (
     deid_dir_for,
     delete_file as remove_from_disk,
-    document_name,
     guess_mime_type,
     resolve_stored_path,
 )
-from app.ids import new_document_serial
 
 log = get_logger(__name__)
 
@@ -253,7 +252,7 @@ async def upload_deidentified_file(
             patient_id,
             extension,
             data,
-            record.deidentified_file_name or f"{record.id}_deid.{extension}",
+            record.deidentified_file_name or deid_output_name(patient_id, extension),
         )
 
         updated = crud.update_file(
@@ -280,8 +279,7 @@ async def upload_deidentified_file(
                 "This patient has no application to attach the file to"
             )
 
-        serial = new_document_serial()
-        name = document_name(patient_id, "deid", serial, extension)
+        name = deid_output_name(patient_id, extension)
         stored = _write_redacted(patient_id, extension, data, name)
 
         result = crud.create_file(
@@ -351,7 +349,7 @@ def delete_deidentified_file(
         raise NotFoundError(f"File '{file_id}' has no de-identified copy")
 
     remove_from_disk(record.de_identified_file_path)
-    remove_deid_artifacts(record.file_path)
+    remove_deid_artifacts(record.file_path, record.deidentified_file_name or "")
 
     crud.update_file(
         cursor,

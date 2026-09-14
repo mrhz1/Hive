@@ -14,10 +14,13 @@ from app.crud import patient_application_files as crud
 from app.crud import patient_applications as applications_crud
 from app.db import hive_cursor
 from app.embed import embed_metadata, generated_facts
+from app.ids import new_document_serial
 from app.logging_setup import get_logger
 from app.schemas import PatientApplicationFileUpdate
 from app.storage import (
     delete_file as remove_from_disk,
+    document_name,
+    document_type_for,
     prune_empty_dirs,
     resolve_stored_path,
 )
@@ -58,6 +61,43 @@ def deid_output_extension(extension: str) -> str:
     return DEID_OUTPUT_EXTENSIONS.get((extension or "").lower(), ".pdf")
 
 
+NAME_ATTEMPTS = 5
+
+
+def deid_output_stem(patient_id: str, extension: str) -> str:
+    """`<patient code>-<type>-<date>-<16-digit serial>_deid`.
+
+    The date and the serial are the redaction run's own, not the original
+    upload's: a re-run is a new document, and reading the name tells you
+    when the redacted copy was made rather than when the scan arrived.
+    """
+    stem = document_name(
+        patient_id or "unknown",
+        document_type_for(extension),
+        new_document_serial(),
+        "",
+    )
+    return f"{stem}{DEID_SUFFIX}"
+
+
+def deid_output_name(patient_id: str, extension: str) -> str:
+    suffix = (extension or "").lower().lstrip(".")
+    stem = deid_output_stem(patient_id, suffix)
+    return f"{stem}.{suffix}" if suffix else stem
+
+
+def _free_output_stem(directory: Path, patient_id: str, extension: str) -> str:
+    stem = deid_output_stem(patient_id, extension)
+
+    for _ in range(NAME_ATTEMPTS):
+        if not any(directory.glob(f"{stem}*")):
+            return stem
+        stem = deid_output_stem(patient_id, extension)
+
+    log.warning("deid_output_stem_contested", stem=stem, directory=str(directory))
+    return stem
+
+
 def _resolved_or_none(stored: str) -> Optional[Path]:
     try:
         return resolve_stored_path(stored)
@@ -65,7 +105,7 @@ def _resolved_or_none(stored: str) -> Optional[Path]:
         return None
 
 
-def deid_artifacts(source_stored_path: str) -> List[Path]:
+def deid_artifacts(source_stored_path: str, deidentified_name: str = "") -> List[Path]:
     source = _resolved_or_none(source_stored_path)
     if source is None:
         return []
@@ -74,21 +114,27 @@ def deid_artifacts(source_stored_path: str) -> List[Path]:
     if not output_dir.is_dir():
         return []
 
-    prefix = f"{source.stem}{DEID_SUFFIX}"
+    # A run names its outputs after itself, so the recorded name is what finds
+    # them. The source-derived prefix is still tried, for rows written before
+    # that and for a run that died before it could record anything.
+    prefixes = [f"{source.stem}{DEID_SUFFIX}"]
+    if deidentified_name:
+        prefixes.append(Path(deidentified_name).stem)
+
     try:
         return sorted(
             path
             for path in output_dir.iterdir()
-            if path.is_file() and path.name.startswith(prefix)
+            if path.is_file() and path.name.startswith(tuple(prefixes))
         )
     except OSError as exc:  # pragma: no cover - unreadable directory
         log.warning("deid_artifact_scan_failed", directory=str(output_dir), error=str(exc))
         return []
 
 
-def remove_deid_artifacts(source_stored_path: str) -> int:
+def remove_deid_artifacts(source_stored_path: str, deidentified_name: str = "") -> int:
     removed = 0
-    for path in deid_artifacts(source_stored_path):
+    for path in deid_artifacts(source_stored_path, deidentified_name):
         remove_from_disk(str(path))
         removed += 1
 
@@ -238,15 +284,62 @@ def _patient_id_for(cursor, application_id: str) -> str:
     return getattr(application, "patient_id", "") or ""
 
 
-def _record_deid_metadata(record, produced: Path) -> None:
-    output_type = produced.suffix.lstrip(".").lower()
-
+def _patient_id_of(record) -> str:
     try:
         with hive_cursor() as cursor:
-            patient_id = _patient_id_for(cursor, record.application_id)
+            return _patient_id_for(cursor, record.application_id)
     except Exception as exc:
         log.warning("deid_patient_lookup_failed", file_id=record.id, error=str(exc))
-        patient_id = ""
+        return ""
+
+
+def _rename_run_outputs(produced: Path, patient_id: str) -> Path:
+    """Rename a run's outputs to the de-identified naming scheme.
+
+    The pipeline names what it writes after the file it read, which would
+    leave the original's upload date and serial on the redacted copy.
+    Everything the run produced for this document shares one stem -- the
+    copy, the extracted text and the report -- so they move together and
+    stay findable as a set.
+    """
+    old_stem = produced.stem
+    new_stem = _free_output_stem(produced.parent, patient_id, produced.suffix)
+    if new_stem == old_stem:
+        return produced
+
+    target = produced.with_name(f"{new_stem}{produced.suffix}")
+    try:
+        produced.rename(target)
+    except OSError as exc:
+        # The right bytes under the wrong name is still a good run, so keep
+        # it rather than failing the file over a rename.
+        log.warning(
+            "deid_output_rename_failed",
+            source=str(produced),
+            target=str(target),
+            error=str(exc),
+        )
+        return produced
+
+    for path in sorted(produced.parent.iterdir()):
+        if not path.is_file() or not path.name.startswith(old_stem):
+            continue
+        try:
+            path.rename(path.with_name(new_stem + path.name[len(old_stem):]))
+        except OSError as exc:  # pragma: no cover - best effort
+            log.warning(
+                "deid_sidecar_rename_failed", source=str(path), error=str(exc)
+            )
+
+    log.info("deid_output_named", name=target.name, produced_as=produced.name)
+    return target
+
+
+def _record_deid_metadata(record, produced: Path, patient_id: Optional[str] = None) -> None:
+    output_type = produced.suffix.lstrip(".").lower()
+
+    if patient_id is None:
+        patient_id = _patient_id_of(record)
 
     embed_metadata(
         produced,
@@ -290,6 +383,9 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
 
         produced = _run_pipeline(source, source.parent / DEID_SUBFOLDER, file_id)
 
+        patient_id = _patient_id_of(record)
+        produced = _rename_run_outputs(produced, patient_id)
+
         _set_status(
             file_id,
             deid_status="done",
@@ -297,7 +393,7 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
             deidentified_file_name=produced.name,
             de_identified_file_path=str(produced),
         )
-        _record_deid_metadata(record, produced)
+        _record_deid_metadata(record, produced, patient_id)
         log.info("deid_succeeded", file_id=file_id, output=str(produced))
 
     except DeidError as exc:
