@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Misc'
 import { TextField } from '@/components/ui/Field'
@@ -8,7 +8,7 @@ import { cn } from '@/lib/cn'
 import { patientName, type Patient } from '@/schemas/patient'
 
 function matches(patient: Patient, query: string): boolean {
-  const haystack = [
+  const text = [
     patient.id,
     patient.fstname,
     patient.lstname,
@@ -19,7 +19,7 @@ function matches(patient: Patient, query: string): boolean {
     .join(' ')
     .toLowerCase()
 
-  return haystack.includes(query)
+  return text.includes(query)
 }
 
 export function ExistingPatientPicker({
@@ -33,12 +33,11 @@ export function ExistingPatientPicker({
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined)
 
-  const results = useMemo(() => {
-    const all = patients ?? []
-    const trimmed = query.trim().toLowerCase()
-    if (!trimmed) return all
-    return all.filter((patient) => matches(patient, trimmed))
-  }, [patients, query])
+  const allPatients = patients ?? []
+  const searchText = query.trim().toLowerCase()
+  const results = searchText
+    ? allPatients.filter((patient) => matches(patient, searchText))
+    : allPatients
 
   const selected = results.find((patient) => patient.id === selectedId)
 

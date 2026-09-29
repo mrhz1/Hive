@@ -1,27 +1,30 @@
 import os
-from dataclasses import dataclass, field
 from typing import Dict, List
 
 
 def _env_bool(name: str, default: bool) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
+    value = os.environ.get(name)
+    if value is None:
         return default
-    return raw.strip().lower() in ("1", "true", "yes", "on")
+    return value.strip().lower() in ("1", "true", "yes", "on")
 
 
 def _env_int(name: str, default: int) -> int:
-    raw = os.environ.get(name)
+    value = os.environ.get(name)
+    if value is None:
+        return default
     try:
-        return int(raw) if raw is not None else default
+        return int(value)
     except ValueError:
         return default
 
 
 def _env_float(name: str, default: float) -> float:
-    raw = os.environ.get(name)
+    value = os.environ.get(name)
+    if value is None:
+        return default
     try:
-        return float(raw) if raw is not None else default
+        return float(value)
     except ValueError:
         return default
 
@@ -67,67 +70,36 @@ DEFAULT_ENTITIES: List[str] = [
 ]
 
 
-@dataclass
 class Config:
-    det_model: str = field(
-        default_factory=lambda: os.environ.get("OCR_DET_MODEL", DEFAULT_DET_MODEL)
-    )
-    rec_model: str = field(
-        default_factory=lambda: os.environ.get("OCR_REC_MODEL", DEFAULT_REC_MODEL)
-    )
-    ocr_lang: str = field(default_factory=lambda: os.environ.get("OCR_LANG", "en"))
-    device: str = field(
-        default_factory=lambda: os.environ.get("OCR_DEVICE", "cpu")
-    )
-    dpi: int = field(default_factory=lambda: _env_int("OCR_DPI", 200))
-    min_ocr_confidence: float = field(
-        default_factory=lambda: _env_float("OCR_MIN_CONFIDENCE", 0.5)
-    )
-    use_doc_orientation_classify: bool = field(
-        default_factory=lambda: _env_bool("OCR_DOC_ORIENTATION", False)
-    )
-    use_doc_unwarping: bool = field(
-        default_factory=lambda: _env_bool("OCR_DOC_UNWARPING", False)
-    )
-    use_textline_orientation: bool = field(
-        default_factory=lambda: _env_bool("OCR_TEXTLINE_ORIENTATION", False)
-    )
-    enable_mkldnn: bool = field(
-        default_factory=lambda: _env_bool("OCR_ENABLE_MKLDNN", False)
-    )
-    cpu_threads: int = field(default_factory=lambda: _env_int("OCR_CPU_THREADS", 8))
+    def __init__(self):
+        self.det_model = os.environ.get("OCR_DET_MODEL", DEFAULT_DET_MODEL)
+        self.rec_model = os.environ.get("OCR_REC_MODEL", DEFAULT_REC_MODEL)
+        self.ocr_lang = os.environ.get("OCR_LANG", "en")
+        self.device = os.environ.get("OCR_DEVICE", "cpu")
+        self.dpi = _env_int("OCR_DPI", 200)
+        self.min_ocr_confidence = _env_float("OCR_MIN_CONFIDENCE", 0.5)
+        self.use_doc_orientation_classify = _env_bool("OCR_DOC_ORIENTATION", False)
+        self.use_doc_unwarping = _env_bool("OCR_DOC_UNWARPING", False)
+        self.use_textline_orientation = _env_bool("OCR_TEXTLINE_ORIENTATION", False)
+        self.enable_mkldnn = _env_bool("OCR_ENABLE_MKLDNN", False)
+        self.cpu_threads = _env_int("OCR_CPU_THREADS", 8)
 
-    spacy_model: str = field(
-        default_factory=lambda: os.environ.get("DEID_SPACY_MODEL", DEFAULT_SPACY_MODEL)
-    )
-    transformers_model: str = field(
-        default_factory=lambda: os.environ.get(
+        self.spacy_model = os.environ.get("DEID_SPACY_MODEL", DEFAULT_SPACY_MODEL)
+        self.transformers_model = os.environ.get(
             "DEID_TRANSFORMERS_MODEL", DEFAULT_TRANSFORMERS_MODEL
         )
-    )
-    score_threshold: float = field(
-        default_factory=lambda: _env_float("DEID_SCORE_THRESHOLD", 0.35)
-    )
-    entities: List[str] = field(default_factory=lambda: list(DEFAULT_ENTITIES))
+        self.score_threshold = _env_float("DEID_SCORE_THRESHOLD", 0.35)
 
-    box_padding: float = field(
-        default_factory=lambda: _env_float("DEID_BOX_PADDING", 2.0)
-    )
-    redaction_fill: str = field(
-        default_factory=lambda: os.environ.get("DEID_REDACTION_FILL", "black")
-    )
-    write_text: bool = field(default_factory=lambda: _env_bool("DEID_WRITE_TEXT", True))
-    write_report: bool = field(
-        default_factory=lambda: _env_bool("DEID_WRITE_REPORT", True)
-    )
-    report_include_values: bool = field(
-        default_factory=lambda: _env_bool("DEID_REPORT_INCLUDE_VALUES", False)
-    )
-
-    def __post_init__(self):
+        self.entities = list(DEFAULT_ENTITIES)
         env_entities = os.environ.get("DEID_ENTITIES")
         if env_entities:
             self.entities = [e.strip() for e in env_entities.split(",") if e.strip()]
+
+        self.box_padding = _env_float("DEID_BOX_PADDING", 2.0)
+        self.redaction_fill = os.environ.get("DEID_REDACTION_FILL", "black")
+        self.write_text = _env_bool("DEID_WRITE_TEXT", True)
+        self.write_report = _env_bool("DEID_WRITE_REPORT", True)
+        self.report_include_values = _env_bool("DEID_REPORT_INCLUDE_VALUES", False)
 
 
 def load_config() -> Config:

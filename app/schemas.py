@@ -47,7 +47,6 @@ class UserUpdate(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     email: Optional[EmailStr] = None
@@ -128,7 +127,6 @@ def patient_has_identity(values: Mapping[str, Any]) -> bool:
 
 
 class _PatientFields(BaseModel):
-
     instcode: Optional[str] = None
     pname: Optional[str] = None
     pemail: Optional[EmailStr] = None
@@ -210,7 +208,6 @@ class PatientUpdate(_PatientFields):
 
 
 class Patient(_PatientFields):
-
     id: str
 
     pemail: Optional[str] = None
@@ -222,7 +219,6 @@ DEID_STATUSES = ("pending", "queued", "processing", "done", "failed")
 
 
 class PatientApplicationFile(BaseModel):
-
     id: str
     application_id: str
     original_file_name: str
@@ -245,13 +241,11 @@ REVIEW_STATUSES = ("pending", "approved", "rejected")
 
 
 class FileReview(BaseModel):
-
     review_status: str = Field(pattern="^(approved|rejected)$")
     review_note: Optional[str] = None
 
 
 class BulkResult(BaseModel):
-
     total: int
     changed: int
     skipped: int
@@ -259,7 +253,6 @@ class BulkResult(BaseModel):
 
 
 class DeidProgress(BaseModel):
-
     file_id: str
     stage: str
     page: int = 0
@@ -272,12 +265,10 @@ class DeidProgress(BaseModel):
 
 
 class DeidProgressList(BaseModel):
-
     items: List[DeidProgress] = Field(default_factory=list)
 
 
 class DeidBatchSummary(BaseModel):
-
     application_id: str
     total: int
     deidentified: int
@@ -287,7 +278,6 @@ class DeidBatchSummary(BaseModel):
 
 
 class PatientApplicationFileUpdate(BaseModel):
-
     description: Optional[str] = None
     deid_status: Optional[str] = Field(
         default=None, pattern="^(pending|queued|processing|done|failed)$"
@@ -302,7 +292,6 @@ class PatientApplicationFileUpdate(BaseModel):
 
 
 class DeidentifiedFile(BaseModel):
-
     id: str
     application_id: str
     patient_id: str
@@ -316,7 +305,6 @@ class DeidentifiedFile(BaseModel):
 
 
 class IntakeFile(BaseModel):
-
     id: str
     batch_id: str
     source_path: str
@@ -362,7 +350,6 @@ class IntakeBatch(BaseModel):
 
 
 class IntakeCounts(BaseModel):
-
     total: int = 0
     queued: int = 0
     processing: int = 0
@@ -376,7 +363,6 @@ class IntakeCounts(BaseModel):
 
 
 class RejectedFile(BaseModel):
-
     id: str
     application_id: str
     patient_id: str
@@ -403,7 +389,6 @@ METADATA_EXTENSIONS = {
 
 
 class FileMetadata(BaseModel):
-
     id: str
     file_id: str
     file_type: str
@@ -422,14 +407,12 @@ class FileMetadataCreate(BaseModel):
 
 
 class FileMetadataRow(FileMetadata):
-
     file_name: Optional[str] = None
     application_id: Optional[str] = None
     patient_id: Optional[str] = None
 
 
 class WordBlock(BaseModel):
-
     kind: str
     style: str
     text: str
@@ -445,7 +428,6 @@ UPLOAD_JOB_STATUSES = ("pending", "running", "done", "partial", "failed")
 
 
 class UploadJobFile(BaseModel):
-
     name: str
     status: str = Field(pattern="^(pending|stored|failed)$")
     file_id: Optional[str] = None
@@ -453,7 +435,6 @@ class UploadJobFile(BaseModel):
 
 
 class UploadJob(BaseModel):
-
     id: str
     application_id: str
     status: str
@@ -473,7 +454,6 @@ _STATUS_PATTERN = "^(draft|submitted|approved|rejected|deleted)$"
 
 
 class PatientApplicationCreate(BaseModel):
-
     patient_id: str = Field(min_length=1)
     status: str = Field(default="draft", pattern=_STATUS_PATTERN)
     description: Optional[str] = None
@@ -504,7 +484,6 @@ class PatientApplicationUpdate(BaseModel):
 
 
 class StatusReason(BaseModel):
-
     reason: Optional[str] = None
 
 
@@ -540,7 +519,6 @@ class AuditLogCreate(BaseModel):
 
 
 class AccessLog(BaseModel):
-
     id: str
     occurred_at: datetime
     action: str

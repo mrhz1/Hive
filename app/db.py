@@ -26,16 +26,11 @@ IMPALA_CONNECTION = (os.environ.get("CML_IMPALA_CONNECTION") or "").strip()
 
 
 def _read_engine() -> str:
-    configured = (os.environ.get("READ_ENGINE") or IMPALA).strip().lower()
-    if configured in (IMPALA, HIVE):
-        return configured
-
-    log.error(
-        "read_engine_unknown",
-        configured=configured,
-        detail=f"expected '{IMPALA}' or '{HIVE}'; falling back to {HIVE}",
-    )
-    return HIVE
+    engine = (os.environ.get("READ_ENGINE") or IMPALA).strip().lower()
+    if engine not in (IMPALA, HIVE):
+        log.error("read_engine_unknown", configured=engine, detail="using hive")
+        return HIVE
+    return engine
 
 
 READ_ENGINE = _read_engine()
@@ -57,16 +52,20 @@ _WRITTEN_TABLE = re.compile(
 
 
 def written_table(sql: str) -> str:
-    found = _WRITTEN_TABLE.match(sql or "")
-    return found.group(1) if found else ""
+    match = _WRITTEN_TABLE.match(sql or "")
+    if match:
+        return match.group(1)
+    return ""
 
-IMPALA_VERBS = set({"select", "with"})
+
+IMPALA_VERBS = {"select", "with"}
 
 
 def engine_for(sql: str) -> str:
-    head = sql.lstrip().lstrip("(")
-    verb = head.split(None, 1)[0].lower() if head else ""
-    return IMPALA if verb in IMPALA_VERBS else HIVE
+    words = sql.lstrip().lstrip("(").split()
+    if words and words[0].lower() in IMPALA_VERBS:
+        return IMPALA
+    return HIVE
 
 
 def impala_available() -> bool:
@@ -107,7 +106,6 @@ def _impala_connection():
 
 
 class _CursorOnly:
-
     def __init__(self, connection):
         self._connection = connection
 
@@ -120,7 +118,9 @@ class _CursorOnly:
 
 def _connect(engine: str):
     try:
-        return _impala_connection() if engine == IMPALA else _hive_connection()
+        if engine == IMPALA:
+            return _impala_connection()
+        return _hive_connection()
     except Exception as exc:
         log.error("db_connect_failed", engine=engine, error=str(exc))
         raise DatabaseError(f"Could not connect to {engine}: {exc}") from exc
@@ -146,8 +146,10 @@ _idle: dict = {}
 _pool_lock = threading.Lock()
 
 
-def _pooled(engine: str) -> bool:
-    return IMPALA_POOL if engine == IMPALA else HIVE_POOL
+def _is_pooled(engine: str) -> bool:
+    if engine == IMPALA:
+        return IMPALA_POOL
+    return HIVE_POOL
 
 
 def _close_session(engine: str, connection) -> None:
@@ -167,7 +169,7 @@ def _open_session(engine: str):
     return connection, cursor
 
 
-def _checkout(engine: str):
+def _get_session(engine: str):
     while True:
         with _pool_lock:
             parked = _idle.get(engine)
@@ -185,7 +187,7 @@ def _checkout(engine: str):
     return connection, cursor, False
 
 
-def _checkin(engine: str, connection, cursor) -> None:
+def _return_session(engine: str, connection, cursor) -> None:
     with _pool_lock:
         parked = _idle.setdefault(engine, [])
         if len(parked) < POOL_MAX_IDLE:
@@ -229,7 +231,6 @@ def use_database(cursor, database: str) -> None:
 
 
 class RoutingCursor:
-
     _last = None
     force_hive = False
 
@@ -244,8 +245,8 @@ class RoutingCursor:
         if engine in self._cursors:
             return self._cursors[engine]
 
-        if _pooled(engine):
-            connection, cursor, reused = _checkout(engine)
+        if _is_pooled(engine):
+            connection, cursor, reused = _get_session(engine)
             self._reused[engine] = reused
             self._pooled_engines.add(engine)
         else:
@@ -258,12 +259,9 @@ class RoutingCursor:
     def execute(self, sql, params=()):
         engine = engine_for(sql)
 
-        if engine == IMPALA and not impala_available():
-            engine = HIVE
-        elif engine == IMPALA and self.force_hive:
-            engine = HIVE
-        elif engine == IMPALA and self._written:
-            engine = HIVE
+        if engine == IMPALA:
+            if not impala_available() or self.force_hive or self._written:
+                engine = HIVE
 
         cursor = self.cursor_for(engine)
         self._last = cursor
@@ -320,7 +318,7 @@ class RoutingCursor:
 
         for engine, connection in self._connections.items():
             if engine in self._pooled_engines:
-                _checkin(engine, connection, self._cursors.get(engine))
+                _return_session(engine, connection, self._cursors.get(engine))
                 continue
             try:
                 connection.close()

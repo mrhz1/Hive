@@ -28,7 +28,6 @@ def _poly_to_bbox(poly) -> Optional[tuple]:
 
 
 class OcrEngine:
-
     def __init__(self, config: Config):
         self.config = config
         self._ocr = None

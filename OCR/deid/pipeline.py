@@ -31,13 +31,8 @@ def nlp_python() -> str:
     return os.environ.get("DEID_NLP_PYTHON", DEFAULT_NLP_PYTHON)
 
 
-def _log_stage_output() -> bool:
-    return os.environ.get("DEID_LOG_STAGE_OUTPUT", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+def _is_on(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 class StageError(RuntimeError):
@@ -81,14 +76,14 @@ def _run_stage(
             check=False,
             env=os.environ.copy(),
         )
-    except FileNotFoundError as exc:
+    except FileNotFoundError as e:
         raise StageError(
             f"{stage} stage interpreter not found at '{interpreter}'. "
             f"Set DEID_{stage.upper()}_PYTHON to the venv that has the "
             f"{stage} dependencies installed."
-        ) from exc
+        ) from e
 
-    if completed.stderr and (completed.returncode != 0 or _log_stage_output()):
+    if completed.stderr and (completed.returncode != 0 or _is_on("DEID_LOG_STAGE_OUTPUT")):
         for line in completed.stderr.strip().splitlines():
             log.info("[%s] %s", stage, line)
 
@@ -108,11 +103,6 @@ def ocr_batch_size() -> int:
         return max(1, int(os.environ.get("DEID_OCR_BATCH_SIZE", "1")))
     except ValueError:
         return 1
-
-
-def _batched(items: List[Any], size: int):
-    for start in range(0, len(items), size):
-        yield items[start : start + size]
 
 
 def _fail_all(sources: List[str], stage: str, error: str) -> List[DocumentResult]:
@@ -137,12 +127,7 @@ def run_pipeline(
     output_root = Path(output_dir).expanduser()
     output_root.mkdir(parents=True, exist_ok=True)
 
-    keep_work_dir = os.environ.get("DEID_KEEP_WORK_DIR", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+    keep_work_dir = _is_on("DEID_KEEP_WORK_DIR")
 
     if work_dir:
         work = Path(work_dir).expanduser()
@@ -179,9 +164,9 @@ def _run_nlp(jobs: List[Dict[str, Any]], work: Path) -> List[DocumentResult]:
             "nlp",
         )
         return [DocumentResult.from_dict(r) for r in nlp_results]
-    except StageError as exc:
-        log.error("NLP stage failed: %s", exc)
-        return _fail_all([j["source"] for j in jobs], "nlp", str(exc))
+    except StageError as e:
+        log.error("NLP stage failed: %s", e)
+        return _fail_all([j["source"] for j in jobs], "nlp", str(e))
 
 
 def _run(
@@ -211,17 +196,17 @@ def _run(
     text_only = [j for j in plan if not needs_ocr(j["source"])]
 
     ocr_status: Dict[str, Any] = {}
-
     ocr_failures: List[DocumentResult] = []
 
     if rasterizable:
         outcomes: List[dict] = []
 
-        for index, batch in enumerate(_batched(rasterizable, ocr_batch_size())):
-            manifest = str(work / f"ocr-manifest-{index:03d}.json")
-            write_manifest(
-                manifest,
-                [
+        size = ocr_batch_size()
+        for index, start in enumerate(range(0, len(rasterizable), size)):
+            batch = rasterizable[start : start + size]
+            jobs = []
+            for j in batch:
+                jobs.append(
                     {
                         "source": j["source"],
                         "spans": j["spans"],
@@ -229,9 +214,9 @@ def _run(
                         "index": j["index"],
                         "file_total": j["file_total"],
                     }
-                    for j in batch
-                ],
-            )
+                )
+            manifest = str(work / f"ocr-manifest-{index:03d}.json")
+            write_manifest(manifest, jobs)
 
             try:
                 outcomes.extend(
@@ -243,22 +228,24 @@ def _run(
                         "ocr",
                     )
                 )
-            except StageError as exc:
+            except StageError as e:
                 log.error(
                     "OCR stage failed for %d of %d document(s): %s",
                     len(batch),
                     len(rasterizable),
-                    exc,
+                    e,
                 )
                 ocr_failures.extend(
-                    _fail_all([j["source"] for j in batch], "ocr", str(exc))
+                    _fail_all([j["source"] for j in batch], "ocr", str(e))
                 )
 
         ocr_status = {o["source"]: o for o in outcomes}
 
-    ready = [
-        j for j in rasterizable if ocr_status.get(j["source"], {}).get("status") == "ok"
-    ] + text_only
+    ready = []
+    for j in rasterizable:
+        if ocr_status.get(j["source"], {}).get("status") == "ok":
+            ready.append(j)
+    ready += text_only
     results = _run_nlp(ready, work)
 
     by_source = {r.source_path: r for r in results}

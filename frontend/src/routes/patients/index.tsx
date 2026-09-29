@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { DataTable, type Column } from '@/components/DataTable'
 import { Can, RequirePermission } from '@/components/PermissionGate'
@@ -74,11 +74,11 @@ function PatientsList() {
     remove.mutateAsync(patient.id)
   )
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    if (!term) return data
-    return (data ?? []).filter((patient) =>
-      [
+  const searchText = search.trim().toLowerCase()
+  let filtered = data
+  if (searchText) {
+    filtered = (data ?? []).filter((patient) => {
+      const text = [
         patient.fstname,
         patient.lstname,
         patient.ptemail,
@@ -89,9 +89,9 @@ function PatientsList() {
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
-        .includes(term)
-    )
-  }, [data, search])
+      return text.includes(searchText)
+    })
+  }
 
   const canModify = can('patient:update') || can('patient:delete')
 

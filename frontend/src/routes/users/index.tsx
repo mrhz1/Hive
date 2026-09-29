@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { DataTable, type Column } from '@/components/DataTable'
 import { Can, RequirePermission } from '@/components/PermissionGate'
@@ -78,16 +78,16 @@ function UsersList() {
 
   const deleteDialog = useDeleteDialog<User>((user) => remove.mutateAsync(user.id))
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    if (!term) return data
-    return (data ?? []).filter((user) =>
-      [user.username, user.first_name, user.last_name, user.email]
+  const searchText = search.trim().toLowerCase()
+  let filtered = data
+  if (searchText) {
+    filtered = (data ?? []).filter((user) => {
+      const text = [user.username, user.first_name, user.last_name, user.email]
         .join(' ')
         .toLowerCase()
-        .includes(term)
-    )
-  }, [data, search])
+      return text.includes(searchText)
+    })
+  }
 
   const canModify = can('user:update') || can('user:delete')
 

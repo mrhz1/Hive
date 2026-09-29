@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Download, FileJson, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
 import { Can, RequirePermission } from '@/components/PermissionGate'
@@ -13,7 +13,7 @@ import { useDeidentifiedFiles, useDeleteDeidentifiedFile } from '@/hooks/useReso
 import { ApiError } from '@/lib/api/client'
 import { deidentifiedFilesApi } from '@/lib/api/resources'
 import { formatFileSize, previewKind } from '@/schemas/applicationFile'
-import { fileHaystack, type DeidentifiedFile } from '@/schemas/deidentifiedFile'
+import { fileSearchText, type DeidentifiedFile } from '@/schemas/deidentifiedFile'
 
 export const Route = createFileRoute('/files/')({
   component: FilesPage,
@@ -46,11 +46,11 @@ function FilesPage() {
     null
   )
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    if (!term) return data ?? []
-    return (data ?? []).filter((file) => fileHaystack(file).includes(term))
-  }, [data, search])
+  const searchText = search.trim().toLowerCase()
+  const allFiles = data ?? []
+  const filtered = searchText
+    ? allFiles.filter((file) => fileSearchText(file).includes(searchText))
+    : allFiles
 
   async function open(file: DeidentifiedFile) {
     if (previewKind(file.file_type) !== 'pdf') {

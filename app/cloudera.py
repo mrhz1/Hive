@@ -17,13 +17,8 @@ CML_CA_BUNDLE = (
 
 
 def _tls_verify():
-    disabled = os.environ.get("CML_VERIFY_TLS", "true").strip().lower() in (
-        "0",
-        "false",
-        "no",
-        "off",
-    )
-    if disabled:
+    value = os.environ.get("CML_VERIFY_TLS", "true").strip().lower()
+    if value in ("0", "false", "no", "off"):
         log.warning("cml_tls_verification_disabled")
         return False
     return CML_CA_BUNDLE or True
@@ -93,15 +88,13 @@ def _config() -> Dict[str, str]:
     api_key = os.environ.get("CML_API_KEY") or os.environ.get("CDSW_APIV2_KEY")
     job_id = os.environ.get("CML_DEID_JOB_ID")
 
-    missing = [
-        name
-        for name, value in (
-            ("CML_PROJECT_ID / CDSW_PROJECT_ID", project_id),
-            ("CML_API_KEY / CDSW_APIV2_KEY", api_key),
-            ("CML_DEID_JOB_ID", job_id),
-        )
-        if not value
-    ]
+    missing = []
+    if not project_id:
+        missing.append("CML_PROJECT_ID / CDSW_PROJECT_ID")
+    if not api_key:
+        missing.append("CML_API_KEY / CDSW_APIV2_KEY")
+    if not job_id:
+        missing.append("CML_DEID_JOB_ID")
     if missing:
         raise ClouderaError(
             "Cloudera job dispatch is not configured; missing: " + ", ".join(missing)
@@ -145,15 +138,14 @@ def start_deid_job_run(environment: Optional[Dict[str, str]] = None) -> str:
             timeout=CML_TIMEOUT_SECONDS,
             verify=_tls_verify(),
         )
-    except httpx.HTTPError as exc:
-        if "certificate" in str(exc).lower():
+    except httpx.HTTPError as e:
+        if "certificate" in str(e).lower():
             raise ClouderaError(
-                f"Could not reach the Cloudera API: {exc}. The workspace's "
-                "certificate was not signed by a CA this process trusts -- "
-                "point CML_CA_BUNDLE (or REQUESTS_CA_BUNDLE) at the CA "
+                f"Could not reach the Cloudera API: {e}. The workspace's "
+                "certificate is not trusted. Point CML_CA_BUNDLE (or REQUESTS_CA_BUNDLE) at the CA "
                 "bundle PEM for your workspace."
-            ) from exc
-        raise ClouderaError(f"Could not reach the Cloudera API: {exc}") from exc
+            ) from e
+        raise ClouderaError(f"Could not reach the Cloudera API: {e}") from e
 
     if response.status_code in _RETRYABLE_STATUS:
         raise ClouderaCapacityError(
@@ -171,8 +163,10 @@ def start_deid_job_run(environment: Optional[Dict[str, str]] = None) -> str:
     except ValueError:
         body = {}
 
-    run_id = body.get("id", "") if isinstance(body, dict) else ""
-    status = str(body.get("status", "")) if isinstance(body, dict) else ""
+    if not isinstance(body, dict):
+        body = {}
+    run_id = body.get("id", "")
+    status = str(body.get("status", ""))
 
     if "skip" in status.lower():
         raise ClouderaCapacityError(
@@ -203,8 +197,8 @@ def get_job_run_status(run_id: str) -> str:
             timeout=CML_TIMEOUT_SECONDS,
             verify=_tls_verify(),
         )
-    except httpx.HTTPError as exc:
-        log.warning("cml_job_run_status_unreachable", run_id=run_id, error=str(exc))
+    except httpx.HTTPError as e:
+        log.warning("cml_job_run_status_unreachable", run_id=run_id, error=str(e))
         return ""
 
     if response.status_code >= 400:
@@ -221,4 +215,6 @@ def get_job_run_status(run_id: str) -> str:
     except ValueError:
         return ""
 
-    return str(body.get("status", "")) if isinstance(body, dict) else ""
+    if not isinstance(body, dict):
+        return ""
+    return str(body.get("status", ""))

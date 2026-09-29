@@ -254,7 +254,6 @@ export function useBackgroundUpload(
     queryKey: queryKeys.applicationFiles.uploadJob(jobId ?? ''),
     queryFn: () => applicationFilesApi.uploadJob(jobId as string),
     enabled: Boolean(jobId),
-
     refetchInterval: (query) =>
       isUploadJobSettled(query.state.data) ? false : UPLOAD_POLL_MS,
     staleTime: 0,
@@ -289,7 +288,6 @@ export function useBackgroundUpload(
 
   return {
     start: start.mutateAsync,
-
     isUploading: start.isPending || isRunning,
 
     isSending: start.isPending,
@@ -446,7 +444,6 @@ export function useFileMetadataRows(filters: FileMetadataFilters = {}, enabled =
     queryKey: queryKeys.fileMetadata.list(filters),
     queryFn: () => fileMetadataApi.list(filters),
     enabled,
-
     placeholderData: (previous) => previous,
   })
 }

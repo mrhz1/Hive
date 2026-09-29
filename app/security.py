@@ -18,11 +18,10 @@ MODEL_ACTIONS = {
 }
 MODEL_ACTIONS["files"] = ("read", "upload", "download", "delete")
 
-KNOWN_PERMISSIONS = set(
-    f"{model}:{action}"
-    for model, actions in MODEL_ACTIONS.items()
-    for action in actions
-)
+KNOWN_PERMISSIONS = set()
+for model, actions in MODEL_ACTIONS.items():
+    for action in actions:
+        KNOWN_PERMISSIONS.add(f"{model}:{action}")
 
 
 def _current_username(request: Request) -> str:
