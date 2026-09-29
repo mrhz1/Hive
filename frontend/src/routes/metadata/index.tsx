@@ -104,9 +104,7 @@ function MetadataPage() {
       id: 'created',
       header: 'Extracted at',
       cell: (row) => (
-        <span className="whitespace-nowrap text-sm">
-          {formatDate(row.created_at)}
-        </span>
+        <span className="text-sm whitespace-nowrap">{formatDate(row.created_at)}</span>
       ),
       sortValue: (row) => row.created_at,
     },
@@ -122,12 +120,8 @@ function MetadataPage() {
             <Button
               isLoading={exportRows.isPending}
               disabled={rows.length === 0}
-              title={
-                rows.length === 0 ? 'There is nothing to export' : undefined
-              }
-              leadingIcon={
-                <FileSpreadsheet className="size-4" aria-hidden="true" />
-              }
+              title={rows.length === 0 ? 'There is nothing to export' : undefined}
+              leadingIcon={<FileSpreadsheet className="size-4" aria-hidden="true" />}
               onClick={() => exportRows.mutate(filters)}
             >
               Export to Excel
@@ -194,10 +188,7 @@ function MetadataPage() {
         />
 
         {showing ? (
-          <FileMetadataDetailModal
-            row={showing}
-            onClose={() => setShowing(null)}
-          />
+          <FileMetadataDetailModal row={showing} onClose={() => setShowing(null)} />
         ) : null}
       </div>
     </RequirePermission>

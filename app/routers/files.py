@@ -255,11 +255,6 @@ async def upload_deidentified_file(
             record.deidentified_file_name or deid_output_name(patient_id, extension),
         )
 
-        # A verdict describes the bytes it was given. Replacing those sends
-        # the file back for review rather than carrying the old rejection
-        # (or approval) over to a copy nobody has looked at; the note goes
-        # with it, because it described the copy that is gone. The audit
-        # entry below keeps what it said.
         updated = crud.update_file(
             cursor,
             replaces_file_id,

@@ -1,22 +1,3 @@
-"""Synthetic clinical content for OCR / de-identification test corpora.
-
-Everything here is fabricated. Names, MRNs, SSNs, addresses, phone numbers,
-insurance IDs and NPIs are invented for the purpose of testing PHI recall and
-are not associated with any real person, provider or facility.
-
-Two documents are described:
-
-  PRINTED  - a modern, typeset inpatient record for GRACE ELEANOR WHITFIELD
-  HANDWRITTEN - an old, hand-kept ward chart for ARTHUR LEONARD BRENNAN
-
-Each is exactly 20 pages. Page content is expressed as blocks that the
-renderers lay out; the same blocks produce the ground-truth text files.
-"""
-
-# --------------------------------------------------------------------------
-# PHI inventory - used to build the ground-truth entity list
-# --------------------------------------------------------------------------
-
 PRINTED_PHI = {
     "PATIENT": ["Grace Eleanor Whitfield", "Whitfield, Grace E.", "Grace E. Whitfield",
                 "Gracie Whitfield"],
@@ -68,19 +49,13 @@ HANDWRITTEN_PHI = {
 }
 
 
-# --------------------------------------------------------------------------
-# PRINTED DOCUMENT - 20 typeset pages
-# --------------------------------------------------------------------------
-
 PRINTED_HEADER = ("Saint Bartholomew Regional Medical Center",
                   "Whitfield, Grace E.  •  MRN 40-77-1592  •  DOB 03/14/1951")
 
 
 def printed_pages():
-    """Return a list of 20 pages; each page is a list of layout blocks."""
     P = []
 
-    # ---- 1. Face sheet -------------------------------------------------
     P.append([
         ("h1", "PATIENT FACE SHEET / REGISTRATION RECORD"),
         ("rule",),
@@ -139,7 +114,6 @@ def printed_pages():
                   "disclosure is prohibited under 45 CFR Parts 160 and 164."),
     ])
 
-    # ---- 2. H&P part 1 -------------------------------------------------
     P.append([
         ("h1", "HISTORY AND PHYSICAL EXAMINATION"),
         ("kv2", [("Date of Service", "April 6, 2018"),
@@ -193,7 +167,6 @@ def printed_pages():
         ]),
     ])
 
-    # ---- 3. H&P part 2 -------------------------------------------------
     P.append([
         ("h1", "HISTORY AND PHYSICAL EXAMINATION (CONTINUED)"),
         ("h2", "MEDICATIONS PRIOR TO ADMISSION"),
@@ -255,7 +228,6 @@ def printed_pages():
         ("sig", "Harold T. Nakamura, MD  —  NPI 1487302956  —  04/06/2018 19:41"),
     ])
 
-    # ---- 4. Medication reconciliation ----------------------------------
     P.append([
         ("h1", "MEDICATION RECONCILIATION AND INPATIENT ORDERS"),
         ("kv2", [("Reconciled By", "Oluwaseun Adeyemi, PharmD"),
@@ -300,7 +272,6 @@ def printed_pages():
         ("sig", "Oluwaseun Adeyemi, PharmD  —  04/06/2018 21:05"),
     ])
 
-    # ---- 5. Labs 1 -----------------------------------------------------
     P.append([
         ("h1", "LABORATORY REPORT"),
         ("kv2", [("Patient", "Whitfield, Grace E."), ("MRN", "40-77-1592"),
@@ -343,7 +314,6 @@ def printed_pages():
                   "for this accession."),
     ])
 
-    # ---- 6. Labs 2 + micro ---------------------------------------------
     P.append([
         ("h1", "LABORATORY REPORT (CONTINUED)"),
         ("h2", "ADDITIONAL CHEMISTRY AND SEROLOGY"),
@@ -391,7 +361,6 @@ def printed_pages():
         ("sig", "Reviewed by Tomasz Wieczorek, MD, Clinical Pathology  —  04/09/2018"),
     ])
 
-    # ---- 7. Radiology CT -----------------------------------------------
     P.append([
         ("h1", "DIAGNOSTIC IMAGING REPORT"),
         ("kv2", [("Examination", "CT Angiography, Chest, With Contrast"),
@@ -449,7 +418,6 @@ def printed_pages():
         ("sig", "Electronically signed by Marcus Delacroix, MD  —  04/06/2018 18:36"),
     ])
 
-    # ---- 8. Radiology echo / US ----------------------------------------
     P.append([
         ("h1", "TRANSTHORACIC ECHOCARDIOGRAM"),
         ("kv2", [("Date of Service", "04/07/2018 10:15"),
@@ -504,7 +472,6 @@ def printed_pages():
         ("sig", "Steven Kaufmann, MD  —  Cardiology  —  04/07/2018 11:02"),
     ])
 
-    # ---- 9-11. Progress notes ------------------------------------------
     progress = [
         ("HOSPITAL DAY 1 — PROGRESS NOTE", "April 7, 2018", "Rosalind Achebe, MD",
          "Pulmonary and Critical Care",
@@ -609,7 +576,6 @@ def printed_pages():
             ("sig", sig),
         ])
 
-    # ---- 12. Nursing flowsheet -----------------------------------------
     P.append([
         ("h1", "NURSING FLOWSHEET — VITAL SIGNS AND INTAKE/OUTPUT"),
         ("kv2", [("Unit", "5 North"), ("Room / Bed", "512-A"),
@@ -651,7 +617,6 @@ def printed_pages():
                   "Bed alarm active 04/08 02:30 through 04/09 08:00."),
     ])
 
-    # ---- 13. Cardiology consult ----------------------------------------
     P.append([
         ("h1", "CONSULTATION REPORT — CARDIOLOGY"),
         ("kv2", [("Date of Service", "April 7, 2018"),
@@ -710,7 +675,6 @@ def printed_pages():
         ("sig", "Steven Kaufmann, MD, FACC  —  Cardiology  —  04/07/2018 13:20"),
     ])
 
-    # ---- 14. Nephrology / endocrine consult -----------------------------
     P.append([
         ("h1", "CONSULTATION REPORT — ENDOCRINOLOGY AND NEPHROLOGY"),
         ("kv2", [("Date of Service", "April 8, 2018"),
@@ -766,7 +730,6 @@ def printed_pages():
         ("sig", "Devendra Ramaswamy, MD  —  Nephrology  —  04/08/2018 16:45"),
     ])
 
-    # ---- 15. Operative report -------------------------------------------
     P.append([
         ("h1", "OPERATIVE REPORT"),
         ("kv2", [("Date of Procedure", "April 10, 2018"),
@@ -824,7 +787,6 @@ def printed_pages():
                 "04/10/2018 15:12"),
     ])
 
-    # ---- 16. Anesthesia / sedation record --------------------------------
     P.append([
         ("h1", "MODERATE SEDATION RECORD"),
         ("kv2", [("Date", "04/10/2018"), ("Location", "Bedside, 5 North 512-A"),
@@ -870,7 +832,6 @@ def printed_pages():
         ("sig", "Colette Beauchamp, MD  —  04/10/2018 15:44"),
     ])
 
-    # ---- 17. Pathology ---------------------------------------------------
     P.append([
         ("h1", "SURGICAL PATHOLOGY AND CYTOLOGY REPORT"),
         ("kv2", [("Accession", "S18-6640"), ("Collected", "04/10/2018 14:55"),
@@ -922,7 +883,6 @@ def printed_pages():
                 "04/11/2018 11:30"),
     ])
 
-    # ---- 18. Therapy and care management ---------------------------------
     P.append([
         ("h1", "PHYSICAL THERAPY EVALUATION AND CARE MANAGEMENT NOTE"),
         ("kv2", [("Date of Service", "April 11, 2018"),
@@ -978,7 +938,6 @@ def printed_pages():
         ("sig", "Karen Fitzsimmons, RN, CCM  —  04/11/2018 16:05"),
     ])
 
-    # ---- 19. Discharge summary 1 -----------------------------------------
     P.append([
         ("h1", "DISCHARGE SUMMARY"),
         ("kv2", [("Patient", "Whitfield, Grace Eleanor"), ("MRN", "40-77-1592"),
@@ -1040,7 +999,6 @@ def printed_pages():
               "radiography showed no reaccumulation and no pneumothorax."),
     ])
 
-    # ---- 20. Discharge summary 2 -----------------------------------------
     P.append([
         ("h1", "DISCHARGE SUMMARY (CONTINUED)"),
         ("h2", "CONDITION AT DISCHARGE"),
@@ -1100,16 +1058,9 @@ def printed_pages():
     return P
 
 
-# --------------------------------------------------------------------------
-# HANDWRITTEN DOCUMENT - 20 pages of an old ward chart
-# --------------------------------------------------------------------------
-# Blocks: ("t", text) title, ("l", text) line, ("b",) blank, ("hr",) rule,
-# ("kv", label, value), ("p", text) wrapped paragraph, ("sig", text)
-
 def handwritten_pages():
     P = []
 
-    # 1. Chart cover
     P.append([
         ("t", "PROVIDENCE MERCY HOSPITAL"),
         ("l", "Fall River, Massachusetts"),
@@ -1143,7 +1094,6 @@ def handwritten_pages():
         ("l", "Employer's certificate on file - Bourne Mills, personnel dept."),
     ])
 
-    # 2. Admission note
     P.append([
         ("t", "ADMISSION NOTE"),
         ("l", "17 Jan 1971    Ward C"),
@@ -1174,7 +1124,6 @@ def handwritten_pages():
         ("sig", "R. W. Ashcroft, M.D."),
     ])
 
-    # 3. Physical examination
     P.append([
         ("t", "PHYSICAL EXAMINATION"),
         ("l", "17 Jan 1971"),
@@ -1213,7 +1162,6 @@ def handwritten_pages():
         ("sig", "R. W. Ashcroft, M.D."),
     ])
 
-    # 4. Orders
     P.append([
         ("t", "PHYSICIAN'S ORDERS"),
         ("hr",), ("b",),
@@ -1247,7 +1195,6 @@ def handwritten_pages():
         ("sig", "R. W. Ashcroft, M.D."),
     ])
 
-    # 5. Nurses' admission
     P.append([
         ("t", "NURSES' NOTES"),
         ("hr",), ("b",),
@@ -1281,7 +1228,6 @@ def handwritten_pages():
         ("sig", "Miss K. Halloran, R.N."),
     ])
 
-    # 6-13. Progress notes
     prog = [
         ("18 Jan 1971", [
             ("p", "Feels somewhat stronger this morning. No further melaena "
@@ -1387,7 +1333,6 @@ def handwritten_pages():
         blocks.append(("sig", sig))
         P.append(blocks)
 
-    # 14. Consultation
     P.append([
         ("t", "CONSULTATION"),
         ("l", "25 Jan 1971    Requested by Dr. R. W. Ashcroft"),
@@ -1423,7 +1368,6 @@ def handwritten_pages():
         ("sig", "G. Pemberton, M.D."),
     ])
 
-    # 15. Graphic / vitals sheet
     P.append([
         ("t", "GRAPHIC AND CLINICAL RECORD"),
         ("l", "Brennan, Arthur L.        Unit No. 22-84-016"),
@@ -1460,7 +1404,6 @@ def handwritten_pages():
         ("l", "         the second night."),
     ])
 
-    # 16. Laboratory
     P.append([
         ("t", "LABORATORY REPORTS"),
         ("l", "Brennan, Arthur L.     Unit No. 22-84-016     Ward C"),
@@ -1499,7 +1442,6 @@ def handwritten_pages():
         ("sig", "A. Chowdhury, M.D.,  Path."),
     ])
 
-    # 17. X-ray
     P.append([
         ("t", "X-RAY DEPARTMENT REPORT"),
         ("hr",), ("b",),
@@ -1539,7 +1481,6 @@ def handwritten_pages():
         ("sig", "T. Okamura, M.D."),
     ])
 
-    # 18. Nurses' notes late
     P.append([
         ("t", "NURSES' NOTES  (continued)"),
         ("hr",), ("b",),
@@ -1573,7 +1514,6 @@ def handwritten_pages():
         ("sig", "E. Vasquez, R.N."),
     ])
 
-    # 19. Discharge note
     P.append([
         ("t", "DISCHARGE SUMMARY"),
         ("l", "2 Feb 1971"),
@@ -1610,7 +1550,6 @@ def handwritten_pages():
         ("sig", "R. W. Ashcroft, M.D."),
     ])
 
-    # 20. Discharge instructions
     P.append([
         ("t", "DISCHARGE INSTRUCTIONS"),
         ("l", "Given to patient and wife, 2 Feb 1971"),

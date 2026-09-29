@@ -41,7 +41,6 @@ export function applyServerErrors<TValues extends FieldValues>(
   }
 
   if (!attributed && error.isConflict) {
-
     const detail = error.message.toLowerCase()
     const match = fieldNames.find((name) =>
       detail.startsWith(String(name).replace(/_/g, ' '))

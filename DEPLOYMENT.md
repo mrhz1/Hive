@@ -2,7 +2,7 @@
 
 A complete walkthrough: project, Hive database, the two OCR virtualenvs,
 the de-identification Job, the API Application, and the dashboard
-Application. Follow it in order — each step assumes the previous one.
+Application. Follow it in order, each step assumes the previous one.
 
 Four deployable units:
 
@@ -14,7 +14,7 @@ Four deployable units:
 | Dashboard | Application | `python scripts/serve_frontend.py` |
 
 The dashboard is a React build, which Cloudera AI cannot serve on its
-own — an Application runs a *process*, not a static directory. So a small
+own, an Application runs a *process*, not a static directory. So a small
 Flask server (`scripts/serve_frontend.py`) serves `frontend/dist`, with
 SPA fallback and an optional API proxy. That is not a workaround; it is
 the supported shape.
@@ -33,8 +33,8 @@ You need:
   so **pick the 3.10 runtime** and keep everything on it.
 - Egress to PyPI from the workspace, for `pip install`.
 - A separate machine **with** egress to GitHub and Hugging Face, to stage
-  the ~570MB of model weights. The workspace itself does not need it —
-  and in this deployment does not have it — because the weights move as a
+  the ~570MB of model weights. The workspace itself does not need it,
+  and in this deployment does not have it, because the weights move as a
   file copy (step 3b). If PyPI is blocked too, jump to
   [Air-gapped](#air-gapped-workspaces).
 
@@ -51,7 +51,7 @@ project makes redeploys a `git pull` in a Session rather than a re-upload.
 
 Then **Project Settings → Advanced → Environment Variables** and set the
 values from `.env.example`. Project-level variables are inherited by
-every Session, Job and Application, which is what you want — the API and
+every Session, Job and Application, which is what you want, the API and
 the Job must agree about `FILE_STORAGE_DIR` or the Job cannot read what
 the API wrote.
 
@@ -85,7 +85,7 @@ pip install -r requirements-dev.txt
 python scripts/check_hive.py      # connectivity first, schema second
 ```
 
-`check_hive.py` runs `SHOW DATABASES`. If it fails, stop here — nothing
+`check_hive.py` runs `SHOW DATABASES`. If it fails, stop here, nothing
 downstream can work, and the error message names the cause (usually
 Kerberos or a wrong port).
 
@@ -108,7 +108,7 @@ python scripts/init_db.py         # applies sql/schema.sql + seed rows
 ### What the schema requires, and why it will bite you
 
 Every table is `STORED AS ORC` with `TBLPROPERTIES ('transactional'='true')`.
-That is not decoration — `UPDATE` and `DELETE` are rejected on anything
+That is not decoration, `UPDATE` and `DELETE` are rejected on anything
 else, and this app updates rows constantly (`deid_status` alone changes
 three times per document).
 
@@ -119,7 +119,7 @@ automatically via strict-managed-tables mode. Two things still go wrong:
   format. If your warehouse defaults to external tables, every write
   fails. `SHOW CREATE TABLE patients` and check.
 - **Hive has no sequences.** Ids are application-generated UUID strings,
-  so nothing breaks if you restore a table — but do not add an
+  so nothing breaks if you restore a table, but do not add an
   `AUTO_INCREMENT`-shaped column expecting it to work.
 
 Verify ACID is genuinely on before going further:
@@ -154,7 +154,7 @@ make venvs      # .venv-ocr and .venv-nlp
 make install    # both requirement sets; torch from the CPU index
 ```
 
-The models do **not** come from here — see the next step.
+The models do **not** come from here, see the next step.
 
 ---
 
@@ -191,8 +191,8 @@ make preflight      # interpreters resolvable, models present?
 `make check-models` is the check that matters here. It constructs each
 model the way the pipeline will, so a truncated `pytorch_model.bin`
 fails now rather than several minutes into the first real job.
-`make preflight` only verifies the directories exist — enough to catch an
-incomplete copy, not a corrupt one — and prints what the orchestrator
+`make preflight` only verifies the directories exist, enough to catch an
+incomplete copy, not a corrupt one, and prints what the orchestrator
 resolved:
 
 ```json
@@ -217,7 +217,7 @@ resolved:
 ```
 
 An empty string under `resolved` is a model that is not there. Leave
-`DEID_OFFLINE` alone (it defaults to on) — it is what turns a missing
+`DEID_OFFLINE` alone (it defaults to on), it is what turns a missing
 model into that message instead of a job hanging on a blocked host.
 `OCR/models/README.md` has the layout, including the off-canonical
 directory spellings the resolver tolerates.
@@ -236,7 +236,7 @@ boxes were drawn; `make verify` proves the information is gone. Expect
 ### Why the venvs survive, and when they do not
 
 `/home/cdsw` is project storage and persists across Sessions, Jobs and
-Applications — so venvs built here are visible to the Job later. Two
+Applications, so venvs built here are visible to the Job later. Two
 caveats:
 
 - Project storage is **NFS-backed**. Importing torch from it is slower
@@ -265,17 +265,17 @@ splitting the pipeline means paddle is unloaded before torch is imported,
 the NLP stage on its own still wants several GiB.
 
 A Job run does not exec the script the way `python scripts/deid_worker.py`
-does — the engine runs the source inside an IPython kernel. Two things
+does, the engine runs the source inside an IPython kernel. Two things
 follow, and the worker handles both. `__file__` is undefined there, and
 `sys.argv` belongs to the kernel (`-f /tmp/jupyter/runtime/kernel-*.json`),
-not to the script, so **command-line arguments do not reach a Job run** —
+not to the script, so **command-line arguments do not reach a Job run**,
 configure a Job with environment variables (`DEID_FILE_ID`,
 `DEID_BATCH_LIMIT`, `DEID_RETRY_STALE_MINUTES`), never the Arguments field. The worker finds the repo root without it (CML's
 `CDSW_PROJECT_DIR`, else the working directory). If a runtime sets neither
 usefully and the run dies before it imports anything, set
 **`HIVE_REPO_ROOT`** to the project directory (`/home/cdsw`).
 
-`HIVE_REPO_ROOT` has to be a real environment variable — Job → Environment
+`HIVE_REPO_ROOT` has to be a real environment variable, Job → Environment
 Variables, or a project variable. It cannot go in `.env.local`: that file
 is loaded by `app.db`, which cannot be imported until the repo root has
 already been found. Every other variable here is read after the imports,
@@ -296,15 +296,15 @@ state, and only then starts the next. Users can click De-identify on as
 many files as they like: each row is marked `queued` immediately and the
 files are processed one after another, oldest click first.
 
-This exists because CML refuses a second concurrent run of one Job —
-`400 job run for job <id> already active, code 9` — records it as a
+This exists because CML refuses a second concurrent run of one Job,
+`400 job run for job <id> already active, code 9`, records it as a
 **Skipped** entry, and the API used to turn that refusal into a failed
 file. The dispatcher never makes the request that gets refused, so there
 is nothing to mishandle.
 
 A schedule would be the other way to drain the queue, and it does not fit
 here: CML only offers "every minute" or "N minutes past the hour", while
-this work has no characteristic duration — a one-page PDF finishes in
+this work has no characteristic duration, a one-page PDF finishes in
 under a minute and a hundred-page scan takes far longer than any fixed
 interval.
 
@@ -327,13 +327,13 @@ Tuning, all optional (`DEID_DISPATCH_*`):
 **One run per file, and the run's own status decides when it is over.**
 Not the row: the worker writes `done` before the run process exits, and
 advancing on that starts the next run while the previous one is still
-alive — five files became eight runs that way, with all the work
+alive, five files became eight runs that way, with all the work
 happening inside the first. For the same reason a triggered worker run
 (`DEID_FILE_ID` set) processes exactly that file and never drains the
 queue; only the sweep does.
 
 > `DEID_RETRY_STALE_MINUTES` measures age since *upload*, not since the
-> row was claimed — `patient_application_files` has no `updated_at` column. Set it
+> row was claimed, `patient_application_files` has no `updated_at` column. Set it
 > comfortably longer than a run takes, or a file uploaded yesterday gets
 > re-claimed the moment it starts processing.
 
@@ -362,7 +362,7 @@ exec uvicorn app.main:app --host 0.0.0.0 --port "$CDSW_APP_PORT"
 Note what the API does **not** need: neither OCR virtualenv. With
 `DEID_BACKEND=cml_job` it only marks the row and POSTs to the CML API to
 start a Job run, so the web process stays small. It does need pymupdf
-(in `requirements-dev.txt`) to stamp patient ids on submission — a 20MB
+(in `requirements-dev.txt`) to stamp patient ids on submission, a 20MB
 wheel, not the ML stack.
 
 ### Where de-identified output lands
@@ -381,7 +381,7 @@ every output to its configured home:
 
 Relative paths resolve against the project; absolute ones are used as
 given. All three must be writable by the API Application, and they are
-what the Files section serves from — a path outside them is refused as a
+what the Files section serves from, a path outside them is refused as a
 traversal attempt.
 
 The stamp is what makes a redacted document filable again: it carries no
@@ -407,11 +407,11 @@ it away.
 
 Upload exists because the pipeline is good but not perfect. When it
 leaves an identifier behind, someone redacts the document by hand and
-uploads the result against the same row — same id, still `done`, only
+uploads the result against the same row, same id, still `done`, only
 the redacted bytes change.
 
 `scripts/init_db.py` seeds these onto the admin role, and `files:read`
-onto the viewer role — but only for a **fresh** database.
+onto the viewer role, but only for a **fresh** database.
 
 **On a running deployment nobody has them yet**, and a permission held
 by nobody looks exactly like a feature that was never built: the
@@ -429,7 +429,7 @@ python scripts/grant_permissions.py --role admin --all-missing
 python scripts/grant_permissions.py --role viewer --grant files:read
 ```
 
-It only ever adds; nothing is removed. Sign out and back in afterwards —
+It only ever adds; nothing is removed. Sign out and back in afterwards,
 permissions are read into the session at sign-in.
 
 The same script covers any permission added after launch, which is worth
@@ -449,17 +449,17 @@ python scripts/migrate_columns.py --apply
 
 Currently that is `patient_application_files.review_status` and
 `.review_note` (a reviewer's verdict on a document, kept apart from
-`deid_status` — a perfectly redacted scan can still be illegible),
+`deid_status`, a perfectly redacted scan can still be illegible),
 `patient_applications.status_reason` (why an application was rejected or
 deleted), `patient_applications.assigned_to_id` (the user set to work on
 the application, and the one emailed about its uploads) and
 `patient_applications.original_file_path` (where *this* application's
-documents came from — per application, because a second application for
+documents came from, per application, because a second application for
 the same patient routinely draws on a different folder).
 
 **`access_logs` is a new table, not a new column**, so `migrate_columns.py`
 does not create it. Create it by hand from `sql/schema.sql` on an existing
-database — it is partitioned by day, and that cannot be retrofitted later
+database, it is partitioned by day, and that cannot be retrofitted later
 without rewriting the table:
 
 ```sql
@@ -506,11 +506,11 @@ injects.
 
 If `CDSW_APIV2_KEY` is not injected (API v2 not enabled for the project),
 mint a key under **User Settings → API Keys** and set `CML_API_KEY`
-explicitly. A *legacy* API key will not work — it must be a v2 key.
+explicitly. A *legacy* API key will not work, it must be a v2 key.
 
 ### "409 out of quota: CPU request limit reached"
 
-Not a configuration error — the workspace had no CPU left to start the
+Not a configuration error, the workspace had no CPU left to start the
 Job's container. Applications hold their reservation for as long as they
 run, so two Applications plus a forgotten Session can leave nothing for a
 Job.
@@ -519,13 +519,13 @@ In order of what usually frees the most:
 
 1. **Stop idle Sessions.** A session nobody closed holds its full vCPU
    reservation. This is the common cause.
-2. **Shrink the Frontend Application** — it serves static files. 1 vCPU /
+2. **Shrink the Frontend Application**, it serves static files. 1 vCPU /
    2 GiB is plenty.
 3. **Shrink the Backend Application.** Once `DEID_BACKEND=cml_job` the API
    does no ML work at all; it does not need the profile it needed inline.
 4. **Drop the `deidentify` Job to 1 vCPU, but keep 8 GiB.** RAM is the
    hard requirement (the NER model); CPU only changes how long OCR takes.
-   Set `OCR_CPU_THREADS` to match the vCPU you give it — the default of 8
+   Set `OCR_CPU_THREADS` to match the vCPU you give it, the default of 8
    on a 1 vCPU container oversubscribes and runs *slower*.
 
 The row is left `queued` rather than `failed` when this happens, so the
@@ -537,7 +537,7 @@ the file is processed late rather than not at all.
 The workspace is fronted by an internal or corporate CA. `httpx` verifies
 against **certifi's** bundle, not the operating system trust store, so
 this fails even though `curl https://$CDSW_DOMAIN` on the same host
-succeeds — curl reads the OS store, httpx does not.
+succeeds, curl reads the OS store, httpx does not.
 
 Find the bundle that already works on the host:
 
@@ -549,7 +549,7 @@ curl -v https://$CDSW_DOMAIN 2>&1 | grep -i "CAfile\|issuer"
 
 Then set `CML_CA_BUNDLE` to that PEM as a project environment variable and
 restart the Backend Application. `REQUESTS_CA_BUNDLE` and `SSL_CERT_FILE`
-are honoured too, and are often already set by the runtime — check those
+are honoured too, and are often already set by the runtime, check those
 before adding anything.
 
 > `CML_VERIFY_TLS=false` disables verification and will also make the
@@ -602,7 +602,7 @@ cookie is sent on every request because it never crosses an origin.
 
 **Direct.** Build with `VITE_API_BASE_URL=https://patients-api.<domain>`
 and set `CORS_ORIGINS=https://patients.<domain>` on the API. One more
-moving part, and the failure mode is unhelpful — a CORS rejection does
+moving part, and the failure mode is unhelpful, a CORS rejection does
 not look like a CORS error in the app, it looks like the API is down.
 
 Either way, `VITE_API_BASE_URL` is baked in **at build time**. Changing
@@ -611,7 +611,7 @@ it means rebuilding, not restarting.
 ### SPA routing
 
 `serve_frontend.py` returns `index.html` for any path that is not a real
-file. Without that, `/patients/abc/files` 404s on reload — the router is
+file. Without that, `/patients/abc/files` 404s on reload, the router is
 client-side and the server has no such file. If deep links break, that
 fallback is what to check.
 
@@ -654,12 +654,12 @@ done        a redacted copy exists
 failed      look at the Job run's log
 ```
 
-A row stuck in `queued` means the Job run never started — check
+A row stuck in `queued` means the Job run never started, check
 `CML_DEID_JOB_ID` and the API Application's log. A row stuck in
 `processing` means a run died mid-file; the sweep re-claims it.
 
 A row that goes straight to `failed` with `model ... missing from the
-model store` in the Job log means step 3b did not land — re-run
+model store` in the Job log means step 3b did not land, re-run
 `make check-models` in a Session. A run that instead *hangs* for minutes
 before failing means something is still trying to download: check that
 `DEID_OFFLINE` has not been set to `0` anywhere.
@@ -671,7 +671,7 @@ before failing means something is still trying to download: check that
 **1. Shared storage.** The API writes uploads and the Job reads them, so
 they must see the same filesystem. `/home/cdsw` works within one project
 and is NFS-backed. At volume, move to S3/ADLS and store the object key in
-`file_path`. Decide before you have production data — migrating stored
+`file_path`. Decide before you have production data, migrating stored
 paths afterwards is painful.
 
 **2. The weights are not downloadable from here.** github and
@@ -686,7 +686,7 @@ copying it per project.
 sits in a JSON file. It is created 0600 in a 0700 temp directory and
 deleted in a `finally`. Do not set `DEID_KEEP_WORK_DIR` in production,
 and do not point `DEID_WORK_DIR` at shared storage. Relatedly,
-`DEID_LOG_STAGE_OUTPUT` forwards stage stderr to the job log — and the
+`DEID_LOG_STAGE_OUTPUT` forwards stage stderr to the job log, and the
 NLP libraries quote document text into their warnings.
 
 ---
@@ -723,11 +723,11 @@ RUN /opt/deid/.venv-ocr/bin/python /opt/deid/OCR/scripts/check_models.py --stage
 Then set `DEID_OCR_PYTHON=/opt/deid/.venv-ocr/bin/python`,
 `DEID_NLP_PYTHON=/opt/deid/.venv-nlp/bin/python` and
 `DEID_MODELS_DIR=/opt/deid/OCR/models`, and skip steps 3 and 3b. The two
-`RUN` lines for the venvs must stay separate — a single `pip install`
+`RUN` lines for the venvs must stay separate, a single `pip install`
 naming both requirement files is the exact thing that cannot resolve.
 
 Note `OCR/models/` is gitignored (~570MB), so a CI build context needs it
-staged or fetched from an artifact store first — a clone alone will not
+staged or fetched from an artifact store first, a clone alone will not
 have it.
 
 ---
@@ -736,7 +736,7 @@ have it.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `HIVE_HOST` / `HIVE_PORT` / `HIVE_DB` / `HIVE_AUTH` / `HIVE_USER` | — | `HIVE_AUTH=GSSAPI` in production |
+| `HIVE_HOST` / `HIVE_PORT` / `HIVE_DB` / `HIVE_AUTH` / `HIVE_USER` |, | `HIVE_AUTH=GSSAPI` in production |
 | `CORS_ORIGINS` | localhost dev ports | Unneeded when proxying |
 | `FILE_STORAGE_DIR` | `storage/patient_files` | Visible to **both** API and Job |
 | `DEID_BACKEND` | `inline` | `cml_job` on Cloudera AI |
@@ -748,25 +748,25 @@ have it.
 | `DEID_TIMEOUT_SECONDS` | `5400` | Per file. ~31s/page, so this carries ~175 pages |
 | `DEID_BATCH_LIMIT` | `0` (no limit) | Cap files per job run |
 | `DEID_RETRY_STALE_MINUTES` | `0` (off) | Re-claim rows stuck in `processing` |
-| `DEID_FILE_ID` | — | Set per run by the API; scopes a run to one file |
+| `DEID_FILE_ID` |, | Set per run by the API; scopes a run to one file |
 | `DEID_NOTICE_REPEAT_SECONDS` | `120` | Window in which a repeat de-identification notice for the same outcome is dropped |
 | `DEID_WORK_DIR` | 0700 temp dir | Holds the PHI-bearing handoff |
 | `DEID_KEEP_WORK_DIR` | `false` | Debugging only |
-| `CML_DEID_JOB_ID` | — | Required for `cml_job` |
+| `CML_DEID_JOB_ID` |, | Required for `cml_job` |
 | `CML_PROJECT_ID` / `CML_API_KEY` / `CML_API_URL` | from `CDSW_*` | Override only if not injected |
 | `CML_CA_BUNDLE` | `$REQUESTS_CA_BUNDLE`, else `$SSL_CERT_FILE` | CA bundle PEM for a workspace behind an internal CA |
 | `CML_VERIFY_TLS` | `true` | **Leave on.** `false` sends the API key over an unverified connection |
 | `FRONTEND_DIST` | `frontend/dist` | Dashboard Application |
-| `API_PROXY_TARGET` | — | Set to serve dashboard + API on one origin |
-| `VITE_API_BASE_URL` | — | **Build-time**; `/api` when proxying |
-| `VITE_DEV_USERNAME` | — | **Leave unset in production** |
+| `API_PROXY_TARGET` |, | Set to serve dashboard + API on one origin |
+| `VITE_API_BASE_URL` |, | **Build-time**; `/api` when proxying |
+| `VITE_DEV_USERNAME` |, | **Leave unset in production** |
 
 ---
 
 ## Identity in production
 
 There is no login. `app/security.py::_current_username` reads the
-`REMOTE-USER` header — the username the platform already authenticated.
+`REMOTE-USER` header, the username the platform already authenticated.
 Locally you set it by hand; on Cloudera the platform sets it ahead of the
 app. The proxy deployment (step 6) is what makes that work: the dashboard
 and API share an origin, so the platform's auth headers reach the API
@@ -776,5 +776,5 @@ unchanged.
 
 If a user ever *waits* for a result, or the queue grows faster than one
 batch drains it. Run a small always-on worker with models loaded once and
-keep the Job as a sweeper. The `deid_status` contract does not change —
+keep the Job as a sweeper. The `deid_status` contract does not change,
 only who drains it.

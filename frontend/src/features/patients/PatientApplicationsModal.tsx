@@ -42,9 +42,7 @@ export function PatientApplicationsModal({
       <div className="mx-auto flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] shadow-xl">
         <div className="flex items-center justify-between gap-4 border-b border-[rgb(var(--border))] px-5 py-3">
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold">
-              {patientName(patient)}
-            </p>
+            <p className="truncate text-sm font-bold">{patientName(patient)}</p>
             <p className="truncate font-mono text-xs text-[rgb(var(--foreground-muted))]">
               {patient.id}
             </p>
@@ -91,9 +89,7 @@ export function PatientApplicationsModal({
                       {application.assigned_to_username
                         ? ` · ${application.assigned_to_username}`
                         : ''}
-                      {application.description
-                        ? ` · ${application.description}`
-                        : ''}
+                      {application.description ? ` · ${application.description}` : ''}
                     </p>
                   </div>
                   <Button

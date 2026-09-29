@@ -46,8 +46,6 @@ import {
 import { FileTallyBar } from './FileTallyBar'
 import { UploadProgress } from './UploadProgress'
 
-// De-identification happens in intake, before a document can be picked;
-// a file without a redacted copy is one attached the old way.
 const NOT_REVIEWABLE = 'There is no de-identified copy of this document to review'
 
 export function FileReviewPanel({
@@ -216,8 +214,7 @@ export function FileReviewPanel({
             ? 'Already approved'
             : undefined,
         isLoading: reviewing && review.variables?.reviewStatus === 'approved',
-        onSelect: () =>
-          review.mutate({ fileId: file.id, reviewStatus: 'approved' }),
+        onSelect: () => review.mutate({ fileId: file.id, reviewStatus: 'approved' }),
       },
       {
         id: 'reject',
@@ -258,9 +255,7 @@ export function FileReviewPanel({
     {
       id: 'type',
       header: 'Type',
-      cell: (file) => (
-        <Badge tone="neutral">{file.file_extension || 'file'}</Badge>
-      ),
+      cell: (file) => <Badge tone="neutral">{file.file_extension || 'file'}</Badge>,
       sortValue: (file) => file.file_extension,
     },
     {
@@ -272,15 +267,11 @@ export function FileReviewPanel({
           {review.isPending && review.variables?.fileId === file.id ? (
             <span className="inline-flex items-center gap-2 text-xs font-semibold text-[rgb(var(--foreground-muted))]">
               <Spinner size="sm" label="" />
-              {review.variables.reviewStatus === 'approved'
-                ? 'Approving…'
-                : 'Rejecting…'}
+              {review.variables.reviewStatus === 'approved' ? 'Approving…' : 'Rejecting…'}
             </span>
           ) : (
             <>
-              <Badge tone={reviewTone(file.review_status)}>
-                {file.review_status}
-              </Badge>
+              <Badge tone={reviewTone(file.review_status)}>{file.review_status}</Badge>
               {file.review_note ? (
                 <span
                   className="mt-1 block truncate text-xs text-[rgb(var(--foreground-muted))]"
@@ -316,8 +307,8 @@ export function FileReviewPanel({
     <div className="space-y-6">
       {readOnly ? (
         <Card className="border-[rgb(var(--border))] p-4 text-sm text-[rgb(var(--foreground-muted))]">
-          This application has been submitted. Its documents are shown as
-          they were sent -- the de-identified copy and what it carries.
+          This application has been submitted. Its documents are shown as they were sent
+          -- the de-identified copy and what it carries.
         </Card>
       ) : (
         <>

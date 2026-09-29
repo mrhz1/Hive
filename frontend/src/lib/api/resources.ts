@@ -2,10 +2,7 @@ import axios from 'axios'
 import { apiErrorSchema } from '@/schemas/common'
 import type { z } from 'zod'
 import { ApiError, api, toApiError } from './client'
-import {
-  accessLogListSchema,
-  type AccessLogFilters,
-} from '@/schemas/accessLog'
+import { accessLogListSchema, type AccessLogFilters } from '@/schemas/accessLog'
 import {
   auditLogListSchema,
   auditLogSchema,
@@ -111,14 +108,8 @@ async function fetchImagePreview(
 async function blobError(error: unknown): Promise<unknown> {
   if (axios.isAxiosError(error) && error.response?.data instanceof Blob) {
     try {
-      const parsed = apiErrorSchema.parse(
-        JSON.parse(await error.response.data.text())
-      )
-      return new ApiError(
-        error.response.status,
-        parsed.error.code,
-        parsed.error.detail
-      )
+      const parsed = apiErrorSchema.parse(JSON.parse(await error.response.data.text()))
+      return new ApiError(error.response.status, parsed.error.code, parsed.error.detail)
     } catch {
       // Not the API envelope; fall through to the generic mapping.
     }
@@ -250,9 +241,7 @@ export const logsApi = {
 
 export const accessLogsApi = {
   list: (filters: AccessLogFilters = {}) =>
-    request(accessLogListSchema, () =>
-      api.get('/access-logs', { params: filters })
-    ),
+    request(accessLogListSchema, () => api.get('/access-logs', { params: filters })),
 }
 
 export const applicationFilesApi = {
@@ -275,11 +264,7 @@ export const applicationFilesApi = {
     )
   },
 
-  uploadInBackground: (
-    applicationId: string,
-    files: File[],
-    description?: string
-  ) => {
+  uploadInBackground: (applicationId: string, files: File[], description?: string) => {
     const form = new FormData()
     for (const file of files) {
       form.append('files', file, file.webkitRelativePath || file.name)
@@ -361,14 +346,9 @@ export const applicationFilesApi = {
     }
   },
 
-  listRejected: () =>
-    request(rejectedFileListSchema, () => api.get('/files/rejected')),
+  listRejected: () => request(rejectedFileListSchema, () => api.get('/files/rejected')),
 
-  uploadDeidentified: (
-    applicationId: string,
-    file: File,
-    description?: string
-  ) => {
+  uploadDeidentified: (applicationId: string, file: File, description?: string) => {
     const form = new FormData()
     form.append('file', file, file.name)
     if (description) form.append('description', description)
@@ -405,7 +385,6 @@ export const applicationFilesApi = {
             parsed.error.detail
           )
         } catch (parseError) {
-
           if (parseError instanceof ApiError) throw parseError
         }
       }
@@ -490,15 +469,12 @@ export const deidentifiedFilesApi = {
 export const intakeApi = {
   counts: () => request(intakeCountsSchema, () => api.get('/intake/counts')),
 
-  files: (status?: string, patientCode?: string) =>
-    request(intakeFileListSchema, () =>
-      api.get('/intake/files', {
-        params: {
-          ...(status ? { status } : {}),
-          ...(patientCode ? { patient_code: patientCode } : {}),
-        },
-      })
-    ),
+  files: (status?: string, patientCode?: string) => {
+    const params: Record<string, string> = {}
+    if (status) params.status = status
+    if (patientCode) params.patient_code = patientCode
+    return request(intakeFileListSchema, () => api.get('/intake/files', { params }))
+  },
 
   codes: () => request(availableCodeListSchema, () => api.get('/intake/codes')),
 
@@ -507,7 +483,6 @@ export const intakeApi = {
   batchProgress: () =>
     request(intakeBatchProgressListSchema, () => api.get('/intake/progress/batches')),
 
-  /** Every file of a status, as CSV. */
   exportCsv: async (status: string): Promise<Blob> => {
     try {
       const response = await api.get('/intake/files/export', {
@@ -520,7 +495,6 @@ export const intakeApi = {
     }
   },
 
-  /** One page of a status's files, and how many there are in all. */
   page: async (status: string, limit: number, offset: number) => {
     try {
       const response = await api.get('/intake/files', {

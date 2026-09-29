@@ -15,10 +15,7 @@ import { patientsApi } from '@/lib/api/resources'
 import { cn } from '@/lib/cn'
 import type { AvailableCode } from '@/schemas/intake'
 import { rejectedCount, undecidedCount } from '@/schemas/applicationFile'
-import {
-  patientName,
-  type Patient,
-} from '@/schemas/patient'
+import { patientName, type Patient } from '@/schemas/patient'
 import {
   canReject,
   isReadOnly,
@@ -75,7 +72,6 @@ function StepRail({
   )
 }
 
-
 export function ApplicationWizard({
   application,
   initialPatient,
@@ -97,9 +93,6 @@ export function ApplicationWizard({
 
   const [folder, setFolder] = useState(application?.original_file_path ?? '')
 
-  // The patient code this application is for, chosen from what intake has
-  // de-identified. A new application starts here; one made before intake
-  // existed keeps its typed folder instead.
   const [code, setCode] = useState<string | undefined>(
     application?.patient_id ?? initialPatient?.id
   )
@@ -121,13 +114,10 @@ export function ApplicationWizard({
   }
 
   function stepOneIsComplete(): boolean {
-    // The folder comes with the code, so a missing one means no code was
-    // chosen -- the thing to ask for.
     if (folder.trim()) return true
     toast.error('Choose a patient code before saving the patient')
     return false
   }
-
 
   async function onPatientSaved(saved: Patient) {
     setPatient(saved)
@@ -149,7 +139,6 @@ export function ApplicationWizard({
       }
       setRecord(current)
     } catch {
-
       return
     }
 
@@ -161,7 +150,6 @@ export function ApplicationWizard({
     setFolder(chosen.folder)
 
     if (!chosen.patient_exists) {
-      // Created from the documents: the form opens with the code locked.
       setPatient(undefined)
       return
     }
@@ -201,37 +189,33 @@ export function ApplicationWizard({
 
   const locked = isReadOnly(record?.status)
 
-
   return (
     <div className="space-y-6">
       <PageHeader
         title={application ? 'Application' : 'New application'}
         description={
           patient
-            ?
-
-              `${patientName(patient)} · ${patient.id}`
+            ? `${patientName(patient)} · ${patient.id}`
             : 'Enter the patient, attach their documents, then review.'
         }
         actions={
-          <Button variant="outline" onClick={() => void navigate({ to: '/applications' })}>
+          <Button
+            variant="outline"
+            onClick={() => void navigate({ to: '/applications' })}
+          >
             Back to applications
           </Button>
         }
       />
 
-      <StepRail
-        current={current}
-        furthest={locked ? 3 : furthest}
-        onSelect={goTo}
-      />
+      <StepRail current={current} furthest={locked ? 3 : furthest} onSelect={goTo} />
 
       {current === 1 ? (
         <div className="space-y-4">
           {locked ? (
             <Card className="p-4 text-sm text-[rgb(var(--foreground-muted))]">
-              This application has been submitted. Everything below is
-              shown as it was sent and cannot be changed.
+              This application has been submitted. Everything below is shown as it was
+              sent and cannot be changed.
             </Card>
           ) : null}
 
@@ -262,9 +246,8 @@ export function ApplicationWizard({
             <>
               {!patient ? (
                 <Card className="p-4 text-sm text-[rgb(var(--foreground-muted))]">
-                  No patient has code{' '}
-                  <strong className="font-mono">{code}</strong> yet. Fill in
-                  what you know and it is created with that code.
+                  No patient has code <strong className="font-mono">{code}</strong> yet.
+                  Fill in what you know and it is created with that code.
                 </Card>
               ) : null}
               <PatientForm
@@ -287,10 +270,7 @@ export function ApplicationWizard({
             {!locked && patient ? (
               <IntakeFilePicker applicationId={record.id} code={patient.id} />
             ) : null}
-            <FileReviewPanel
-              applicationId={record.id}
-              readOnly={locked}
-            />
+            <FileReviewPanel applicationId={record.id} readOnly={locked} />
             <div className="flex flex-wrap justify-between gap-3">
               <Button variant="outline" onClick={() => goTo(1)}>
                 Back to patient
@@ -300,8 +280,8 @@ export function ApplicationWizard({
           </>
         ) : (
           <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
-            Save the patient in step 1 before attaching documents -- the
-            application has to exist before anything can be attached to it.
+            Save the patient in step 1 before attaching documents, the application has to
+            exist before anything can be attached to it.
           </Card>
         )
       ) : null}
@@ -348,8 +328,8 @@ export function ApplicationWizard({
             {!locked && undecided > 0 ? (
               <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
                 {undecided} document{undecided === 1 ? '' : 's'} still{' '}
-                {undecided === 1 ? 'needs' : 'need'} approving or rejecting in
-                step 2 before this can be submitted.
+                {undecided === 1 ? 'needs' : 'need'} approving or rejecting in step 2
+                before this can be submitted.
               </Card>
             ) : null}
 
@@ -357,9 +337,8 @@ export function ApplicationWizard({
             {!locked && rejected > 0 ? (
               <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
                 {rejected} document{rejected === 1 ? '' : 's'} in step 2{' '}
-                {rejected === 1 ? 'has' : 'have'} been rejected, so this
-                application cannot be submitted. Reject it, or clear the
-                rejection in step 2 first.
+                {rejected === 1 ? 'has' : 'have'} been rejected, so this application
+                cannot be submitted. Reject it, or clear the rejection in step 2 first.
               </Card>
             ) : null}
 

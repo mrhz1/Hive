@@ -268,7 +268,7 @@ def _deidentify_element(element, redact, touched: List[str], prefix: str = "") -
 
 
 def _walk(dataset, redact, touched: List[str], prefix: str = "", depth: int = 0) -> None:
-    if depth > 8:  # pragma: no cover - guards a pathological file
+    if depth > 8:
         return
 
     for element in dataset:
@@ -298,13 +298,13 @@ def scrub_metadata(dataset, redact=None) -> List[str]:
 
     try:
         _walk(dataset, redact, touched)
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
         log.warning("metadata de-identification pass failed: %s", exc)
 
     try:
         dataset.remove_private_tags()
         touched.append("<private tags>")
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
         log.warning("could not remove private tags: %s", exc)
 
     dataset.PatientIdentityRemoved = "YES"

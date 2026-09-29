@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional, Sequence
+from typing import List, Optional
 
 from app.crud import patient_applications as applications_crud
 from app.crud import users as users_crud
@@ -106,7 +106,7 @@ def notify_assigned(assignee: User, application_id: str, assigned_by: User) -> b
     return _send([assignee], "An application has been assigned to you", "\n".join(lines))
 
 
-def _name_lines(names: Sequence[str], limit: int = 20) -> List[str]:
+def _name_lines(names: List[str], limit: int = 20) -> List[str]:
     lines = [f"  - {name}" for name in names[:limit]]
     if len(names) > limit:
         lines.append(f"  ... and {len(names) - limit} more")
@@ -155,12 +155,12 @@ def _body(
     return "\n".join(lines)
 
 
-def _send(recipients: Sequence[User], subject: str, body: str) -> bool:
+def _send(recipients: List[User], subject: str, body: str) -> bool:
     return send_email([user.email for user in recipients], subject, body)
 
 
 def notify_upload_finished(
-    recipients: Sequence[User],
+    recipients: List[User],
     job: UploadJob,
     source_folder: Optional[str] = None,
 ) -> bool:
@@ -190,7 +190,7 @@ def notify_upload_finished(
 
 
 def notify_upload_failed(
-    recipients: Sequence[User],
+    recipients: List[User],
     job: UploadJob,
     source_folder: Optional[str] = None,
 ) -> bool:
@@ -198,7 +198,7 @@ def notify_upload_failed(
         return False
 
     greeting = f"Hello {_display_name(recipients[0])},"
-    subject = f"Document upload failed -- application {job.application_id[:8]}"
+    subject = f"Document upload failed: application {job.application_id[:8]}"
     headline = (
         "The documents uploaded for this application could not be moved into "
         "storage. Nothing has been recorded against the application; the "
@@ -210,7 +210,7 @@ def notify_upload_failed(
 
 
 def notify_deid_finished(
-    recipients: Sequence[User],
+    recipients: List[User],
     summary: DeidBatchSummary,
     source_folder: Optional[str] = None,
 ) -> bool:
@@ -221,7 +221,7 @@ def notify_deid_finished(
 
     if summary.failed and not summary.deidentified:
         subject = (
-            f"De-identification failed -- application {summary.application_id[:8]}"
+            f"De-identification failed: application {summary.application_id[:8]}"
         )
         headline = (
             f"None of the {summary.total} document(s) could be de-identified. "

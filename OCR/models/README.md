@@ -11,7 +11,7 @@ arrive over pip.
 
 ## Layout
 
-Directory names are the model identifiers verbatim — the same strings
+Directory names are the model identifiers verbatim, the same strings
 pinned in `deid/config.py`. Changing a model means dropping in a folder
 with the matching name, not editing code.
 
@@ -32,7 +32,7 @@ Roughly 570MB in total: 133MB paddle, 15MB spaCy, 419MB the NER model.
 `deid/model_store.py` resolves these. It also accepts two off-canonical
 spellings of the transformers path (`StanfordAIMI__stanford-deidentifier-base`
 and the bare `stanford-deidentifier-base`) and, for spaCy, a wrapping
-directory containing a single versioned subdirectory — because the
+directory containing a single versioned subdirectory, because the
 transfer is a human copying folders and those are the plausible slips.
 
 ## Filling it
@@ -56,7 +56,7 @@ only download what it can import. Re-running skips whatever is already
 staged; `--force` re-downloads.
 
 The HuggingFace cache stores files as symlinks into a blob directory, so
-the staging script resolves them — this directory is real files only, and
+the staging script resolves them, this directory is real files only, and
 copying it anywhere is enough.
 
 ## Moving it to Cloudera AI
@@ -76,7 +76,7 @@ make check-models    # loads every model with the network switched off
 
 `make check-models` is the check that matters. `run_deid.py --preflight`
 verifies the directories exist, which catches an incomplete copy but not
-a corrupt one — a truncated `pytorch_model.bin` passes the directory
+a corrupt one, a truncated `pytorch_model.bin` passes the directory
 check and fails several minutes into the first real job.
 
 If the store lives somewhere other than `OCR/models`, point
@@ -86,7 +86,7 @@ at run time).
 ## Why this is not in git
 
 ~570MB of binaries would be in every clone of this repo forever, and git
-is not the transport to Cloudera anyway — the upload is. `.gitignore`
+is not the transport to Cloudera anyway, the upload is. `.gitignore`
 keeps the weights out and this file in. Use git-lfs or an artifact
 store if the transfer needs to be automated.
 
@@ -94,7 +94,7 @@ store if the transfer needs to be automated.
 
 `DEID_OFFLINE` defaults to on. It sets `HF_HUB_OFFLINE` /
 `TRANSFORMERS_OFFLINE` before transformers is imported, and makes a
-missing model raise immediately — naming the directory it looked in —
+missing model raise immediately, naming the directory it looked in,
 rather than falling back to a hub id and failing on a blocked connection
 several hundred megabytes later.
 

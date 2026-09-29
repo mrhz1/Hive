@@ -6,7 +6,6 @@ import { Spinner } from './Spinner'
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> &
   VariantProps<typeof buttonVariants> & {
-
     isLoading?: boolean
     leadingIcon?: ReactNode
   }

@@ -1,24 +1,19 @@
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 SCHEMA_VERSION = 1
 
 
 @dataclass
 class OcrSpan:
-
     text: str
     confidence: float
     x0: float
     y0: float
     x1: float
     y1: float
-
-    @property
-    def bbox(self) -> Tuple[float, float, float, float]:
-        return (self.x0, self.y0, self.x1, self.y1)
 
     def to_dict(self) -> dict:
         return {
@@ -66,7 +61,6 @@ class PageSpans:
 
 @dataclass
 class OcrDocument:
-
     source_path: str
     dpi: int
     models: Dict[str, str] = field(default_factory=dict)
@@ -77,7 +71,10 @@ class OcrDocument:
 
     @property
     def total_spans(self) -> int:
-        return sum(len(p.spans) for p in self.pages)
+        total = 0
+        for page in self.pages:
+            total += len(page.spans)
+        return total
 
     def to_dict(self) -> dict:
         return {
@@ -96,8 +93,8 @@ class OcrDocument:
         version = int(data.get("schema_version", 0))
         if version != SCHEMA_VERSION:
             raise ValueError(
-                f"OCR handoff schema v{version} is not readable by this build "
-                f"(expected v{SCHEMA_VERSION}); the two virtualenvs are out of sync"
+                f"OCR schema version {version} does not match {SCHEMA_VERSION}, "
+                f"the OCR and NLP virtualenvs are out of sync"
             )
         return cls(
             source_path=data["source_path"],
@@ -115,18 +112,17 @@ class OcrDocument:
             os.makedirs(directory, mode=0o700, exist_ok=True)
 
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(self.to_dict(), fh)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f)
 
     @classmethod
     def read(cls, path: str) -> "OcrDocument":
-        with open(path, "r", encoding="utf-8") as fh:
-            return cls.from_dict(json.load(fh))
+        with open(path, "r", encoding="utf-8") as f:
+            return cls.from_dict(json.load(f))
 
 
 @dataclass
 class PiiSpan:
-
     entity_type: str
     start: int
     end: int
@@ -145,20 +141,19 @@ class RedactionBox:
 
 @dataclass
 class PageText:
-
     text: str
     index: List[Tuple[int, int, OcrSpan]] = field(default_factory=list)
 
 
-def read_manifest(path: str) -> List[Dict[str, Any]]:
-    with open(path, "r", encoding="utf-8") as fh:
-        data = json.load(fh)
+def read_manifest(path):
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
     if not isinstance(data, list):
         raise ValueError(f"manifest {path} must contain a JSON list")
     return data
 
 
-def write_manifest(path: str, jobs: List[Dict[str, Any]]) -> None:
+def write_manifest(path, jobs):
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump(jobs, fh)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(jobs, f)

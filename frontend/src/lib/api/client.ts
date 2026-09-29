@@ -71,7 +71,6 @@ export function toApiError(error: unknown): ApiError {
     if (parsed.success) {
       const { code, detail, fields } = parsed.data.error
       const fieldErrors = (fields ?? []).map((f) => ({
-
         field: String(f.loc[f.loc.length - 1] ?? ''),
         message: f.msg,
       }))

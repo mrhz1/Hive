@@ -32,7 +32,7 @@ COLUMNS = (
 
 _COLS = ", ".join(f"`{c}`" for c in COLUMNS)
 
-_WRITTEN = tuple(c for c in COLUMNS if c not in ("found_at", "updated_at"))
+_INSERT_COLUMNS = tuple(c for c in COLUMNS if c not in ("found_at", "updated_at"))
 
 BATCH_COLUMNS = ("id", "root", "status", "started_at", "finished_at")
 
@@ -59,9 +59,6 @@ def _row_to_file(row) -> IntakeFile:
 
 def _row_to_batch(row) -> IntakeBatch:
     return IntakeBatch(**dict(zip(BATCH_COLUMNS, row)))
-
-
-# --- batches -----------------------------------------------------------
 
 
 def create_batch(cursor, root: str, status: str = "sweeping") -> IntakeBatch:
@@ -110,57 +107,6 @@ def finish_batch(cursor, batch_id: str, status: str) -> IntakeBatch:
     )
     log.info("intake_batch_finished", batch_id=batch_id, status=status)
     return get_batch_or_404(cursor, batch_id)
-
-
-# --- files -------------------------------------------------------------
-
-
-def create_file(
-    cursor,
-    *,
-    batch_id: str,
-    source_path: str,
-    relative_path: str,
-    file_name: str,
-    file_extension: str,
-    file_size: int,
-    status: str,
-    checksum: Optional[str] = None,
-    patient_code: Optional[str] = None,
-    path_code: Optional[str] = None,
-    name_code: Optional[str] = None,
-    reason: Optional[str] = None,
-    detail: Optional[str] = None,
-) -> IntakeFile:
-    file_id = str(uuid.uuid4())
-    values = {
-        "id": file_id,
-        "batch_id": batch_id,
-        "source_path": source_path,
-        "relative_path": relative_path,
-        "file_name": file_name,
-        "file_extension": file_extension,
-        "file_size": file_size,
-        "checksum": checksum,
-        "patient_code": patient_code,
-        "path_code": path_code,
-        "name_code": name_code,
-        "status": status,
-        "reason": reason,
-        "detail": detail,
-        "output_path": None,
-        "output_name": None,
-        "claimed_by_file_id": None,
-    }
-
-    placeholders = ", ".join(["%s"] * len(_WRITTEN))
-    execute(
-        cursor,
-        f"INSERT INTO `intake_files` ({_COLS}) VALUES "
-        f"({placeholders}, {NOW_SQL}, {NOW_SQL})",
-        tuple(values[c] for c in _WRITTEN),
-    )
-    return get_file_or_404(cursor, file_id)
 
 
 def get_file(cursor, file_id: str) -> Optional[IntakeFile]:
@@ -221,22 +167,6 @@ def oldest_with_status(cursor, status: str) -> Optional[IntakeFile]:
     return _row_to_file(row) if row else None
 
 
-def find_by_checksum(cursor, checksum: str) -> List[IntakeFile]:
-    """Every row already holding these bytes.
-
-    What stops a re-pushed folder redacting the thousand files that were
-    already fine alongside the three that were fixed.
-    """
-    if not checksum:
-        return []
-    execute(
-        cursor,
-        f"SELECT {_COLS} FROM `intake_files` WHERE `checksum` = %s",
-        (checksum,),
-    )
-    return [_row_to_file(r) for r in cursor.fetchall()]
-
-
 def update_file(cursor, file_id: str, payload: IntakeFileUpdate) -> IntakeFile:
     get_file_or_404(cursor, file_id)
 
@@ -256,11 +186,6 @@ def update_file(cursor, file_id: str, payload: IntakeFileUpdate) -> IntakeFile:
 
 
 def counts(cursor, batch_id: Optional[str] = None) -> IntakeCounts:
-    """Derived, not stored -- see the note on `intake_batches`.
-
-    A GROUP BY, not a load of every row: at millions of rows the latter
-    stopped the Intake page from loading at all.
-    """
     by_status = status_counts(cursor, batch_id)
     tally = IntakeCounts(total=sum(by_status.values()))
     for status, n in by_status.items():
@@ -268,13 +193,6 @@ def counts(cursor, batch_id: Optional[str] = None) -> IntakeCounts:
             setattr(tally, status, n)
     return tally
 
-
-# --- bulk operations ---------------------------------------------------
-#
-# Hive's cost is per statement -- planning is ~0.4-1 s whether a statement
-# touches one row or a thousand -- so at millions of files every operation
-# here is one statement for many rows. Row-at-a-time is what made recording
-# five million files an 80-day job.
 
 BULK_ROWS = 500
 
@@ -284,18 +202,13 @@ def _chunks(items: list, size: int):
         yield items[start : start + size]
 
 
-def _slots(n: int) -> str:
+def _placeholders(n: int) -> str:
     return ", ".join(["%s"] * n)
 
 
 def create_files(cursor, rows: List[dict]) -> int:
-    """Insert many intake rows, BULK_ROWS per statement.
-
-    Each dict carries the columns create_file takes; ids are generated
-    here. Returns how many were written.
-    """
     written = 0
-    per_row = f"({_slots(len(_WRITTEN))}, {NOW_SQL}, {NOW_SQL})"
+    per_row = f"({_placeholders(len(_INSERT_COLUMNS))}, {NOW_SQL}, {NOW_SQL})"
     for chunk in _chunks(rows, BULK_ROWS):
         params: list = []
         for row in chunk:
@@ -312,7 +225,7 @@ def create_files(cursor, rows: List[dict]) -> int:
                 "detail": None,
                 **row,
             }
-            params.extend(values[c] for c in _WRITTEN)
+            params.extend(values[c] for c in _INSERT_COLUMNS)
         execute(
             cursor,
             f"INSERT INTO `intake_files` ({_COLS}) VALUES "
@@ -324,18 +237,12 @@ def create_files(cursor, rows: List[dict]) -> int:
 
 
 def list_queued(cursor, prefixes: List[str], limit: int) -> List[IntakeFile]:
-    """Up to `limit` queued rows whose id starts with one of `prefixes`.
-
-    The prefix set is a worker's shard. No ORDER BY: sorting five million
-    rows to hand out forty is the expensive part, and the order does not
-    matter -- every queued row is taken eventually.
-    """
     if not prefixes:
         return []
     execute(
         cursor,
         f"SELECT {_COLS} FROM `intake_files` WHERE `status` = %s AND "
-        f"substr(`id`, 1, 2) IN ({_slots(len(prefixes))}) LIMIT {int(limit)}",
+        f"substr(`id`, 1, 2) IN ({_placeholders(len(prefixes))}) LIMIT {int(limit)}",
         ("queued", *prefixes),
     )
     return [_row_to_file(r) for r in cursor.fetchall()]
@@ -346,22 +253,18 @@ def set_status_many(cursor, ids: List[str], status: str) -> None:
         execute(
             cursor,
             f"UPDATE `intake_files` SET `status` = %s, `updated_at` = {NOW_SQL} "
-            f"WHERE `id` IN ({_slots(len(chunk))})",
+            f"WHERE `id` IN ({_placeholders(len(chunk))})",
             (status, *chunk),
         )
 
 
 def requeue_processing(cursor, prefixes: Optional[List[str]] = None) -> int:
-    """Put `processing` rows back to `queued` -- for a shard, or all.
-
-    Only for rows nobody is working on: the caller has established that.
-    """
     sql = f"SELECT `id` FROM `intake_files` WHERE `status` = %s"
     params: list = ["processing"]
     if prefixes is not None:
         if not prefixes:
             return 0
-        sql += f" AND substr(`id`, 1, 2) IN ({_slots(len(prefixes))})"
+        sql += f" AND substr(`id`, 1, 2) IN ({_placeholders(len(prefixes))})"
         params.extend(prefixes)
     execute(cursor, sql, tuple(params))
     ids = [r[0] for r in cursor.fetchall()]
@@ -374,13 +277,6 @@ RESULT_FIELDS = ("status", "output_path", "output_name", "detail")
 
 
 def apply_results(cursor, results: List[dict]) -> None:
-    """Write many files' outcomes in one statement per BULK_ROWS.
-
-    Each result is `{"id", "status", "output_path", "output_name",
-    "detail"}`; the values differ per row, so each column is a CASE on the
-    id. Applying the same results twice leaves the same rows -- which is what
-    makes replaying a journal after a crash safe.
-    """
     for chunk in _chunks(list(results), BULK_ROWS // 2):
         sets = []
         params: list = []
@@ -393,13 +289,12 @@ def apply_results(cursor, results: List[dict]) -> None:
         execute(
             cursor,
             f"UPDATE `intake_files` SET {', '.join(sets)}, `updated_at` = {NOW_SQL} "
-            f"WHERE `id` IN ({_slots(len(ids))})",
+            f"WHERE `id` IN ({_placeholders(len(ids))})",
             tuple(params + ids),
         )
 
 
 def status_counts(cursor, batch_id: Optional[str] = None) -> dict:
-    """{status: n}, counted by Hive rather than by loading every row."""
     sql = "SELECT `status`, count(*) FROM `intake_files`"
     params: tuple = ()
     if batch_id:
@@ -410,7 +305,6 @@ def status_counts(cursor, batch_id: Optional[str] = None) -> dict:
 
 
 def batch_counts(cursor) -> dict:
-    """{batch_id: {status: n}} -- every push's progress in one query."""
     execute(
         cursor,
         "SELECT `batch_id`, `status`, count(*) FROM `intake_files` "
@@ -423,12 +317,11 @@ def batch_counts(cursor) -> dict:
 
 
 def find_by_paths(cursor, paths: List[str]) -> dict:
-    """{source_path: [rows]} for these paths only -- not every row known."""
     out: dict = {}
     for chunk in _chunks(list(dict.fromkeys(paths)), BULK_ROWS):
         execute(
             cursor,
-            f"SELECT {_COLS} FROM `intake_files` WHERE `source_path` IN ({_slots(len(chunk))})",
+            f"SELECT {_COLS} FROM `intake_files` WHERE `source_path` IN ({_placeholders(len(chunk))})",
             tuple(chunk),
         )
         for row in cursor.fetchall():
@@ -438,12 +331,11 @@ def find_by_paths(cursor, paths: List[str]) -> dict:
 
 
 def find_by_checksums(cursor, digests: List[str]) -> dict:
-    """{checksum: [rows]} for these checksums only."""
     out: dict = {}
     for chunk in _chunks(list(dict.fromkeys(d for d in digests if d)), BULK_ROWS):
         execute(
             cursor,
-            f"SELECT {_COLS} FROM `intake_files` WHERE `checksum` IN ({_slots(len(chunk))})",
+            f"SELECT {_COLS} FROM `intake_files` WHERE `checksum` IN ({_placeholders(len(chunk))})",
             tuple(chunk),
         )
         for row in cursor.fetchall():

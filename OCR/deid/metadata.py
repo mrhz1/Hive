@@ -17,7 +17,7 @@ def deidentify_value(
 
     try:
         cleaned = redact(text)
-    except Exception as exc:  # pragma: no cover - one field must not stop the pass
+    except Exception as exc:
         log.warning("metadata de-identification failed for a value: %s", exc)
         return PLACEHOLDER if known_phi else None
 

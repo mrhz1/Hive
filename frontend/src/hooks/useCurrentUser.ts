@@ -20,7 +20,6 @@ export function useUpdateProfile() {
   return useMutation({
     mutationFn: (values: ProfileFormValues) => meApi.update(values),
     onSuccess: () => {
-
       void queryClient.invalidateQueries({ queryKey: queryKeys.me })
       void queryClient.invalidateQueries({ queryKey: queryKeys.users.all })
       toast.success('Profile updated')

@@ -12,8 +12,6 @@ MAX_PARAGRAPHS = 2000
 MAX_TABLE_ROWS = 500
 
 
-
-
 def _to_display_array(dataset, frame_index: int):
     import numpy as np
 
@@ -111,8 +109,6 @@ def render_dicom_png(path: Path, frame_index: int = 0) -> Tuple[bytes, int]:
         size=image.size,
     )
     return buffer.getvalue(), total
-
-
 
 
 def _table_rows(table) -> List[List[str]]:

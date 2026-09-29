@@ -54,6 +54,11 @@ DEID_OUTPUT_EXTENSIONS = {
 
 DEIDENTIFIABLE_LABEL = "PDF, DICOM, Word"
 
+RUNTIME_NOT_FOUND = (
+    f"De-identification runtime not found at '{DEID_PYTHON}'. "
+    "Set DEID_PYTHON to an interpreter with the OCR stack installed."
+)
+
 
 def is_deidentifiable(extension: str) -> bool:
     return f".{(extension or '').lower().lstrip('.')}" in DEID_OUTPUT_EXTENSIONS
@@ -66,48 +71,30 @@ def deid_output_extension(extension: str) -> str:
 NAME_ATTEMPTS = 5
 
 
-def deid_output_stem(patient_id: str, extension: str) -> str:
-    """`<patient code>_<date>_<16-digit serial>`.
-
-    The date and the serial are the redaction run's own, not the original
-    upload's: a re-run is a new document, and reading the name tells you
-    when the redacted copy was made rather than when the scan arrived.
-
-    Every redacted file in the system reads this way -- the intake sweep,
-    the wizard's manual attach and a `/files-library` upload all come
-    through here -- so one name shape means one thing. There is no `_deid`
-    marker in it: the copy is identified by living in a de-identified
-    folder, and a suffix that says so on a file already filed as redacted
-    is noise. `deid_artifacts` finds a run's sidecars by the recorded name
-    rather than by that suffix, so nothing depended on it.
-
-    The document type is not in the name either. The extension already
-    carries it, and `AA1234_20260924_...dcm` is what the code on the
-    document has to be read off in a hurry.
-    """
+def deid_output_stem(patient_id: str) -> str:
     day = datetime.now(timezone.utc).strftime(DATE_FORMAT)
     return f"{patient_id or 'unknown'}_{day}_{new_document_serial()}"
 
 
 def deid_output_name(patient_id: str, extension: str) -> str:
     suffix = (extension or "").lower().lstrip(".")
-    stem = deid_output_stem(patient_id, suffix)
+    stem = deid_output_stem(patient_id)
     return f"{stem}.{suffix}" if suffix else stem
 
 
-def _free_output_stem(directory: Path, patient_id: str, extension: str) -> str:
-    stem = deid_output_stem(patient_id, extension)
+def unique_output_stem(directory: Path, patient_id: str, extension: str) -> str:
+    stem = deid_output_stem(patient_id)
 
     for _ in range(NAME_ATTEMPTS):
         if not any(directory.glob(f"{stem}*")):
             return stem
-        stem = deid_output_stem(patient_id, extension)
+        stem = deid_output_stem(patient_id)
 
     log.warning("deid_output_stem_contested", stem=stem, directory=str(directory))
     return stem
 
 
-def _resolved_or_none(stored: str) -> Optional[Path]:
+def _try_resolve(stored: str) -> Optional[Path]:
     try:
         return resolve_stored_path(stored)
     except Exception:
@@ -115,7 +102,7 @@ def _resolved_or_none(stored: str) -> Optional[Path]:
 
 
 def deid_artifacts(source_stored_path: str, deidentified_name: str = "") -> List[Path]:
-    source = _resolved_or_none(source_stored_path)
+    source = _try_resolve(source_stored_path)
     if source is None:
         return []
 
@@ -123,9 +110,6 @@ def deid_artifacts(source_stored_path: str, deidentified_name: str = "") -> List
     if not output_dir.is_dir():
         return []
 
-    # A run names its outputs after itself, so the recorded name is what finds
-    # them. The source-derived prefix is still tried, for rows written before
-    # that and for a run that died before it could record anything.
     prefixes = [f"{source.stem}{DEID_SUFFIX}"]
     if deidentified_name:
         prefixes.append(Path(deidentified_name).stem)
@@ -136,8 +120,8 @@ def deid_artifacts(source_stored_path: str, deidentified_name: str = "") -> List
             for path in output_dir.iterdir()
             if path.is_file() and path.name.startswith(tuple(prefixes))
         )
-    except OSError as exc:  # pragma: no cover - unreadable directory
-        log.warning("deid_artifact_scan_failed", directory=str(output_dir), error=str(exc))
+    except OSError as e:
+        log.warning("deid_artifact_scan_failed", directory=str(output_dir), error=str(e))
         return []
 
 
@@ -152,7 +136,7 @@ def remove_deid_artifacts(source_stored_path: str, deidentified_name: str = "") 
             "deid_artifacts_removed", source=source_stored_path, count=removed
         )
 
-    source = _resolved_or_none(source_stored_path)
+    source = _try_resolve(source_stored_path)
     if source is not None:
         prune_empty_dirs(source.parent / DEID_SUBFOLDER)
 
@@ -172,16 +156,15 @@ def _signal_name(returncode: int) -> str:
         return f"signal {-returncode}"
 
 
-def _exit_description(returncode: int) -> str:
+def _describe_exit(returncode: int) -> str:
     name = _signal_name(returncode)
     if not name:
         return f"exit {returncode}"
 
     if returncode == -9:
         return (
-            "killed by SIGKILL -- almost always the platform stopping it for "
-            "running out of memory. OCR and the NLP models are the memory "
-            "cost here, so give the Job more, or feed it smaller documents"
+            "killed by SIGKILL, most likely out of memory. Give the Job more "
+            "memory or use smaller documents"
         )
 
     return f"killed by {name}"
@@ -227,8 +210,8 @@ def _set_status(file_id: str, **fields) -> None:
     try:
         with hive_cursor() as cursor:
             crud.update_file(cursor, file_id, PatientApplicationFileUpdate(**fields))
-    except Exception as exc:  # pragma: no cover - last-resort logging
-        log.error("deid_status_write_failed", file_id=file_id, error=str(exc))
+    except Exception as e:
+        log.error("deid_status_write_failed", file_id=file_id, error=str(e))
 
 
 def _run_pipeline(
@@ -237,12 +220,6 @@ def _run_pipeline(
     file_id: str = "",
     env: Optional[Dict[str, str]] = None,
 ) -> Path:
-    """Redact one document into `output_dir`, returning what it produced.
-
-    `env` overlays the subprocess environment -- which is how a pool of
-    workers each get their own CPU budget instead of every one of them
-    helping itself to OCR_CPU_THREADS cores.
-    """
     output_dir.mkdir(parents=True, exist_ok=True)
 
     command = [
@@ -270,15 +247,12 @@ def _run_pipeline(
             check=False,
             env={**os.environ, **env} if env else None,
         )
-    except FileNotFoundError as exc:
-        raise DeidError(
-            f"De-identification runtime not found at '{DEID_PYTHON}'. "
-            "Set DEID_PYTHON to an interpreter with the OCR stack installed."
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
+    except FileNotFoundError as e:
+        raise DeidError(RUNTIME_NOT_FOUND) from e
+    except subprocess.TimeoutExpired as e:
         raise DeidError(
             f"De-identification timed out after {DEID_TIMEOUT_SECONDS}s"
-        ) from exc
+        ) from e
 
     if completed.returncode != 0:
         detail = _failure_detail(completed.stderr, completed.stdout)
@@ -289,7 +263,7 @@ def _run_pipeline(
             detail=detail,
         )
         raise DeidError(
-            f"De-identification failed ({_exit_description(completed.returncode)})"
+            f"De-identification failed ({_describe_exit(completed.returncode)})"
             + (f": {detail}" if detail else "")
         )
 
@@ -302,8 +276,6 @@ def _run_pipeline(
 
 @dataclass
 class Produced:
-    """One document's redacted copy, and which way it was de-identified."""
-
     path: Path
     method: Optional[str] = None
 
@@ -314,19 +286,6 @@ def run_pipeline_many(
     env: Optional[Dict[str, str]] = None,
     timeout: Optional[float] = None,
 ) -> Dict[str, object]:
-    """Redact several documents in one run of the pipeline.
-
-    One run loads PaddleOCR and the NER model once for all of them. Measured
-    on 40 DICOMs: 1.07 s each in one run with an OCR batch of 40, against
-    about 7.5 s each run one at a time -- nearly all of the difference is
-    loading models, not reading images.
-
-    Returns `{source: Produced}` for each success and
-    `{source: DeidError}` for each failure, keyed by the paths passed in.
-    Never raises for a document's failure; a run killed outright (exit -9)
-    fails every document in it, and the caller decides whether to retry
-    them one at a time.
-    """
     output_dir.mkdir(parents=True, exist_ok=True)
     wanted = [str(s) for s in sources]
 
@@ -346,12 +305,8 @@ def run_pipeline_many(
             check=False,
             env={**os.environ, **env} if env else None,
         )
-    except FileNotFoundError as exc:
-        error = DeidError(
-            f"De-identification runtime not found at '{DEID_PYTHON}'. "
-            "Set DEID_PYTHON to an interpreter with the OCR stack installed."
-        )
-        return {source: error for source in wanted}
+    except FileNotFoundError:
+        return {source: DeidError(RUNTIME_NOT_FOUND) for source in wanted}
     except subprocess.TimeoutExpired:
         error = DeidError(f"De-identification timed out after {limit:.0f}s")
         return {source: error for source in wanted}
@@ -361,7 +316,7 @@ def run_pipeline_many(
     except (ValueError, json.JSONDecodeError):
         detail = _failure_detail(completed.stderr, completed.stdout)
         error = DeidError(
-            f"De-identification failed ({_exit_description(completed.returncode)})"
+            f"De-identification failed ({_describe_exit(completed.returncode)})"
             + (f": {detail}" if detail else "")
         )
         return {source: error for source in wanted}
@@ -381,45 +336,35 @@ def run_pipeline_many(
     return results
 
 
-def _patient_id_for(cursor, application_id: str) -> str:
+def _lookup_patient_id(cursor, application_id: str) -> str:
     application = applications_crud.get_application(cursor, application_id)
     return getattr(application, "patient_id", "") or ""
 
 
-def _patient_id_of(record) -> str:
+def _get_patient_id(record) -> str:
     try:
         with hive_cursor() as cursor:
-            return _patient_id_for(cursor, record.application_id)
-    except Exception as exc:
-        log.warning("deid_patient_lookup_failed", file_id=record.id, error=str(exc))
+            return _lookup_patient_id(cursor, record.application_id)
+    except Exception as e:
+        log.warning("deid_patient_lookup_failed", file_id=record.id, error=str(e))
         return ""
 
 
-def _rename_run_outputs(produced: Path, patient_id: str) -> Path:
-    """Rename a run's outputs to the de-identified naming scheme.
-
-    The pipeline names what it writes after the file it read, which would
-    leave the original's upload date and serial on the redacted copy.
-    Everything the run produced for this document shares one stem -- the
-    copy, the extracted text and the report -- so they move together and
-    stay findable as a set.
-    """
+def _rename_outputs(produced: Path, patient_id: str) -> Path:
     old_stem = produced.stem
-    new_stem = _free_output_stem(produced.parent, patient_id, produced.suffix)
+    new_stem = unique_output_stem(produced.parent, patient_id, produced.suffix)
     if new_stem == old_stem:
         return produced
 
     target = produced.with_name(f"{new_stem}{produced.suffix}")
     try:
         produced.rename(target)
-    except OSError as exc:
-        # The right bytes under the wrong name is still a good run, so keep
-        # it rather than failing the file over a rename.
+    except OSError as e:
         log.warning(
             "deid_output_rename_failed",
             source=str(produced),
             target=str(target),
-            error=str(exc),
+            error=str(e),
         )
         return produced
 
@@ -428,20 +373,20 @@ def _rename_run_outputs(produced: Path, patient_id: str) -> Path:
             continue
         try:
             path.rename(path.with_name(new_stem + path.name[len(old_stem):]))
-        except OSError as exc:  # pragma: no cover - best effort
+        except OSError as e:
             log.warning(
-                "deid_sidecar_rename_failed", source=str(path), error=str(exc)
+                "deid_sidecar_rename_failed", source=str(path), error=str(e)
             )
 
     log.info("deid_output_named", name=target.name, produced_as=produced.name)
     return target
 
 
-def _record_deid_metadata(record, produced: Path, patient_id: Optional[str] = None) -> None:
+def _save_metadata(record, produced: Path, patient_id: Optional[str] = None) -> None:
     output_type = produced.suffix.lstrip(".").lower()
 
     if patient_id is None:
-        patient_id = _patient_id_of(record)
+        patient_id = _get_patient_id(record)
 
     embed_metadata(
         produced,
@@ -463,8 +408,8 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
     try:
         with hive_cursor() as cursor:
             record = crud.get_file_or_404(cursor, file_id)
-    except Exception as exc:
-        log.error("deid_lookup_failed", file_id=file_id, error=str(exc))
+    except Exception as e:
+        log.error("deid_lookup_failed", file_id=file_id, error=str(e))
         return
 
     log.info("deid_started", file_id=file_id, name=record.sanitized_file_name)
@@ -485,8 +430,8 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
 
         produced = _run_pipeline(source, source.parent / DEID_SUBFOLDER, file_id)
 
-        patient_id = _patient_id_of(record)
-        produced = _rename_run_outputs(produced, patient_id)
+        patient_id = _get_patient_id(record)
+        produced = _rename_outputs(produced, patient_id)
 
         _set_status(
             file_id,
@@ -495,15 +440,15 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
             deidentified_file_name=produced.name,
             de_identified_file_path=str(produced),
         )
-        _record_deid_metadata(record, produced, patient_id)
+        _save_metadata(record, produced, patient_id)
         log.info("deid_succeeded", file_id=file_id, output=str(produced))
 
-    except DeidError as exc:
-        log.error("deid_failed", file_id=file_id, error=str(exc))
+    except DeidError as e:
+        log.error("deid_failed", file_id=file_id, error=str(e))
         _set_status(file_id, deid_status="failed")
 
-    except Exception as exc:  # pragma: no cover - defensive
-        log.exception("deid_crashed", file_id=file_id, error=str(exc))
+    except Exception as e:
+        log.exception("deid_crashed", file_id=file_id, error=str(e))
         _set_status(file_id, deid_status="failed")
 
     finally:

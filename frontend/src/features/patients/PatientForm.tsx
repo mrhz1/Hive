@@ -40,7 +40,6 @@ export function PatientForm({
 }: {
   patient?: Patient
 
-  /** A code taken from the documents: filled in, and not to be retyped. */
   code?: string
   onSaved?: (patient: Patient) => void | Promise<void>
 
@@ -72,7 +71,6 @@ export function PatientForm({
   const isSubmitting = create.isPending || update.isPending
 
   const onSubmit = handleSubmit(async (values) => {
-
     if (onBeforeSubmit && !onBeforeSubmit()) return
 
     let saved: Patient
@@ -112,7 +110,7 @@ export function PatientForm({
     >
       <Section
         title="Patient"
-        hint="At least one of first name, last name or email is required -- everything else may be left blank."
+        hint="At least one of first name, last name or email is required. Everything else is optional."
       />
       <TextField
         label="Patient code"
@@ -123,7 +121,7 @@ export function PatientForm({
             ? 'A code identifies the patient everywhere and cannot be changed.'
             : code
               ? 'Taken from the de-identified documents this patient is being created for.'
-              : 'As it appears on the documents -- two to four letters then three or four digits.'
+              : 'As it appears on the documents: two to four letters, then three or four digits.'
         }
         readOnly={Boolean(patient) || Boolean(code)}
         error={errors.id?.message}

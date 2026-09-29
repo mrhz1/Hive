@@ -30,7 +30,7 @@ COLUMNS = (
     "original_file_path",
 )
 
-TIMESTAMP_COLUMNS = frozenset(
+TIMESTAMP_COLUMNS = set(
     {"submitted_at", "created_at", "updated_at", "reviewed_at"}
 )
 

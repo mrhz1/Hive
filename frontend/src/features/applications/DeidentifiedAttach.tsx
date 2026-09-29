@@ -32,8 +32,8 @@ export function DeidentifiedAttach({ applicationId }: { applicationId: string })
         Attach a de-identified document
       </h2>
       <p className="mt-1 text-xs text-[rgb(var(--foreground-muted))]">
-        Already redacted, with no original to keep here. It is filed as
-        done and named like the pipeline's own output. PDF, DICOM or Word.
+        Already redacted, with no original to keep here. It is filed as done and named
+        like the pipeline's own output. PDF, DICOM or Word.
       </p>
 
       <div className="mt-4 space-y-3">

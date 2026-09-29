@@ -194,12 +194,6 @@ def delete_files_for_application(
 def set_paths(
     cursor, file_id: str, file_path: Optional[str], de_identified_file_path: str
 ) -> PatientApplicationFile:
-    """Point a row at where its copies now live.
-
-    Not part of PatientApplicationFileUpdate on purpose: that is what PUT
-    /files/{id} accepts, and a path a client can set is a path a client can
-    aim anywhere.
-    """
     execute(
         cursor,
         "UPDATE `patient_application_files` SET `file_path` = %s, "

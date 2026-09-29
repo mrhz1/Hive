@@ -57,7 +57,6 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'application:view',
   },
   {
-
     label: 'Metadata',
     to: '/metadata',
     icon: Table2,
@@ -66,7 +65,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Roles', to: '/roles', icon: Shield, permission: 'role:view' },
   { label: 'Audit log', to: '/logs', icon: ClipboardList, permission: 'log:view' },
   {
-
     label: 'Access log',
     to: '/access-logs',
     icon: Eye,

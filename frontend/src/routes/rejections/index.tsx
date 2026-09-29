@@ -1,13 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import {
-  Check,
-  Download,
-  Eye,
-  FileStack,
-  ShieldCheck,
-  Upload,
-} from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Check, Download, Eye, FileStack, ShieldCheck, Upload } from 'lucide-react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
 import { Can, RequirePermission } from '@/components/PermissionGate'
@@ -26,7 +19,7 @@ import { ApiError } from '@/lib/api/client'
 import { applicationFilesApi } from '@/lib/api/resources'
 import { formatFileSize, previewKind } from '@/schemas/applicationFile'
 import type { PatientApplication } from '@/schemas/patientApplication'
-import { rejectionHaystack, type RejectedFile } from '@/schemas/rejection'
+import { rejectionSearchText, type RejectedFile } from '@/schemas/rejection'
 
 export const Route = createFileRoute('/rejections/')({
   component: RejectionsPage,
@@ -43,23 +36,30 @@ const MIME_BY_TYPE: Record<string, string> = {
 function formatDate(value: string | null | undefined): string {
   if (!value) return '--'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
 }
 
-function errorText(error: unknown, fallback: string): string {
-  return error instanceof ApiError ? error.message : fallback
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) return error.message
+  return fallback
 }
 
 function saveBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob)
-  const anchor = window.document.createElement('a')
-  anchor.href = url
-  anchor.download = name
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  document.body.append(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
 
-  window.document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+type ViewerState = {
+  file: RejectedFile
+  url: string | null
+  isDeidentified: boolean
 }
 
 function RejectionsPage() {
@@ -73,27 +73,20 @@ function RejectionsPage() {
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [replacing, setReplacing] = useState<RejectedFile | null>(null)
-  const [viewing, setViewing] = useState<{
-    file: RejectedFile
-    url: string | null
-    isDeidentified: boolean
-  } | null>(null)
+  const [viewing, setViewing] = useState<ViewerState | null>(null)
 
-  const files = useMemo(() => filesQuery.data ?? [], [filesQuery.data])
+  const files = filesQuery.data ?? []
+  const searchText = search.trim().toLowerCase()
+  const visible = searchText
+    ? files.filter((file) => rejectionSearchText(file).includes(searchText))
+    : files
 
-  const visible = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    if (!term) return files
-    return files.filter((file) => rejectionHaystack(file).includes(term))
-  }, [files, search])
-
-  /** Open on the redacted copy when there is one -- that is what was judged. */
   async function open(file: RejectedFile) {
     const deidentified = file.has_deidentified
-    const extension =
-      deidentified && ['doc', 'docx'].includes(file.file_extension)
-        ? 'docx'
-        : file.file_extension
+    let extension = file.file_extension
+    if (deidentified && (extension === 'doc' || extension === 'docx')) {
+      extension = 'docx'
+    }
 
     if (previewKind(extension) !== 'pdf') {
       setViewing({ file, url: null, isDeidentified: deidentified })
@@ -103,13 +96,9 @@ function RejectionsPage() {
     setOpeningId(file.id)
     try {
       const blob = await applicationFilesApi.fetchContent(file.id, deidentified)
-      setViewing({
-        file,
-        url: URL.createObjectURL(blob),
-        isDeidentified: deidentified,
-      })
-    } catch (caught) {
-      toast.error(errorText(caught, 'Could not open this file'))
+      setViewing({ file, url: URL.createObjectURL(blob), isDeidentified: deidentified })
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Could not open this file'))
     } finally {
       setOpeningId(null)
     }
@@ -123,19 +112,14 @@ function RejectionsPage() {
   async function download(file: RejectedFile, deidentified: boolean) {
     setDownloadingId(`${file.id}:${deidentified}`)
     try {
-      const blob = await applicationFilesApi.fetchContent(
-        file.id,
-        deidentified,
-        true
-      )
-      saveBlob(
-        blob,
-        deidentified
-          ? (file.deidentified_file_name ?? file.original_file_name)
-          : file.original_file_name
-      )
-    } catch (caught) {
-      toast.error(errorText(caught, 'Could not download this file'))
+      const blob = await applicationFilesApi.fetchContent(file.id, deidentified, true)
+      let name = file.original_file_name
+      if (deidentified && file.deidentified_file_name) {
+        name = file.deidentified_file_name
+      }
+      saveBlob(blob, name)
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Could not download this file'))
     } finally {
       setDownloadingId(null)
     }
@@ -147,9 +131,7 @@ function RejectionsPage() {
       header: 'File',
       cell: (file) => (
         <div className="min-w-0">
-          <span className="block truncate font-semibold">
-            {file.original_file_name}
-          </span>
+          <span className="block truncate font-semibold">{file.original_file_name}</span>
           <span className="block truncate text-xs text-[rgb(var(--foreground-muted))]">
             {file.patient_id} · {formatFileSize(file.file_size)}
           </span>
@@ -207,9 +189,7 @@ function RejectionsPage() {
       header: 'Patient',
       cell: (application) => (
         <div className="min-w-0">
-          <span className="block truncate font-semibold">
-            {application.patient_id}
-          </span>
+          <span className="block truncate font-semibold">{application.patient_id}</span>
           <span className="block truncate text-xs text-[rgb(var(--foreground-muted))]">
             {application.description || 'No description'}
           </span>
@@ -235,17 +215,16 @@ function RejectionsPage() {
       id: 'who',
       header: 'Rejected',
       cell: (application) => (
-        <span className="whitespace-nowrap text-sm">
+        <span className="text-sm whitespace-nowrap">
           {formatDate(application.reviewed_at ?? application.updated_at)}
-          {application.reviewed_by_username ? (
+          {application.reviewed_by_username && (
             <span className="block text-xs text-[rgb(var(--foreground-muted))]">
               by {application.reviewed_by_username}
             </span>
-          ) : null}
+          )}
         </span>
       ),
-      sortValue: (application) =>
-        application.reviewed_at ?? application.updated_at ?? '',
+      sortValue: (application) => application.reviewed_at ?? application.updated_at ?? '',
     },
   ]
 
@@ -254,7 +233,7 @@ function RejectionsPage() {
       <div className="space-y-6">
         <PageHeader
           title="Rejections"
-          description="Everything a reviewer turned down, in one place -- read both copies, attach a better redaction, and approve it once it is right."
+          description="Everything a reviewer turned down, in one place. Check both copies, attach a better redaction and approve it when it looks right."
         />
 
         <Card className="p-5">
@@ -262,8 +241,7 @@ function RejectionsPage() {
             Rejected applications
           </h2>
           <p className="mt-1 mb-4 text-xs text-[rgb(var(--foreground-muted))]">
-            A whole submission turned down. Open it to see the documents and
-            the reason.
+            A whole submission turned down. Open it to see the documents and the reason.
           </p>
 
           <DataTable
@@ -283,9 +261,7 @@ function RejectionsPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  leadingIcon={
-                    <FileStack className="size-3.5" aria-hidden="true" />
-                  }
+                  leadingIcon={<FileStack className="size-3.5" aria-hidden="true" />}
                 >
                   Open
                 </Button>
@@ -299,8 +275,8 @@ function RejectionsPage() {
             Rejected documents
           </h2>
           <p className="mt-1 mb-4 text-xs text-[rgb(var(--foreground-muted))]">
-            One document whose redaction was not good enough. Its application
-            cannot be submitted until this is resolved.
+            One document whose redaction was not good enough. Its application cannot be
+            submitted until this is resolved.
           </p>
 
           <div className="mb-4">
@@ -348,9 +324,7 @@ function RejectionsPage() {
                         : 'No identified copy is on disk'
                     }
                     isLoading={downloadingId === `${file.id}:false`}
-                    leadingIcon={
-                      <Download className="size-3.5" aria-hidden="true" />
-                    }
+                    leadingIcon={<Download className="size-3.5" aria-hidden="true" />}
                     onClick={() => void download(file, false)}
                   >
                     Original
@@ -369,9 +343,7 @@ function RejectionsPage() {
                         : 'No redacted copy has been produced'
                     }
                     isLoading={downloadingId === `${file.id}:true`}
-                    leadingIcon={
-                      <ShieldCheck className="size-3.5" aria-hidden="true" />
-                    }
+                    leadingIcon={<ShieldCheck className="size-3.5" aria-hidden="true" />}
                     onClick={() => void download(file, true)}
                   >
                     De-identified
@@ -382,9 +354,7 @@ function RejectionsPage() {
                   <Button
                     size="sm"
                     aria-label={`Replace the de-identified copy of ${file.original_file_name}`}
-                    leadingIcon={
-                      <Upload className="size-3.5" aria-hidden="true" />
-                    }
+                    leadingIcon={<Upload className="size-3.5" aria-hidden="true" />}
                     onClick={() => setReplacing(file)}
                   >
                     Replace
@@ -402,15 +372,10 @@ function RejectionsPage() {
                         ? 'Clear the rejection without replacing the copy'
                         : 'There is no redacted copy to approve'
                     }
-                    isLoading={
-                      review.isPending && review.variables?.fileId === file.id
-                    }
+                    isLoading={review.isPending && review.variables?.fileId === file.id}
                     leadingIcon={<Check className="size-3.5" aria-hidden="true" />}
                     onClick={() =>
-                      review.mutate({
-                        fileId: file.id,
-                        reviewStatus: 'approved',
-                      })
+                      review.mutate({ fileId: file.id, reviewStatus: 'approved' })
                     }
                   >
                     Approve
@@ -421,26 +386,21 @@ function RejectionsPage() {
           />
         </Card>
 
-        {replacing ? (
+        {replacing && (
           <ReplaceDeidentifiedDialog
             file={replacing}
             onClose={() => setReplacing(null)}
           />
-        ) : null}
+        )}
 
-        {viewing ? (
+        {viewing && (
           <FileViewerModal
             file={{
               original_file_name: viewing.file.original_file_name,
               deidentified_file_name: viewing.file.deidentified_file_name ?? null,
               file_extension: viewing.file.file_extension,
-              mime_type:
-                MIME_BY_TYPE[viewing.file.file_extension] ?? 'application/pdf',
+              mime_type: MIME_BY_TYPE[viewing.file.file_extension] ?? 'application/pdf',
               file_size: viewing.file.file_size,
-
-              // The viewer offers its Original/De-identified toggle only when
-              // a redacted copy exists; this stands in for the path it never
-              // needs to read.
               de_identified_file_path: viewing.file.has_deidentified
                 ? viewing.file.deidentified_file_name
                 : null,
@@ -451,7 +411,7 @@ function RejectionsPage() {
             canViewOriginal={viewing.file.has_original}
             onClose={closeViewer}
           />
-        ) : null}
+        )}
       </div>
     </RequirePermission>
   )

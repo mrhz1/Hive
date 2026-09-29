@@ -6,7 +6,7 @@ redacted, a DICOM has its burned-in pixels painted out and its tags
 scrubbed, and a Word document has its text replaced and its properties
 cleared. Each output keeps its input's format.
 
-Pure Python, no Docker, no system binaries — built to run as a Cloudera
+Pure Python, no Docker, no system binaries, built to run as a Cloudera
 AI job and be triggered by the FastAPI/Hive service with a path to
 process.
 
@@ -42,8 +42,8 @@ uv pip compile - <<< $'paddleocr>=3.7.0\npresidio-analyzer==2.2.364'
 ```
 
 Pinning presidio back to 2.2.362 *does* resolve today. That is the wrong
-fix: it freezes de-identification — the part of this system with actual
-compliance consequences — at whatever release happens to predate the
+fix: it freezes de-identification, the part of this system with actual
+compliance consequences, at whatever release happens to predate the
 clash, and it breaks again the next time either package moves. Beyond the
 metadata, the two stacks each ship their own OpenMP runtime, and torch
 (~3GB with CUDA, ~200MB CPU-only) is dead weight in the OCR half.
@@ -66,7 +66,7 @@ The handoff file holds raw OCR text, so **it is PHI**. It lives in a 0700
 temp directory written 0600 and deleted in a `finally`. `DEID_KEEP_WORK_DIR`
 keeps it for debugging and must stay off in production.
 
-Note that stage 2 redacts the **original** PDF using stage 1's geometry —
+Note that stage 2 redacts the **original** PDF using stage 1's geometry,
 it never re-rasterises, and a stage-2 failure cannot leave a
 half-redacted file behind.
 
@@ -77,7 +77,7 @@ all four models normally come from. pip works; model weights do not
 arrive over pip.
 
 So the weights live in `OCR/models/`, are loaded **by path**, and are
-moved to Cloudera as a file copy. Nothing downloads at job time — see
+moved to Cloudera as a file copy. Nothing downloads at job time, see
 [`models/README.md`](models/README.md) for the layout and the transfer.
 
 ```
@@ -88,8 +88,8 @@ models/
   transformers/StanfordAIMI/stanford-deidentifier-base/   419MB
 ```
 
-Directory names are the model identifiers verbatim — the same strings
-`deid/config.py` pins — so swapping a model means dropping in a folder
+Directory names are the model identifiers verbatim, the same strings
+`deid/config.py` pins, so swapping a model means dropping in a folder
 with the matching name, not editing code. `deid/model_store.py` resolves
 them.
 
@@ -135,14 +135,14 @@ Two staging runs, not one, for the same reason: each virtualenv can only
 download what it can import.
 
 Then move `models/` to the target and re-run `make check-models` **there**.
-That is the check that matters — `--preflight` verifies the directories
+That is the check that matters, `--preflight` verifies the directories
 exist, which catches an incomplete copy but not a corrupt one, and a
 truncated `pytorch_model.bin` otherwise surfaces several minutes into
 the first real job.
 
 ## Usage
 
-Run with any python — the orchestrator needs no dependencies:
+Run with any python, the orchestrator needs no dependencies:
 
 ```bash
 # one file
@@ -173,7 +173,7 @@ goes to stdout so the caller can parse it.
 
 A report saying "20 entities redacted" proves 20 boxes were drawn, not
 that the information is gone. `verify_redaction.py` re-OCRs the output the
-way an attacker would and fails if any secret survives — in the pixels or
+way an attacker would and fails if any secret survives, in the pixels or
 in a leftover text layer:
 
 ```bash
@@ -184,7 +184,7 @@ make run && make verify        # against the synthetic sample
     --expect-absent "Jane Doe" --expect-absent "543-22-9087"
 ```
 
-It also checks that content which *should* survive still does — a
+It also checks that content which *should* survive still does, a
 redactor that blacks out the whole page would otherwise pass a leak test
 while being useless. Exit `0` clean, `1` leak, `2` over-redacted.
 
@@ -202,7 +202,7 @@ det+rec → spans (text + confidence + pixel box) → one JSON per PDF.
 character offsets back to pixel boxes → redact the original PDF.
 
 Models load once per **stage run** and are reused across every page and
-file in it — that load dominates cost, so batch many PDFs into one
+file in it, that load dominates cost, so batch many PDFs into one
 invocation rather than one process per file. Splitting the pipeline does
 not change that: each stage still pays its own load exactly once, and the
 paddle models are unloaded before torch is even imported, which halves
@@ -213,20 +213,20 @@ peak memory versus the old single-process design.
 Redaction uses PyMuPDF's `add_redact_annot` + `apply_redactions(images=
 PDF_REDACT_IMAGE_PIXELS)`, which **removes** the underlying content and
 blanks image pixels inside the box. Drawing black rectangles would leave
-any text layer selectable underneath — the classic redaction failure that
+any text layer selectable underneath, the classic redaction failure that
 has leaked documents in the real world. This matters for PDFs that have
 both a scan and an embedded text layer.
 
 ### Metadata is de-identified, not deleted
 
 Content redaction is only half of it: a document's own metadata carries
-PHI too, and every format here used to have it **erased** — the PDF info
+PHI too, and every format here used to have it **erased**, the PDF info
 dictionary emptied, ~45 named DICOM tags deleted, 11 Word properties
 blanked.
 
 That was lossy in both directions. It threw away `Modality`,
 `Manufacturer`, `Producer` and the acquisition parameters, none of which
-identify anyone; and it *missed* PHI in any field not on the list — a
+identify anyone; and it *missed* PHI in any field not on the list, a
 name in `StudyDescription`, a phone number in `ImageComments`, an address
 typed into a Word `comments` field all survived intact.
 
@@ -244,8 +244,8 @@ Manufacturer       SIEMENS                       ->  SIEMENS     (kept)
 
 **The analyzer is not trusted on its own.** It was trained on clinical
 prose, and a DICOM PN value (`Doe^Jane^A^^Dr`) or a bare `MRN4471` looks
-nothing like prose. Fields that name a person *by definition* — the
-`PHI_TAGS` list, PDF `author`, Word `author`/`last_modified_by` — are
+nothing like prose. Fields that name a person *by definition*, the
+`PHI_TAGS` list, PDF `author`, Word `author`/`last_modified_by`, are
 therefore replaced with `<REMOVED>` when the analyzer finds nothing in
 them. Detection only ever *adds* to that guarantee. Called without a
 redactor (`scrub_metadata(handle, kind)`) the whole pass falls back to
@@ -255,7 +255,7 @@ safe file.
 Three constraints worth knowing:
 
 - **Only free text is redacted.** `PN`, `LO`, `SH`, `ST`, `LT`, `UT` and
-  `UC` — the VRs that hold prose. **`CS` is deliberately excluded**: it
+  `UC`, the VRs that hold prose. **`CS` is deliberately excluded**: it
   holds *codes* (`MONOCHROME2`, `MR`, `YES`) matched against
   enumerations, never read, and an analyzer trained on clinical prose
   will occasionally call one a person. Writing `<PERSON>` into
@@ -270,12 +270,12 @@ Three constraints worth knowing:
 - **Private tags still go wholesale.** They are vendor-defined, so their
   contents cannot be checked against anything.
 
-Sequences are walked too — PHI nests inside `SQ` items, and the old
+Sequences are walked too, PHI nests inside `SQ` items, and the old
 top-level-only pass never looked there.
 
 ## Configuration
 
-All env vars, all with defaults — nothing branches on environment, only
+All env vars, all with defaults, nothing branches on environment, only
 values change between local and Cloudera AI.
 
 | var | default | notes |
@@ -284,17 +284,17 @@ values change between local and Cloudera AI.
 | `OCR_DPI` | `200` | below ~150 recognition degrades on small print |
 | `OCR_DEVICE` | `cpu` | `gpu:0` if the job node has one |
 | `OCR_MIN_CONFIDENCE` | `0.5` | drop noisy OCR spans |
-| `DEID_SCORE_THRESHOLD` | `0.35` | deliberately low — see below |
+| `DEID_SCORE_THRESHOLD` | `0.35` | deliberately low, see below |
 | `DEID_ENTITIES` | see `config.py` | comma-separated override |
 | `DEID_REDACT_WHOLE_SPAN` | `false` | `true` = redact the whole OCR line if any part is PII |
 | `DEID_BOX_PADDING` | `2.0` | pixels of growth around each box |
-| `DEID_REPORT_INCLUDE_VALUES` | `false` | off by design — see below |
+| `DEID_REPORT_INCLUDE_VALUES` | `false` | off by design, see below |
 | `DEID_MODELS_DIR` | `OCR/models` | the local model store; a read-only mount is fine |
 | `DEID_OFFLINE` | `true` | load models by path only, never download |
 | `DEID_OCR_PYTHON` | `OCR/.venv-ocr/bin/python` | stage 1 interpreter |
 | `DEID_NLP_PYTHON` | `OCR/.venv-nlp/bin/python` | stage 2 interpreter |
 | `DEID_WORK_DIR` | a 0700 temp dir | where the PHI-bearing handoff lands |
-| `DEID_KEEP_WORK_DIR` | `false` | debugging only — leaves OCR text on disk |
+| `DEID_KEEP_WORK_DIR` | `false` | debugging only, leaves OCR text on disk |
 | `DEID_LOG_STAGE_OUTPUT` | `false` | forward stage stderr even on success |
 
 **Why the threshold is low (0.35).** For de-identification a false
@@ -308,7 +308,7 @@ sanitised output. Turn it on only for debugging, never in production.
 **`DEID_REDACT_WHOLE_SPAN`.** Default off: within an OCR line, the box is
 narrowed proportionally to the entity's character range, so "Patient:
 John Smith" redacts only the name. That estimate assumes even character
-widths, which proportional fonts violate — `DEID_BOX_PADDING` absorbs the
+widths, which proportional fonts violate, `DEID_BOX_PADDING` absorbs the
 error. Set `DEID_REDACT_WHOLE_SPAN=true` for the conservative mode: any
 line containing PII is covered entirely. Slower to read, impossible to
 under-redact.
@@ -323,7 +323,7 @@ follow, both closed in `deid/recognizers.py`:
   geographic subdivisions below state level, so custom pattern
   recognizers add `STREET_ADDRESS` and `US_ZIP_CODE`.
 - **No age handling.** Safe Harbor treats ages > 89 as identifiers, so
-  `AGE` matches only those — redacting every age would destroy clinical
+  `AGE` matches only those, redacting every age would destroy clinical
   utility for no privacy gain.
 
 Also added: `MRN` (context-driven, since formats vary per site). Presidio's
@@ -333,7 +333,7 @@ independently of it.
 
 To tune further: raise `stride` or switch `aggregation_strategy` in
 `deid/analyzer.py`, add site-specific patterns to `deid/recognizers.py`,
-or add `context` words — Presidio boosts a pattern's score when context
+or add `context` words, Presidio boosts a pattern's score when context
 words appear nearby, which is what makes the bare 5-digit ZIP pattern
 usable rather than noise.
 
@@ -348,7 +348,7 @@ a CPU speedup, so re-test and re-enable it on a newer paddlepaddle.
 
 **Presidio returns overlapping spans.** The NER model tags
 "Springfield, IL" as ORGANIZATION while the ZIP recognizer tags
-"IL 62704" — same characters, two detections. Left as-is this corrupts
+"IL 62704", same characters, two detections. Left as-is this corrupts
 the redacted text (inserting one tag mangles another) and doubles the
 boxes. `merge_overlapping()` in `deid/analyzer.py` collapses them into
 disjoint spans, keeping the highest-scoring label. On the sample this cut
@@ -356,7 +356,7 @@ disjoint spans, keeping the highest-scoring label. On the sample this cut
 
 **pydicom decodes almost nothing on its own.** `dataset.pixel_array`
 handles uncompressed and RLE and raises for every compressed transfer
-syntax without a plugin — surfacing as `Could not decode DICOM pixel
+syntax without a plugin, surfacing as `Could not decode DICOM pixel
 data` on any real PACS export. pillow covers JPEG Baseline and JPEG 2000
 but **not** JPEG Lossless (`1.2.840.10008.1.2.4.57/.70`) or JPEG-LS
 (`.80/.81`), which is what most CT/CR/MR studies actually are.
@@ -372,19 +372,19 @@ and hasattr(getattr(D,n),'is_available') and not getattr(D,n).is_available])"
 ```
 
 An empty list is what you want. The redacted output is written back
-uncompressed (Explicit VR Little Endian), so nothing has to re-encode —
+uncompressed (Explicit VR Little Endian), so nothing has to re-encode,
 which is just as well, since these plugins decode only.
 
 **The NER model download is the slow part** (~440MB `pytorch_model.bin`,
 no safetensors in the repo). `scripts/stage_models.py` fetches it with
 resume + retries and `max_workers=1`, which survives a flaky link far
-better than parallel range requests. It took ~14 minutes here — and it
+better than parallel range requests. It took ~14 minutes here, and it
 happens once, on a machine with egress, never on the job node.
 
 **The HuggingFace cache is symlinks, not files.** Every blob in
 `~/.cache/huggingface` is a symlink into a content-addressed store, so
 copying that directory to another machine produces a model store full of
-dangling links — which passes a "does the directory exist?" check and
+dangling links, which passes a "does the directory exist?" check and
 fails at load time on the far side. `stage_models.py` resolves them
 (`snapshot_download(local_dir=...)`, `copytree(symlinks=False)`); the
 store is real files only.
@@ -393,7 +393,7 @@ store is real files only.
 `text_detection_model_dir` / `text_recognition_model_dir` is what makes
 it load locally instead. PaddleX has no offline flag, and before
 downloading it probes huggingface/modelscope/aistudio/BOS for
-reachability — on a network that drops rather than refuses, that probe is
+reachability, on a network that drops rather than refuses, that probe is
 a multi-minute stall before you even get the real error.
 `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK` (set by
 `model_store.apply_offline_env()`) skips it.
@@ -401,13 +401,13 @@ a multi-minute stall before you even get the real error.
 **Presidio downloads spaCy models it cannot find.**
 `SpacyNlpEngine._download_spacy_model_if_needed()` calls
 `spacy.cli.download` unless the name is a package *or a path that
-exists*. The wheel it would fetch is hosted on github, which is blocked —
+exists*. The wheel it would fetch is hosted on github, which is blocked,
 so a path is the only offline-safe form, and that is what
 `deid/analyzer.py` passes.
 
 **The NLP libraries quote your documents into their warnings.**
 `spacy_huggingface_pipelines` emits `UserWarning: Skipping annotation ...
-for doc '<the document>'` on any entity it cannot align — with the
+for doc '<the document>'` on any entity it cannot align, with the
 patient's name in the message. Forwarding stage stderr to the job log
 therefore re-leaks exactly what the pipeline removes. `stage_nlp.py`
 filters that warning at source, and `pipeline.py` forwards stage stderr

@@ -173,9 +173,7 @@ export function DropdownMenu({
                 onClick={() => select(action)}
                 className={cn(
                   'flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors',
-                  action.disabled
-                    ? 'cursor-not-allowed opacity-40'
-                    : 'cursor-pointer',
+                  action.disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer',
                   !action.disabled && action.id === activeId
                     ? 'bg-[rgb(var(--background-secondary))]'
                     : '',

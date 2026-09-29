@@ -95,7 +95,7 @@ def deidentify_properties(document, redact=None) -> List[str]:
     for name in dict.fromkeys(SCANNED_PROPERTIES + AUTHORSHIP_PROPERTIES):
         try:
             current = getattr(properties, name, None)
-        except Exception:  # pragma: no cover - python-docx typing
+        except Exception:
             continue
 
         if not current or not str(current).strip():
@@ -115,7 +115,7 @@ def deidentify_properties(document, redact=None) -> List[str]:
         try:
             setattr(properties, name, replacement or PLACEHOLDER)
             touched.append(name)
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:
             log.warning("could not rewrite document property %s: %s", name, exc)
 
     return touched

@@ -39,12 +39,7 @@ export const queryKeys = {
   applications: {
     all: ['applications'] as const,
     list: (patientId?: string, status?: string) =>
-      [
-        ...queryKeys.applications.all,
-        'list',
-        patientId ?? null,
-        status ?? null,
-      ] as const,
+      [...queryKeys.applications.all, 'list', patientId ?? null, status ?? null] as const,
     detail: (id: string) => [...queryKeys.applications.all, 'detail', id] as const,
   },
 

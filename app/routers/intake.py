@@ -1,14 +1,6 @@
-"""What arrived in the drop folder, and what still needs a person.
-
-Read by the Intake page. The refusals are the point: a skipped file has to
-be fixed at source and pushed again, and a conflict has to be decided here,
-so both are listed with the full path somebody needs to go and find it.
-"""
-
-from typing import List, Optional
-
 import csv
 import io
+from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from fastapi.responses import StreamingResponse
@@ -27,9 +19,35 @@ log = get_logger(__name__)
 
 router = APIRouter(prefix="/intake", tags=["intake"])
 
+MAX_PAGE_SIZE = 1000
+EXPORT_PAGE_SIZE = 5000
+EXPORT_COLUMNS = [
+    "source_path",
+    "status",
+    "reason",
+    "detail",
+    "patient_code",
+    "path_code",
+    "name_code",
+    "file_extension",
+    "file_size",
+]
+
 
 class ConflictChoice(BaseModel):
     code: str
+
+
+class AvailableCode(BaseModel):
+    code: str
+    files: int
+    folder: str
+    patient_exists: bool
+
+
+def _check_status(status):
+    if status not in crud.STATUSES:
+        raise ValidationError(f"Unknown status '{status}' (known: {', '.join(crud.STATUSES)})")
 
 
 @router.get("/counts", response_model=IntakeCounts)
@@ -41,23 +59,11 @@ def intake_counts(
     return crud.counts(cursor, batch_id)
 
 
-class AvailableCode(BaseModel):
-    code: str
-    files: int
-    folder: str
-    patient_exists: bool
-
-
 @router.get("/codes", response_model=List[AvailableCode])
 def intake_codes(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    """Codes with redacted files nobody has attached yet.
-
-    What an application's patient step picks from. A code whose patient
-    already exists selects that patient; one that does not creates it.
-    """
     return intake.available_codes(cursor)
 
 
@@ -67,9 +73,6 @@ def intake_batches(
     _actor: User = Depends(require_permission("application:view")),
 ):
     return crud.list_batches(cursor)
-
-
-MAX_PAGE = 1000
 
 
 @router.get("/files", response_model=List[IntakeFile])
@@ -83,22 +86,16 @@ def intake_files(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    """One page of a status's files.
-
-    Paged because a list is what breaks first at scale: a hundred thousand
-    skipped files in one response is a browser that stops responding.
-    `X-Total-Count` says how many there are in all.
-    """
-    if status and status not in crud.STATUSES:
-        raise ValidationError(
-            f"Unknown status '{status}' (known: {', '.join(crud.STATUSES)})"
-        )
-    limit = min(max(1, limit), MAX_PAGE)
+    if status:
+        _check_status(status)
+    limit = min(max(1, limit), MAX_PAGE_SIZE)
     offset = max(0, offset)
+
     if status and not patient_code:
         total = crud.status_counts(cursor, batch_id).get(status, 0)
         response.headers["X-Total-Count"] = str(total)
         response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+
     return crud.list_files(
         cursor,
         batch_id=batch_id,
@@ -109,51 +106,35 @@ def intake_files(
     )
 
 
-EXPORT_PAGE = 5000
-EXPORT_COLUMNS = (
-    "source_path", "status", "reason", "detail", "patient_code",
-    "path_code", "name_code", "file_extension", "file_size",
-)
-
-
 @router.get("/files/export")
 def export_intake_files(
     status: str,
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    """Every file of a status as CSV -- the whole list, not a page.
+    _check_status(status)
 
-    What goes to whoever owns the source system: full path first, then why.
-    Streamed a page at a time, so a hundred thousand rows are never held in
-    memory at once.
-    """
-    if status not in crud.STATUSES:
-        raise ValidationError(
-            f"Unknown status '{status}' (known: {', '.join(crud.STATUSES)})"
-        )
-
-    def rows():
+    def generate_csv():
         buffer = io.StringIO()
-        writer = csv.writer(buffer)
-        writer.writerow(EXPORT_COLUMNS)
+        csv.writer(buffer).writerow(EXPORT_COLUMNS)
         yield buffer.getvalue()
+
         offset = 0
         while True:
-            page = crud.list_files(cursor, status=status, limit=EXPORT_PAGE, offset=offset)
-            if not page:
-                return
+            files = crud.list_files(cursor, status=status, limit=EXPORT_PAGE_SIZE, offset=offset)
+            if not files:
+                break
             buffer = io.StringIO()
             writer = csv.writer(buffer)
-            for record in page:
-                writer.writerow([getattr(record, c) for c in EXPORT_COLUMNS])
+            for f in files:
+                writer.writerow([getattr(f, c) for c in EXPORT_COLUMNS])
             yield buffer.getvalue()
-            if len(page) < EXPORT_PAGE:
-                return
-            offset += EXPORT_PAGE
+            if len(files) < EXPORT_PAGE_SIZE:
+                break
+            offset += EXPORT_PAGE_SIZE
 
     return StreamingResponse(
-        rows(),
+        generate_csv(),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="intake-{status}.csv"'},
     )
@@ -168,17 +149,11 @@ def resolve_intake_conflict(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:update")),
 ):
-    """Settle a path-vs-name disagreement.
-
-    This is a filing decision -- it says whose document this is -- so it is
-    audited like one, with both claims kept in the entry.
-    """
     before = crud.get_file_or_404(cursor, file_id)
-
     try:
         after = intake.resolve_conflict(cursor, file_id, payload.code)
-    except ValueError as exc:
-        raise ValidationError(str(exc)) from exc
+    except ValueError as e:
+        raise ValidationError(str(e)) from e
 
     background.add_task(
         record_audit,
@@ -194,12 +169,7 @@ def resolve_intake_conflict(
         new_values={"status": after.status, "patient_code": after.patient_code},
         request_id=request.headers.get("X-Request-ID"),
     )
-    log.info(
-        "intake_conflict_resolved",
-        file_id=file_id,
-        code=after.patient_code,
-        actor=actor.id,
-    )
+    log.info("intake_conflict_resolved", file_id=file_id, code=after.patient_code, actor=actor.id)
     return after
 
 
@@ -209,15 +179,10 @@ def retry_intake_file(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:update")),
 ):
-    """Put a failed file back in the queue, unchanged.
-
-    Picked up by the next automatic run -- within a minute when
-    `intake-watch` or the scheduled Job is running.
-    """
     try:
         after = intake.retry(cursor, file_id)
-    except ValueError as exc:
-        raise ValidationError(str(exc)) from exc
+    except ValueError as e:
+        raise ValidationError(str(e)) from e
     log.info("intake_file_retried", file_id=file_id, actor=actor.id)
     return after
 
@@ -227,7 +192,6 @@ def intake_progress_now(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    """How far along, how fast, how long to go, and whether it has stopped."""
     return intake_progress.progress(cursor)
 
 
@@ -237,5 +201,4 @@ def intake_progress_batches(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    """Each push's progress, newest first."""
     return intake_progress.batches(cursor, min(max(1, limit), 200))

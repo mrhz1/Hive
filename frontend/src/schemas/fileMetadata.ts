@@ -25,17 +25,13 @@ export type FileMetadataFilters = {
   patient_id?: string
 }
 
-export function activeFilters(
-  filters: FileMetadataFilters
-): Record<string, string> {
+export function activeFilters(filters: FileMetadataFilters): Record<string, string> {
   return Object.fromEntries(
     Object.entries(filters).filter(([, value]) => Boolean(value?.trim()))
   ) as Record<string, string>
 }
 
-export function metadataEntries(
-  row: FileMetadataRow
-): Array<[string, string]> {
+export function metadataEntries(row: FileMetadataRow): Array<[string, string]> {
   return Object.entries(row.metadata)
     .map(([key, value]) => [key, value == null ? '' : String(value)] as [string, string])
     .sort((a, b) => a[0].localeCompare(b[0]))
@@ -50,9 +46,7 @@ export function metadataPreview(row: FileMetadataRow, limit = 3): string {
     .map(([key, value]) => `${key}: ${value}`)
     .join(' · ')
 
-  return entries.length > limit
-    ? `${shown} · +${entries.length - limit} more`
-    : shown
+  return entries.length > limit ? `${shown} · +${entries.length - limit} more` : shown
 }
 
 export function metadataFieldCount(row: FileMetadataRow): number {

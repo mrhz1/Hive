@@ -52,7 +52,7 @@ COLUMNS = (
     "deidentified_file_path",
 )
 
-DATE_COLUMNS = frozenset({"dt_reg", "dt_b", "dt_d"})
+DATE_COLUMNS = set({"dt_reg", "dt_b", "dt_d"})
 
 _COLS = ", ".join(f"`{c}`" for c in COLUMNS)
 
@@ -131,11 +131,6 @@ def create_patient(cursor, payload: PatientCreate) -> Patient:
     fields = payload.model_dump()
     _assert_unique(cursor, fields)
 
-    # The code came in with the documents; the schema has already checked
-    # its shape. All that is left is whether it is taken -- and like every
-    # other uniqueness check here, this is a pre-check rather than a
-    # constraint, because Hive has none. Two concurrent creates of the same
-    # code can still both pass.
     patient_id = fields["id"]
     if _id_exists(cursor, patient_id):
         raise ConflictError(f"Patient code '{patient_id}' already exists")

@@ -75,7 +75,7 @@ def main() -> int:
     ap.add_argument(
         "--keep-text",
         action="store_true",
-        help="Keep the text layer instead of rasterising",
+        help="Keep the text layer instead of rasterizing",
     )
     ap.add_argument("--dpi", type=int, default=200)
     args = ap.parse_args()

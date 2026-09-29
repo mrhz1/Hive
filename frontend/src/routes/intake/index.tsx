@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Copy, Download, GitCompareArrows, RotateCcw } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
 import { Can, RequirePermission } from '@/components/PermissionGate'
@@ -18,8 +18,8 @@ import {
 import { intakeApi } from '@/lib/api/resources'
 import { formatFileSize } from '@/schemas/applicationFile'
 import {
-  intakeHaystack,
-  refusalReport,
+  intakeSearchText,
+  filesToText,
   type IntakeCounts,
   type IntakeFile,
 } from '@/schemas/intake'
@@ -35,46 +35,53 @@ type ViewOption = {
   label: string
   hint: string
   tone: 'danger' | 'warning' | 'neutral' | 'success' | 'info'
+  empty: string
 }
 
-const CONFLICT_VIEW: ViewOption = {
-  id: 'conflict',
-  label: 'Conflicts',
-  hint: 'The path and the file name name different patients. Choose which is right.',
-  tone: 'danger',
-}
+const PAGE_SIZE = 500
 
 const VIEWS: ViewOption[] = [
-  CONFLICT_VIEW,
+  {
+    id: 'conflict',
+    label: 'Conflicts',
+    hint: 'The path and the file name point to different patients. Choose which one is right.',
+    tone: 'danger',
+    empty: 'No conflicts.',
+  },
   {
     id: 'skipped',
     label: 'Skipped',
     hint: 'No patient code, or a format we cannot redact. Fix these at source and push them again.',
     tone: 'warning',
+    empty: 'Nothing was skipped.',
   },
   {
     id: 'failed',
     label: 'Failed',
-    hint: 'Redaction was attempted and did not work. The reason is on each row -- retry it here, or push a corrected file to the same place.',
+    hint: 'Redaction was attempted and did not work. The reason is on each row. Retry it here, or push a corrected file to the same place.',
     tone: 'danger',
+    empty: 'Nothing has failed.',
   },
   {
     id: 'queued',
     label: 'Waiting',
     hint: 'Placed under a code and waiting for a worker.',
     tone: 'info',
+    empty: 'Nothing here.',
   },
   {
     id: 'done',
     label: 'De-identified',
     hint: 'Redacted into the de_identified mirror, ready to be picked for an application.',
     tone: 'success',
+    empty: 'Nothing here.',
   },
 ]
 
-function count(counts: IntakeCounts | undefined, view: View): number {
+function getCount(counts: IntakeCounts | undefined, view: View): number {
   if (!counts) return 0
-  return view === 'queued' ? counts.queued + counts.processing : counts[view]
+  if (view === 'queued') return counts.queued + counts.processing
+  return counts[view]
 }
 
 function IntakePage() {
@@ -82,34 +89,36 @@ function IntakePage() {
 
   const counts = useIntakeCounts()
   const [view, setView] = useState<View>('conflict')
-  // A page at a time: a hundred thousand skipped files in one response is a
-  // browser that stops responding. "Show more" raises the limit.
-  const PAGE = 500
-  const [shown, setShown] = useState(PAGE)
-  const files = useIntakePage(view, shown)
+  const [limit, setLimit] = useState(PAGE_SIZE)
+  const [search, setSearch] = useState('')
+  const files = useIntakePage(view, limit)
   const resolve = useResolveIntakeConflict()
   const retry = useRetryIntakeFile()
-  const [search, setSearch] = useState('')
 
-  const current = VIEWS.find((v) => v.id === view) ?? CONFLICT_VIEW
+  const current = VIEWS.find((v) => v.id === view) ?? VIEWS[0]!
 
-  const visible = useMemo(() => {
-    const rows = files.data?.rows ?? []
-    const term = search.trim().toLowerCase()
-    if (!term) return rows
-    return rows.filter((file) => intakeHaystack(file).includes(term))
-  }, [files.data, search])
+  const allRows = files.data?.rows ?? []
+  const searchText = search.trim().toLowerCase()
+  const visible = searchText
+    ? allRows.filter((file) => intakeSearchText(file).includes(searchText))
+    : allRows
+
+  function changeView(newView: View) {
+    setView(newView)
+    setSearch('')
+    setLimit(PAGE_SIZE)
+  }
 
   async function downloadAll() {
     try {
       const blob = await intakeApi.exportCsv(view)
       const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = `intake-${view}.csv`
-      document.body.append(anchor)
-      anchor.click()
-      anchor.remove()
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `intake-${view}.csv`
+      document.body.append(link)
+      link.click()
+      link.remove()
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch {
       toast.error('Could not download the list')
@@ -118,7 +127,7 @@ function IntakePage() {
 
   async function copyList() {
     try {
-      await navigator.clipboard.writeText(refusalReport(visible))
+      await navigator.clipboard.writeText(filesToText(visible))
       toast.success(`Copied ${visible.length} path${visible.length === 1 ? '' : 's'}`)
     } catch {
       toast.error('Could not reach the clipboard')
@@ -145,17 +154,20 @@ function IntakePage() {
     {
       id: 'code',
       header: 'Code',
-      cell: (file) =>
-        file.patient_code ? (
-          <span className="font-mono text-sm font-bold">{file.patient_code}</span>
-        ) : view === 'conflict' ? (
-          <span className="font-mono text-xs">
-            path <strong>{file.path_code}</strong> · name{' '}
-            <strong>{file.name_code}</strong>
-          </span>
-        ) : (
-          <span className="text-xs text-[rgb(var(--foreground-muted))]">none</span>
-        ),
+      cell: (file) => {
+        if (file.patient_code) {
+          return <span className="font-mono text-sm font-bold">{file.patient_code}</span>
+        }
+        if (view === 'conflict') {
+          return (
+            <span className="font-mono text-xs">
+              path <strong>{file.path_code}</strong> · name{' '}
+              <strong>{file.name_code}</strong>
+            </span>
+          )
+        }
+        return <span className="text-xs text-[rgb(var(--foreground-muted))]">none</span>
+      },
       sortValue: (file) => file.patient_code ?? file.path_code ?? '',
     },
     {
@@ -185,57 +197,109 @@ function IntakePage() {
           header: 'Why',
           cell: (file) => (
             <div className="max-w-sm text-sm">
-              {file.reason ? <span className="font-semibold">{file.reason}</span> : null}
-              {file.detail ? (
+              {file.reason && <span className="font-semibold">{file.reason}</span>}
+              {file.detail && (
                 <span className="block text-xs text-[rgb(var(--foreground-muted))]">
                   {file.detail}
                 </span>
-              ) : null}
+              )}
             </div>
           ),
           sortValue: (file) => file.reason ?? '',
         },
   ]
 
+  function conflictActions(file: IntakeFile) {
+    const choices = []
+    if (file.path_code) choices.push({ code: file.path_code, source: 'path' })
+    if (file.name_code) choices.push({ code: file.name_code, source: 'name' })
+
+    return (
+      <Can permission="application:update">
+        {choices.map((choice) => (
+          <Button
+            key={choice.code}
+            size="sm"
+            variant="outline"
+            aria-label={`File ${file.file_name} under ${choice.code}`}
+            isLoading={
+              resolve.isPending &&
+              resolve.variables?.fileId === file.id &&
+              resolve.variables.code === choice.code
+            }
+            leadingIcon={<GitCompareArrows className="size-3.5" aria-hidden="true" />}
+            onClick={() => resolve.mutate({ fileId: file.id, code: choice.code })}
+          >
+            {choice.code}
+            <span className="ml-1 text-[10px] font-normal opacity-70">
+              {choice.source}
+            </span>
+          </Button>
+        ))}
+      </Can>
+    )
+  }
+
+  function retryAction(file: IntakeFile) {
+    return (
+      <Can permission="application:update">
+        <Button
+          size="sm"
+          variant="outline"
+          aria-label={`Retry ${file.file_name}`}
+          isLoading={retry.isPending && retry.variables === file.id}
+          leadingIcon={<RotateCcw className="size-3.5" aria-hidden="true" />}
+          onClick={() => retry.mutate(file.id)}
+        >
+          Retry
+        </Button>
+      </Can>
+    )
+  }
+
+  let rowActions
+  if (view === 'conflict') rowActions = conflictActions
+  if (view === 'failed') rowActions = retryAction
+
+  const canCopy = view === 'skipped' || view === 'failed'
+  const canDownload = canCopy || view === 'conflict'
+  const total = files.data?.total ?? 0
+  const loaded = files.data?.rows.length ?? 0
+
   return (
     <RequirePermission permission="application:view">
       <div className="space-y-6">
         <PageHeader
           title="Intake"
-          description="Everything pushed into the drop folder, and what happened to it. Nothing here needs an application -- files are placed by the patient code in their path or name."
+          description="Everything pushed into the drop folder, and what happened to it. Files are matched to patients by the code in their path or file name."
         />
 
         <IntakeProgressPanel />
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           {VIEWS.map((option) => {
-            const n = count(counts.data, option.id)
+            const count = getCount(counts.data, option.id)
             const active = option.id === view
+            const borderClass = active
+              ? 'border-[rgb(var(--primary))] shadow-sm'
+              : 'border-[rgb(var(--border))] hover:border-[rgb(var(--foreground-muted))]'
+            const needsAttention =
+              count > 0 && (option.id === 'conflict' || option.id === 'failed')
+
             return (
               <button
                 key={option.id}
                 type="button"
                 aria-pressed={active}
-                onClick={() => {
-                  setView(option.id)
-                  setSearch('')
-                  setShown(PAGE)
-                }}
-                className={
-                  'rounded-lg border p-4 text-left transition-colors ' +
-                  (active
-                    ? 'border-[rgb(var(--primary))] bg-[rgb(var(--surface))] shadow-sm'
-                    : 'border-[rgb(var(--border))] bg-[rgb(var(--surface))] hover:border-[rgb(var(--foreground-muted))]')
-                }
+                onClick={() => changeView(option.id)}
+                className={`rounded-lg border bg-[rgb(var(--surface))] p-4 text-left transition-colors ${borderClass}`}
               >
                 <span className="block text-[11px] font-bold tracking-widest text-[rgb(var(--foreground-muted))] uppercase">
                   {option.label}
                 </span>
                 <span className="mt-1 flex items-center gap-2">
-                  <span className="text-2xl font-bold tabular-nums">{n}</span>
-                  {n > 0 && (option.id === 'conflict' || option.id === 'failed') ? (
-                    <Badge tone={option.tone}>needs attention</Badge>
-                  ) : null}
+                  <span className="text-2xl font-bold tabular-nums">{count}</span>
+                  {needsAttention && <Badge tone={option.tone}>needs attention</Badge>}
                 </span>
               </button>
             )
@@ -260,29 +324,29 @@ function IntakePage() {
                 placeholder="Path, code or reason..."
                 aria-label="Search intake files"
               />
-              {view === 'skipped' || view === 'failed' ? (
+              {canCopy && (
                 <Button
                   variant="outline"
                   size="sm"
                   disabled={visible.length === 0}
                   leadingIcon={<Copy className="size-3.5" aria-hidden="true" />}
                   onClick={() => void copyList()}
-                  title="One line per file: full path, reason, detail -- for whoever owns the source"
+                  title="One line per file: full path, reason and detail"
                 >
                   Copy list
                 </Button>
-              ) : null}
-              {view === 'skipped' || view === 'failed' || view === 'conflict' ? (
+              )}
+              {canDownload && (
                 <Button
                   variant="outline"
                   size="sm"
                   leadingIcon={<Download className="size-3.5" aria-hidden="true" />}
                   onClick={() => void downloadAll()}
-                  title="Every file in this list as CSV -- not just the ones shown"
+                  title="Every file in this list as CSV, not just the ones shown"
                 >
                   Download all (CSV)
                 </Button>
-              ) : null}
+              )}
             </div>
           </div>
 
@@ -294,77 +358,22 @@ function IntakePage() {
             isFetching={files.isFetching}
             error={files.error}
             loadingLabel="Loading intake files"
-            emptyMessage={
-              view === 'conflict'
-                ? 'No conflicts.'
-                : view === 'skipped'
-                  ? 'Nothing was skipped.'
-                  : view === 'failed'
-                    ? 'Nothing has failed.'
-                    : 'Nothing here.'
-            }
-            rowActions={
-              view === 'conflict'
-                ? (file) => (
-                    <Can permission="application:update">
-                      {[file.path_code, file.name_code]
-                        .filter((code): code is string => Boolean(code))
-                        .map((code, index) => (
-                          <Button
-                            key={code}
-                            size="sm"
-                            variant="outline"
-                            aria-label={`File ${file.file_name} under ${code}`}
-                            isLoading={
-                              resolve.isPending &&
-                              resolve.variables?.fileId === file.id &&
-                              resolve.variables.code === code
-                            }
-                            leadingIcon={
-                              <GitCompareArrows className="size-3.5" aria-hidden="true" />
-                            }
-                            onClick={() => resolve.mutate({ fileId: file.id, code })}
-                          >
-                            {code}
-                            <span className="ml-1 text-[10px] font-normal opacity-70">
-                              {index === 0 ? 'path' : 'name'}
-                            </span>
-                          </Button>
-                        ))}
-                    </Can>
-                  )
-                : view === 'failed'
-                  ? (file) => (
-                      <Can permission="application:update">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          aria-label={`Retry ${file.file_name}`}
-                          isLoading={retry.isPending && retry.variables === file.id}
-                          leadingIcon={<RotateCcw className="size-3.5" aria-hidden="true" />}
-                          onClick={() => retry.mutate(file.id)}
-                        >
-                          Retry
-                        </Button>
-                      </Can>
-                    )
-                  : undefined
-            }
+            emptyMessage={current.empty}
+            rowActions={rowActions}
           />
-          {files.data && files.data.total > (files.data.rows.length ?? 0) ? (
+          {total > loaded && (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-[rgb(var(--foreground-muted))]">
               <span>
-                Showing the newest {files.data.rows.length.toLocaleString()} of{' '}
-                {files.data.total.toLocaleString()}
-                {search ? ' -- search looks only at the ones shown' : ''}
+                Showing the newest {loaded.toLocaleString()} of {total.toLocaleString()}
+                {search ? ' (search only looks at the ones shown)' : ''}
               </span>
-              {shown < 1000 ? (
-                <Button size="sm" variant="outline" onClick={() => setShown(1000)}>
+              {limit < 1000 && (
+                <Button size="sm" variant="outline" onClick={() => setLimit(1000)}>
                   Show up to 1,000
                 </Button>
-              ) : null}
+              )}
             </div>
-          ) : null}
+          )}
         </Card>
       </div>
     </RequirePermission>

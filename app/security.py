@@ -18,7 +18,7 @@ MODEL_ACTIONS = {
 }
 MODEL_ACTIONS["files"] = ("read", "upload", "download", "delete")
 
-KNOWN_PERMISSIONS = frozenset(
+KNOWN_PERMISSIONS = set(
     f"{model}:{action}"
     for model, actions in MODEL_ACTIONS.items()
     for action in actions

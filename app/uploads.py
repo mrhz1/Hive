@@ -16,7 +16,7 @@ from app.crud import patient_applications as applications_crud
 from app.crud import patients as patients_crud
 from app.db import hive_cursor
 from app.file_metadata import extract
-from app.filetype import head_of, resolve_extension
+from app.filetype import read_header, resolve_extension
 from app.logging_setup import get_logger
 from app.notifications import (
     notify_upload_failed,
@@ -50,8 +50,6 @@ class StagedFile:
     content_type: Optional[str]
     path: Path
     size: int
-
-
 
 
 def staging_root() -> Path:
@@ -99,10 +97,8 @@ def discard_staging(job_id: str) -> None:
     directory = staging_dir(job_id)
     try:
         shutil.rmtree(directory, ignore_errors=True)
-    except Exception as exc:  # pragma: no cover - cleanup is best effort
+    except Exception as exc:
         log.warning("upload_staging_cleanup_failed", job_id=job_id, error=str(exc))
-
-
 
 
 def create_job(application_id: str) -> UploadJob:
@@ -188,8 +184,6 @@ def _fail_remaining(job_id: str, reason: str) -> None:
         job.failed = sum(1 for f in job.files if f.status == "failed")
 
 
-
-
 def known_patient_id(cursor, application) -> Optional[str]:
     patient_id = getattr(application, "patient_id", None)
     if not patient_id:
@@ -211,7 +205,7 @@ def record_metadata(cursor, file_id: str, path, extension: str) -> None:
                 error=error,
             ),
         )
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
         log.error("file_metadata_write_failed", file_id=file_id, error=str(exc))
 
 
@@ -224,7 +218,7 @@ def _store_staged(
     description: Optional[str],
     received_at: datetime,
 ):
-    extension = resolve_extension(staged.name, head_of(staged.path))
+    extension = resolve_extension(staged.name, read_header(staged.path))
     record_id = str(uuid.uuid4())
 
     if patient_id:
@@ -250,8 +244,6 @@ def _store_staged(
     )
     record_metadata(cursor, record.id, stored_path, extension)
     return record
-
-
 
 
 def run_upload_job(
@@ -330,7 +322,7 @@ def _process(
 
 def _finish(job_id: str, application_id: str, actor_id: Optional[str]) -> None:
     job = get_job(job_id)
-    if job is None:  # pragma: no cover - only if the job was evicted mid-run
+    if job is None:
         return
 
     if job.status != "failed":
@@ -371,5 +363,5 @@ def _send_notice(job: UploadJob, application_id: str, actor_id: Optional[str]) -
             notify_upload_failed(recipients, job, source_folder)
         else:
             notify_upload_finished(recipients, job, source_folder)
-    except Exception as exc:  # pragma: no cover - mailer already swallows
+    except Exception as exc:
         log.error("upload_notice_failed", job_id=job.id, error=str(exc))

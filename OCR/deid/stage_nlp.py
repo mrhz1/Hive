@@ -42,7 +42,6 @@ class Deidentifier:
         return self._analyzer
 
     def redactor(self):
-
         def redact(text: str) -> str:
             return redact_text(text, analyze_text(self.analyzer, text, self.config))
 
@@ -348,15 +347,6 @@ TAGS_ONLY_NOTHING_IDENTIFYING = "tags only: text in the image, nothing identifyi
 
 
 def dicom_method(result: DocumentResult) -> str:
-    """Which way a DICOM was de-identified, for the record.
-
-    Pixels are only ever written back when there is something to black out
-    (apply_redactions returns before touching them otherwise), so an image
-    with no text -- or with only an orientation marker or a measurement --
-    keeps its pixels exactly as they were and has its metadata de-identified.
-    That is the policy; this names which case each file fell into, so it can
-    be audited afterwards.
-    """
     if result.total_boxes:
         return PIXELS_AND_TAGS
     if any(page.ocr_spans for page in result.pages):
@@ -371,7 +361,7 @@ def run_stage(jobs: List[Dict[str, Any]], config: Config) -> List[DocumentResult
     first = jobs[0] if jobs else {}
     progress = progress_writer(
         first.get("progress"), file_total=int(first.get("file_total") or len(jobs) or 1)
-    ).adopt()
+    ).load()
     progress.stage("redacting")
 
     for job in jobs:

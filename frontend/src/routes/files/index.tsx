@@ -9,17 +9,11 @@ import { TextField } from '@/components/ui/Field'
 import { Badge, PageHeader } from '@/components/ui/Misc'
 import { DeidentifiedFileMetadataModal } from '@/features/files/DeidentifiedFileMetadataModal'
 import { FileViewerModal } from '@/features/patients/FileViewerModal'
-import {
-  useDeidentifiedFiles,
-  useDeleteDeidentifiedFile,
-} from '@/hooks/useResources'
+import { useDeidentifiedFiles, useDeleteDeidentifiedFile } from '@/hooks/useResources'
 import { ApiError } from '@/lib/api/client'
 import { deidentifiedFilesApi } from '@/lib/api/resources'
 import { formatFileSize, previewKind } from '@/schemas/applicationFile'
-import {
-  fileHaystack,
-  type DeidentifiedFile,
-} from '@/schemas/deidentifiedFile'
+import { fileHaystack, type DeidentifiedFile } from '@/schemas/deidentifiedFile'
 
 export const Route = createFileRoute('/files/')({
   component: FilesPage,
@@ -48,8 +42,9 @@ function FilesPage() {
     file: DeidentifiedFile
     url: string | null
   } | null>(null)
-  const [showingMetadataFor, setShowingMetadataFor] =
-    useState<DeidentifiedFile | null>(null)
+  const [showingMetadataFor, setShowingMetadataFor] = useState<DeidentifiedFile | null>(
+    null
+  )
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -105,9 +100,7 @@ function FilesPage() {
       id: 'date',
       header: 'Date',
       cell: (file) => (
-        <span className="whitespace-nowrap text-sm">
-          {formatDate(file.created_at)}
-        </span>
+        <span className="text-sm whitespace-nowrap">{formatDate(file.created_at)}</span>
       ),
       sortValue: (file) => file.created_at,
     },
@@ -119,7 +112,7 @@ function FilesPage() {
         {}
         <PageHeader
           title="Files"
-          description="De-identified documents, across every patient. Read-only -- add one from the application it belongs to."
+          description="De-identified documents, across every patient. Read-only. Add one from the application it belongs to."
         />
 
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4">

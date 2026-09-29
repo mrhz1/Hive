@@ -18,7 +18,7 @@ from deid.documents import (  # noqa: E402
     is_supported,
     supported_globs,
 )
-from deid.results import exit_code, summarise  # noqa: E402
+from deid.results import exit_code, summarize  # noqa: E402
 
 
 def configure_logging(level: str) -> None:
@@ -85,7 +85,7 @@ def parse_args(argv=None):
         help=(
             "Where the intermediate OCR handoff is written. Defaults to a "
             "0700 temp dir that is deleted afterwards. The handoff holds "
-            "raw OCR text (PHI) -- do not point this somewhere shared."
+            "raw OCR text (PHI), do not point this somewhere shared."
         ),
     )
     parser.add_argument(
@@ -94,7 +94,7 @@ def parse_args(argv=None):
         help=(
             "Rewritten as the run advances, so a caller in another "
             "container can show a progress bar. Must be somewhere that "
-            "caller can read -- unlike --work-dir it holds no PHI, only "
+            "caller can read. Unlike --work-dir it holds no PHI, only "
             "a page count and the file's own name."
         ),
     )
@@ -159,7 +159,7 @@ def main(argv=None) -> int:
         progress_path=args.progress_file,
     )
 
-    print(json.dumps(summarise(results), indent=2))
+    print(json.dumps(summarize(results), indent=2))
     return exit_code(results)
 
 

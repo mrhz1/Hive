@@ -42,26 +42,10 @@ def deid_dir_for(extension: str) -> Path:
 
 
 def intake_root() -> Path:
-    """The drop folder, read per call so it follows INTAKE_DIR.
-
-    It is a storage root because an attached document is read from it in
-    place until the application is submitted: the original and its redacted
-    twin stay in the drop tree while a draft is being put together, and only
-    move once it is sent.
-    """
     return _configured_dir("INTAKE_DIR", "storage/incoming_data")
 
 
 def submitted_root() -> Path:
-    """Where a submitted application's documents end up, per patient:
-
-        <root>/<CODE>/original/...
-        <root>/<CODE>/de_identified/...
-
-    Both copies side by side, because they are only useful together -- the
-    redacted one is what goes out, the original is what it is checked
-    against.
-    """
     return _configured_dir("SUBMITTED_DIR", "storage/submitted")
 
 
@@ -84,11 +68,6 @@ def _allowed_roots():
 
 
 def move_into(source: Path, directory: Path) -> Path:
-    """Move a file into a folder, never over another file.
-
-    Two documents for one patient can share a name -- `image.dcm` from two
-    different series -- and the second must not silently replace the first.
-    """
     directory.mkdir(parents=True, exist_ok=True)
     target = directory / source.name
 
@@ -98,7 +77,7 @@ def move_into(source: Path, directory: Path) -> Path:
             if not candidate.exists():
                 target = candidate
                 break
-        else:  # pragma: no cover - ten thousand namesakes
+        else:
             raise ValidationError(f"No free name for {source.name} in {directory}")
 
     if target.resolve() != source.resolve():
@@ -113,8 +92,8 @@ _MAX_NAME = 120
 def sanitize_filename(name: str) -> str:
     base = re.split(r"[\\/]", name)[-1].strip()
 
-    normalised = unicodedata.normalize("NFKD", base)
-    ascii_only = normalised.encode("ascii", "ignore").decode("ascii")
+    normalized = unicodedata.normalize("NFKD", base)
+    ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
     cleaned = _UNSAFE.sub("_", ascii_only).strip("._-")
 
     if not cleaned:
@@ -337,7 +316,7 @@ def file_deidentified_output(
 def delete_file(stored: str) -> None:
     try:
         resolve_stored_path(stored).unlink(missing_ok=True)
-    except Exception as exc:  # pragma: no cover - cleanup is not critical
+    except Exception as exc:
         log.warning("file_delete_failed", path=stored, error=str(exc))
 
 
@@ -347,7 +326,7 @@ def prune_empty_dirs(directory: Path) -> int:
 
     try:
         current = directory.resolve()
-    except OSError:  # pragma: no cover - unreadable path
+    except OSError:
         return 0
 
     while any(current.is_relative_to(root) and current != root for root in roots):
@@ -369,5 +348,5 @@ def prune_stored_folders(*stored: Optional[str]) -> None:
             continue
         try:
             prune_empty_dirs(resolve_stored_path(path).parent)
-        except Exception:  # pragma: no cover - cleanup is best effort
+        except Exception:
             continue

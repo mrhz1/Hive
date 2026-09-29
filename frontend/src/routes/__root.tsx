@@ -34,9 +34,8 @@ function IdentityGate({ children }: { children: React.ReactNode }) {
           {isIdentityProblem ? (
             <p className="mt-3 text-xs text-[rgb(var(--foreground-muted))]">
               Locally, set <code>VITE_DEV_USERNAME</code> in{' '}
-              <code>frontend/.env.local</code> to a username from{' '}
-              <code>make init</code>. On Cloudera AI the platform supplies the
-              identity instead.
+              <code>frontend/.env.local</code> to a username from <code>make init</code>.
+              On Cloudera AI the platform supplies the identity instead.
             </p>
           ) : null}
           <Button className="mt-6" isLoading={isFetching} onClick={() => void refetch()}>

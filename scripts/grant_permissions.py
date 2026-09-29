@@ -98,7 +98,7 @@ def main(argv=None) -> int:
             role.id,
             RoleUpdate(permissions=sorted(set(role.permissions) | wanted)),
         )
-        print(f"done -- {role.name} now has {len(set(role.permissions) | wanted)}")
+        print(f"done: {role.name} now has {len(set(role.permissions) | wanted)}")
 
     return 0
 

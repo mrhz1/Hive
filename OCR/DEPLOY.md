@@ -94,7 +94,7 @@ make models
 ```
 
 Two runs, not one: each virtualenv can only download what it can import.
-Expect ~15 minutes — the NER model is a ~440MB `pytorch_model.bin` with
+Expect ~15 minutes, the NER model is a ~440MB `pytorch_model.bin` with
 no safetensors in the repo. Re-running skips whatever is already staged;
 `--force` re-downloads.
 
@@ -108,7 +108,7 @@ OCR/models/
 └── transformers/StanfordAIMI/stanford-deidentifier-base/ 419MB
 ```
 
-Directory names are the model identifiers **verbatim** — the same strings
+Directory names are the model identifiers **verbatim**, the same strings
 `deid/config.py` pins. Swapping a model means dropping in a folder with
 the matching name, not editing code.
 
@@ -165,7 +165,7 @@ residual text-layer chars: 0
 PASS: no PII survived; expected clinical content intact
 ```
 
-It also checks that content which *should* survive did — a redactor that
+It also checks that content which *should* survive did, a redactor that
 blacks out the whole page would otherwise pass a leak test while being
 useless. Exit `0` clean, `1` leak, `2` over-redacted.
 
@@ -173,7 +173,7 @@ useless. Exit `0` clean, `1` leak, `2` over-redacted.
 
 ## 4. Move it to Cloudera AI
 
-The code goes by git. The weights do not — ~570MB is not a thing to put
+The code goes by git. The weights do not, ~570MB is not a thing to put
 in every clone, and `OCR/models/` is gitignored for that reason.
 
 ```bash
@@ -184,7 +184,7 @@ tar czf ~/models.tar.gz models        # ~500MB compressed
 
 Upload `models.tar.gz` into the CML project (**Files → Upload**, or
 `scp`/`cdswctl` if the workspace allows it). Put the code there as a Git
-project: **Project → New Project → Git**, pointing at this repository —
+project: **Project → New Project → Git**, pointing at this repository,
 a Git project makes redeploys a `git pull` in a Session.
 
 ---
@@ -202,7 +202,7 @@ make install
 
 > The venvs hard-code the absolute path of the interpreter that created
 > them. After any runtime change, `make distclean && make venvs install`
-> — a venv pointing at a python that no longer exists fails in a way that
+>, a venv pointing at a python that no longer exists fails in a way that
 > looks like a missing dependency.
 
 ---
@@ -221,8 +221,8 @@ python3 scripts/run_deid.py --preflight
 model the way the pipeline will, so a truncated `pytorch_model.bin` fails
 now rather than several minutes into the first real job.
 
-`--preflight` only verifies the directories exist — enough to catch an
-incomplete copy, not a corrupt one — and prints what resolved:
+`--preflight` only verifies the directories exist, enough to catch an
+incomplete copy, not a corrupt one, and prints what resolved:
 
 ```json
 {
@@ -248,7 +248,7 @@ incomplete copy, not a corrupt one — and prints what resolved:
 
 An **empty string** under `resolved` is a model that is not there.
 
-Leave `DEID_OFFLINE` alone — it defaults to on, and it is what turns a
+Leave `DEID_OFFLINE` alone, it defaults to on, and it is what turns a
 missing model into that message instead of a job hanging on a blocked
 host until it times out.
 
@@ -257,7 +257,7 @@ host until it times out.
 ## 7. Run the whole thing once, as a single job
 
 Still in the Session. This is the single-command test the Job will later
-run on your behalf — do it by hand first, so a failure here is a Session
+run on your behalf, do it by hand first, so a failure here is a Session
 you can debug rather than a Job log you have to read backwards.
 
 ### 7a. One document, straight through the pipeline
@@ -273,7 +273,7 @@ worth stating:
 
 A redacted DICOM stays a DICOM and a redacted Word document stays a Word
 document, so each output is a drop-in replacement for its input. `.doc`
-comes back as `.docx` — python-docx cannot write the old binary format.
+comes back as `.docx`, python-docx cannot write the old binary format.
 
 Word documents skip the OCR stage entirely: their text needs no
 recognising, so paying for a paddle process would buy nothing. That also
@@ -281,7 +281,7 @@ means a Word run does not need `.venv-ocr` at all.
 
 > **Burned-in PHI is the reason DICOM goes through OCR.** Ultrasound and
 > secondary capture routinely print the patient's name into the image
-> itself, and no tag reliably says so — `BurnedInAnnotation` is optional
+> itself, and no tag reliably says so, `BurnedInAnnotation` is optional
 > and frequently absent or wrong. Scrubbing tags alone would leave the
 > name visibly on screen.
 
@@ -302,7 +302,7 @@ DEID_OUTPUT_DIR=/home/cdsw/out \
 python3 scripts/run_deid.py
 ```
 
-Run it with **any** python — `run_deid.py` is the orchestrator and
+Run it with **any** python, `run_deid.py` is the orchestrator and
 imports nothing outside the standard library. It coordinates the two
 stage subprocesses, and only those need dependencies. That is why the
 Cloudera runtime's stock python can run it with nothing installed.
@@ -343,8 +343,8 @@ python scripts/deid_worker.py --limit 20
 DEID_RETRY_STALE_MINUTES=120 python scripts/deid_worker.py
 ```
 
-`deid_worker.py` calls `app.deid.run_deidentification` — the exact
-function the API calls inline — so moving between the two changes
+`deid_worker.py` calls `app.deid.run_deidentification`, the exact
+function the API calls inline, so moving between the two changes
 scheduling, not behaviour.
 
 > **Run one instance at a time.** Hive has no reliable compare-and-set,
@@ -395,19 +395,19 @@ HIVE_USER=<workload user>
 ```
 
 `DEID_MODELS_DIR` and `DEID_OFFLINE` only need setting if the store is
-somewhere other than `OCR/models` — the defaults are right.
+somewhere other than `OCR/models`, the defaults are right.
 
 A Job run does not exec the script the way `python scripts/deid_worker.py`
-does — the engine runs the source inside a session-style kernel, where
+does, the engine runs the source inside a session-style kernel, where
 `__file__` is undefined. The worker finds the repo root without it (CML's
 `CDSW_PROJECT_DIR`, else the working directory). If a run dies immediately
-with a path or import error, set `HIVE_REPO_ROOT=<project dir>` here — as a
+with a path or import error, set `HIVE_REPO_ROOT=<project dir>` here, as a
 Job/project environment variable, *not* in `.env.local`, which `app.db`
 cannot load until the repo root has already been found. The failure
 message lists every path it tried and what was in the working directory.
 
 The kernel also owns `sys.argv`, so the CLI flags above are for Sessions
-and terminals only — a Job must be configured with `DEID_FILE_ID`,
+and terminals only, a Job must be configured with `DEID_FILE_ID`,
 `DEID_BATCH_LIMIT` and `DEID_RETRY_STALE_MINUTES` as environment
 variables. The worker ignores argv when it detects a kernel, which is
 what stops the kernel's own `-f <connection file>` from being parsed as
@@ -421,7 +421,7 @@ does.
 ### Add a sweep
 
 The API starts a run per request, so the Job needs no schedule to
-function. Add a **second** Job on a schedule anyway — same script, no
+function. Add a **second** Job on a schedule anyway, same script, no
 `DEID_FILE_ID`:
 
 ```
@@ -440,11 +440,11 @@ A run **started with `DEID_FILE_ID` does that file and nothing else.**
 Only a sweep drains the queue. That split matters: the API's dispatcher
 already starts one run per queued file and waits for each, so a
 triggered run that also drained would swallow files whose own runs were
-still being started -- five files became eight runs, all the work
+still being started, five files became eight runs, all the work
 happening inside the first.
 
 > `DEID_RETRY_STALE_MINUTES` measures age since *upload*, not since the
-> row was claimed — `patient_application_files` has no `updated_at` column. Set it
+> row was claimed, `patient_application_files` has no `updated_at` column. Set it
 > comfortably longer than a run takes.
 
 ---
@@ -487,7 +487,7 @@ No socket, by design: the client re-reads the row to see the result.
 | Variable | Default | What it is |
 |---|---|---|
 | `DEID_BACKEND` | `inline` | set to **`cml_job`** on Cloudera |
-| `CML_DEID_JOB_ID` | — | **required**; the Job id from step 8 |
+| `CML_DEID_JOB_ID` |, | **required**; the Job id from step 8 |
 | `CML_PROJECT_ID` | `$CDSW_PROJECT_ID` | injected by the platform |
 | `CML_API_KEY` | `$CDSW_APIV2_KEY` | injected; a *legacy* API key will not work |
 | `CML_API_URL` | derived from `$CDSW_DOMAIN` | `https://<domain>/api/v2` |
@@ -511,11 +511,11 @@ detail=DEID_BACKEND=cml_job but the Cloudera API is not configured;
        running inside a CML workload)
 ```
 
-A misconfiguration is deliberately not fatal — the rest of the API is
+A misconfiguration is deliberately not fatal, the rest of the API is
 perfectly usable, and refusing to start would turn a broken feature into
 a broken deployment.
 
-### The endpoint — `app/routers/patient_application_files.py`
+### The endpoint, `app/routers/patient_application_files.py`
 
 Returns immediately; the work happens elsewhere.
 
@@ -556,7 +556,7 @@ def deidentify_patient_file(
     return updated
 ```
 
-### The dispatch — `app/deid.py`
+### The dispatch, `app/deid.py`
 
 One function, two backends. Switching changes *scheduling*, not logic:
 both paths end in the same `run_deidentification()`.
@@ -609,14 +609,14 @@ Two things it deliberately does **not** treat as "the run is over":
 
 * **The row going `done`.** The worker redacts the file and writes the
   row before the run process exits. Advancing on that starts the next
-  run while the previous one is still alive — which is what turned five
+  run while the previous one is still alive, which is what turned five
   files into eight runs.
 * **An unreadable run status.** A blip in the control plane must read as
   still-running. Only after `DEID_DISPATCH_UNREADABLE_POLLS` consecutive
   silent polls does a final row state get to end the wait, so an outage
   cannot strand the queue either.
 
-### The API call — `app/cloudera.py`
+### The API call, `app/cloudera.py`
 
 One POST. Hand-rolled over `httpx` rather than pulling in `cmlapi`, which
 is a large transitive dependency for the web process to carry for a
@@ -675,7 +675,7 @@ PY
 
 A run should appear under **Jobs → deidentify → History** within seconds.
 If `is_configured()` is `False`, one of `CML_PROJECT_ID`, `CML_API_KEY`,
-`CML_DEID_JOB_ID` is missing — the error names which.
+`CML_DEID_JOB_ID` is missing, the error names which.
 
 Or with plain curl, which isolates credentials from the code entirely:
 
@@ -733,7 +733,7 @@ failed      look at the Job run's log
 
 **Row stuck in `queued`.** The Job run never started. Check
 `CML_DEID_JOB_ID` and the API Application's log for
-`deid_job_dispatch_failed` — the message carries the control plane's own
+`deid_job_dispatch_failed`, the message carries the control plane's own
 reason (bad job id, expired key).
 
 **Row stuck in `processing`.** A run died mid-file. The sweep re-claims
@@ -741,7 +741,7 @@ it; without a sweep, re-run `deid_worker.py --file-id <id>` by hand.
 
 **Row goes straight to `failed`, log says `model ... missing from the
 model store`.** Step 6 did not land. Re-run `make check-models` in a
-Session — the message names the directory it looked in.
+Session, the message names the directory it looked in.
 
 **A run *hangs* for minutes before failing.** Something is still trying
 to download. Check that `DEID_OFFLINE` has not been set to `0` anywhere,
@@ -755,7 +755,7 @@ venvs install`, then re-unpack the models (`distclean` does not touch
 `models/`).
 
 **The API Application is slow or memory-hungry.** It should carry none of
-the ML stack — with `DEID_BACKEND=cml_job` it only marks the row and
+the ML stack, with `DEID_BACKEND=cml_job` it only marks the row and
 POSTs. If it is loading models, `DEID_BACKEND` is still `inline`.
 
 **Job runs out of memory.** Raise the Job to 8 GiB. Stage 2 loads a
@@ -764,7 +764,7 @@ alone needs the headroom.
 
 **Both stages fail with an import error naming the other stack.** Someone
 installed both requirement files into one venv, or a module crossed the
-import boundary. `tests/test_ocr_stage_isolation.py` guards the latter —
+import boundary. `tests/test_ocr_stage_isolation.py` guards the latter,
 run `pytest tests/test_ocr_stage_isolation.py` from the repo root.
 
 ---
