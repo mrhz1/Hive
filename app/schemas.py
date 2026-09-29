@@ -3,6 +3,12 @@ from typing import Any, List, Mapping, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
+from app.ids import (
+    is_patient_code,
+    normalise_patient_code,
+    patient_code_pattern,
+)
+
 
 
 class RoleCreate(BaseModel):
@@ -109,6 +115,18 @@ PATIENT_IDENTITY_REQUIRED = (
 
 APPLICATION_FILE_REQUIRED = "original_file_path is required"
 
+PATIENT_CODE_REQUIRED = (
+    "A patient code is required -- it comes from the documents, not from us"
+)
+
+
+def patient_code_invalid(value: str) -> str:
+    return (
+        f"'{value}' is not a patient code. Expected two to four letters "
+        f"followed by three or four digits (AA0001, AVDD1200); the pattern "
+        f"is {patient_code_pattern()}"
+    )
+
 
 def patient_has_identity(values: Mapping[str, Any]) -> bool:
     return any(str(values.get(name) or "").strip() for name in PATIENT_IDENTIFIERS)
@@ -169,6 +187,24 @@ class _PatientFields(BaseModel):
 
 
 class PatientCreate(_PatientFields):
+    # Supplied, never generated: the code is on the documents before a
+    # patient record exists, and it is how the two are matched up.
+    id: str
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _normalise_code(cls, value: Any) -> Any:
+        return normalise_patient_code(value)
+
+    @field_validator("id")
+    @classmethod
+    def _check_code(cls, value: str) -> str:
+        if not value:
+            raise ValueError(PATIENT_CODE_REQUIRED)
+        if not is_patient_code(value):
+            raise ValueError(patient_code_invalid(value))
+        return value
+
     @model_validator(mode="after")
     def _require_an_identifier(self) -> "PatientCreate":
         if not patient_has_identity(self.model_dump()):
@@ -285,6 +321,99 @@ class DeidentifiedFile(BaseModel):
     created_at: datetime
     deid_status: str
     de_identified_file_path: Optional[str] = None
+
+
+class IntakeFile(BaseModel):
+    """One file found in a dropped batch, and what was decided about it.
+
+    `status` is one of queued / processing / done / failed / skipped /
+    conflict / claimed. The refusals -- skipped and conflict -- are rows
+    like any other, because a file nobody can place has to be visible and
+    fixable rather than quietly absent.
+    """
+
+    id: str
+    batch_id: str
+    source_path: str
+    relative_path: str
+    file_name: str
+    file_extension: str
+    file_size: int
+    checksum: Optional[str] = None
+
+    patient_code: Optional[str] = None
+
+    # What each half claimed, kept even after a conflict is resolved: the
+    # disagreement is the evidence for whatever was chosen.
+    path_code: Optional[str] = None
+    name_code: Optional[str] = None
+
+    status: str
+    reason: Optional[str] = None
+    detail: Optional[str] = None
+
+    output_path: Optional[str] = None
+    output_name: Optional[str] = None
+    claimed_by_file_id: Optional[str] = None
+
+    found_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class IntakeFileUpdate(BaseModel):
+    patient_code: Optional[str] = None
+    status: Optional[str] = None
+    reason: Optional[str] = None
+    detail: Optional[str] = None
+    output_path: Optional[str] = None
+    output_name: Optional[str] = None
+    claimed_by_file_id: Optional[str] = None
+
+
+class IntakeBatch(BaseModel):
+    id: str
+    root: str
+    status: str
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+
+class IntakeCounts(BaseModel):
+    """A batch's tally, derived rather than stored."""
+
+    total: int = 0
+    queued: int = 0
+    processing: int = 0
+    done: int = 0
+    failed: int = 0
+    skipped: int = 0
+    conflict: int = 0
+    claimed: int = 0
+    submitted: int = 0
+    superseded: int = 0
+
+
+class RejectedFile(BaseModel):
+    """A file a reviewer turned down, with both copies accounted for.
+
+    `has_original` is a disk check rather than a column: whether the
+    identified copy is still there depends on DEID_KEEP_ORIGINAL and on
+    whether this application was submitted before that was turned on. The
+    page offers to download what is actually present.
+    """
+
+    id: str
+    application_id: str
+    patient_id: str
+    original_file_name: str
+    deidentified_file_name: Optional[str] = None
+    file_extension: str
+    file_size: int
+    created_at: datetime
+    deid_status: str
+    review_note: Optional[str] = None
+    has_original: bool
+    has_deidentified: bool
 
 
 
@@ -432,7 +561,11 @@ class PatientApplication(BaseModel):
 
 
 class AuditLogCreate(BaseModel):
-    action: str = Field(pattern="^(CREATE|UPDATE|DELETE)$")
+    # REPLACE is a CREATE and a DELETE at once -- new redacted bytes over
+    # old ones, same row. It was being written by /files-library and
+    # silently rejected here, so that overwrite went unrecorded; audit
+    # failures are logged rather than raised, which is what hid it.
+    action: str = Field(pattern="^(CREATE|UPDATE|DELETE|REPLACE)$")
     entity_type: str
     entity_id: str
     user_id: Optional[str] = None

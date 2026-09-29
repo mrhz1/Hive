@@ -88,16 +88,26 @@ def create_file(
 
 
 def list_files(
-    cursor, application_id: Optional[str] = None
+    cursor,
+    application_id: Optional[str] = None,
+    review_status: Optional[str] = None,
 ) -> List[PatientApplicationFile]:
     sql = f"SELECT {_COLS} FROM `patient_application_files`"
-    params: tuple = ()
+
+    clauses = []
+    params: list = []
     if application_id:
-        sql += " WHERE `application_id` = %s"
-        params = (application_id,)
+        clauses.append("`application_id` = %s")
+        params.append(application_id)
+    if review_status:
+        clauses.append("`review_status` = %s")
+        params.append(review_status)
+
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY `created_at` DESC"
 
-    execute(cursor, sql, params)
+    execute(cursor, sql, tuple(params))
     return [_row_to_file(r) for r in cursor.fetchall()]
 
 
@@ -179,3 +189,21 @@ def delete_files_for_application(
             count=len(existing),
         )
     return existing
+
+
+def set_paths(
+    cursor, file_id: str, file_path: Optional[str], de_identified_file_path: str
+) -> PatientApplicationFile:
+    """Point a row at where its copies now live.
+
+    Not part of PatientApplicationFileUpdate on purpose: that is what PUT
+    /files/{id} accepts, and a path a client can set is a path a client can
+    aim anywhere.
+    """
+    execute(
+        cursor,
+        "UPDATE `patient_application_files` SET `file_path` = %s, "
+        "`de_identified_file_path` = %s WHERE `id` = %s",
+        (file_path, de_identified_file_path, file_id),
+    )
+    return get_file_or_404(cursor, file_id)

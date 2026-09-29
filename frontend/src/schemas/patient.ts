@@ -67,7 +67,27 @@ const optionalDate = z.union([
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD'),
 ])
 
+/**
+ * The patient code, as it appears on the documents.
+ *
+ * Two to four letters then three or four digits -- AA0001, AVDD1200. It is
+ * not generated: the sending system writes it into the file path or name,
+ * and the same code means the same person everywhere. Matched
+ * case-insensitively here; the API stores it upper-case.
+ */
+export const PATIENT_CODE_RE = /^[A-Za-z]{2,4}[0-9]{3,4}$/
+
+const patientCode = z
+  .string()
+  .trim()
+  .min(1, 'A patient code is required')
+  .regex(
+    PATIENT_CODE_RE,
+    'Two to four letters then three or four digits, like AA0001 or AVDD1200'
+  )
+
 const patientFormFields = z.object({
+  id: patientCode,
 
   instcode: optionalText(64),
   pname: optionalText(),
@@ -126,6 +146,7 @@ export const PATIENT_FIELD_NAMES = Object.keys(patientFormFields.shape) as Array
 >
 
 export const EMPTY_PATIENT_FORM: PatientFormValues = {
+  id: '',
   instcode: '',
   pname: '',
   pemail: '',

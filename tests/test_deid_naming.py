@@ -8,7 +8,12 @@ from conftest import minimal_patient
 
 from app import deid, storage
 
-REDACTED = re.compile(r"^(?P<code>[A-Z0-9]{6})-(?P<type>[a-z0-9]+)-(?P<day>\d{8})-(?P<serial>\d{16})_deid\.(?P<ext>[a-z0-9]+)$")
+# `<CODE>_<date>_<16-digit serial>.<ext>` -- one shape for every redacted
+# file in the system, whether it came from the intake sweep, the wizard's
+# manual attach or a /files-library upload.
+REDACTED = re.compile(
+    r"^(?P<code>[A-Z0-9]+)_(?P<day>\d{8})_(?P<serial>\d{16})\.(?P<ext>[a-z0-9]+)$"
+)
 
 SIDECARS = (".txt", ".report.json")
 
@@ -45,28 +50,32 @@ def fake_pipeline(monkeypatch):
     monkeypatch.setattr("app.deid._record_deid_metadata", lambda *a, **kw: None)
 
 
-@pytest.mark.parametrize(
-    "extension,document_type",
-    [("pdf", "pdf"), ("dcm", "dicom"), ("dicom", "dicom"), ("doc", "word"), ("docx", "word")],
-)
-def test_the_name_carries_the_patient_code_and_document_type(extension, document_type):
-    name = deid.deid_output_name("AB12CD", extension)
+@pytest.mark.parametrize("extension", ["pdf", "dcm", "dicom", "doc", "docx"])
+def test_the_name_carries_the_patient_code_and_the_run_s_date(extension):
+    name = deid.deid_output_name("AA1234", extension)
 
     match = REDACTED.match(name)
     assert match, name
-    assert match.group("code") == "AB12CD"
-    assert match.group("type") == document_type
+    assert match.group("code") == "AA1234"
     assert match.group("day") == _today()
     assert match.group("ext") == extension
 
 
+@pytest.mark.parametrize("code", ["AA1234", "AVDD1200", "AVDD001"])
+def test_codes_of_every_shape_survive_the_name(code):
+    """Codes are two to four letters then three or four digits."""
+    match = REDACTED.match(deid.deid_output_name(code, "pdf"))
+
+    assert match and match.group("code") == code
+
+
 def test_every_name_gets_its_own_serial():
-    names = {deid.deid_output_name("AB12CD", "pdf") for _ in range(50)}
+    names = {deid.deid_output_name("AA1234", "pdf") for _ in range(50)}
     assert len(names) == 50, "two runs were handed the same serial"
 
 
 def test_a_patient_without_a_code_is_still_named():
-    assert deid.deid_output_name("", "pdf").startswith("unknown-pdf-")
+    assert deid.deid_output_name("", "pdf").startswith("unknown_")
 
 
 def _patient_and_application(client):
@@ -104,7 +113,7 @@ def test_the_redacted_copy_is_named_for_its_own_run(
     match = REDACTED.match(name)
     assert match, name
     assert match.group("code") == patient_id
-    assert match.group("type") == "pdf"
+    assert match.group("ext") == "pdf"
     assert match.group("day") == _today()
 
     assert pathlib.Path(updated["de_identified_file_path"]).name == name
@@ -174,4 +183,4 @@ def test_a_manually_redacted_upload_uses_the_same_scheme(
     match = REDACTED.match(row["name"])
     assert match, row["name"]
     assert match.group("code") == patient_id
-    assert match.group("type") == "pdf"
+    assert match.group("ext") == "pdf"

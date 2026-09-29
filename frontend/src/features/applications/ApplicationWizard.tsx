@@ -4,20 +4,19 @@ import { toast } from 'sonner'
 import { ReasonDialog } from '@/components/ReasonDialog'
 import { Button } from '@/components/ui/Button'
 import { Card, PageHeader } from '@/components/ui/Misc'
-import { FolderPathField } from '@/features/patients/FolderPathField'
 import { PatientForm } from '@/features/patients/PatientForm'
 import {
-  patientHooks,
   useApplicationFiles,
   useCreateApplication,
   useRejectApplication,
   useUpdateApplication,
 } from '@/hooks/useResources'
+import { patientsApi } from '@/lib/api/resources'
 import { cn } from '@/lib/cn'
+import type { AvailableCode } from '@/schemas/intake'
 import { rejectedCount, undecidedCount } from '@/schemas/applicationFile'
 import {
   patientName,
-  toPatientFormValues,
   type Patient,
 } from '@/schemas/patient'
 import {
@@ -27,8 +26,9 @@ import {
 } from '@/schemas/patientApplication'
 import { ApplicationSummary } from './ApplicationSummary'
 import { AssigneeCard } from './AssigneeField'
-import { ExistingPatientPicker } from './ExistingPatientPicker'
 import { FileReviewPanel } from './FileReviewPanel'
+import { IntakeCodePicker } from './IntakeCodePicker'
+import { IntakeFilePicker } from './IntakeFilePicker'
 
 const STEPS = [
   { number: 1, label: 'Patient' },
@@ -75,56 +75,6 @@ function StepRail({
   )
 }
 
-type PatientSource = 'existing' | 'new'
-
-const SOURCES = [
-  {
-    value: 'new' as const,
-    label: 'New patient',
-    hint: 'Not seen here before -- fill in their details',
-  },
-  {
-    value: 'existing' as const,
-    label: 'Existing patient',
-    hint: 'Already on file -- search and pick them',
-  },
-]
-
-function PatientSourceChoice({
-  value,
-  onChange,
-}: {
-  value: PatientSource
-  onChange: (value: PatientSource) => void
-}) {
-  return (
-    <fieldset className="grid gap-3 sm:grid-cols-2">
-      <legend className="sr-only">Is this for an existing patient?</legend>
-      {SOURCES.map((source) => {
-        const isSelected = source.value === value
-        return (
-          <button
-            key={source.value}
-            type="button"
-            aria-pressed={isSelected}
-            onClick={() => onChange(source.value)}
-            className={cn(
-              'rounded-xl border p-4 text-left transition-colors',
-              isSelected
-                ? 'border-[rgb(var(--primary))] bg-[rgb(var(--primary))]/5 ring-1 ring-[rgb(var(--primary))]'
-                : 'border-[rgb(var(--border))] bg-[rgb(var(--surface))] hover:bg-[rgb(var(--surface-muted))]'
-            )}
-          >
-            <span className="block text-sm font-semibold">{source.label}</span>
-            <span className="mt-1 block text-xs text-[rgb(var(--foreground-muted))]">
-              {source.hint}
-            </span>
-          </button>
-        )
-      })}
-    </fieldset>
-  )
-}
 
 export function ApplicationWizard({
   application,
@@ -136,11 +86,9 @@ export function ApplicationWizard({
   const navigate = useNavigate()
   const createApplication = useCreateApplication()
   const updateApplication = useUpdateApplication()
-  const updatePatient = patientHooks.useUpdate()
   const reject = useRejectApplication()
 
   const [patient, setPatient] = useState<Patient | undefined>(initialPatient)
-  const [source, setSource] = useState<PatientSource>('new')
   const [current, setCurrent] = useState<StepNumber>(1)
   const [furthest, setFurthest] = useState<StepNumber>(initialPatient ? 3 : 1)
   const [record, setRecord] = useState<PatientApplication | undefined>(application)
@@ -148,8 +96,14 @@ export function ApplicationWizard({
   const [assignedTo, setAssignedTo] = useState(application?.assigned_to_id ?? '')
 
   const [folder, setFolder] = useState(application?.original_file_path ?? '')
-  const [folderFiles, setFolderFiles] = useState<File[]>([])
-  const [folderError, setFolderError] = useState<string | null>(null)
+
+  // The patient code this application is for, chosen from what intake has
+  // de-identified. A new application starts here; one made before intake
+  // existed keeps its typed folder instead.
+  const [code, setCode] = useState<string | undefined>(
+    application?.patient_id ?? initialPatient?.id
+  )
+  const [choosingCode, setChoosingCode] = useState(false)
 
   const goTo = (step: StepNumber) => {
     setCurrent(step)
@@ -167,14 +121,13 @@ export function ApplicationWizard({
   }
 
   function stepOneIsComplete(): boolean {
-    if (folder.trim()) {
-      setFolderError(null)
-      return true
-    }
-    setFolderError('Choose the folder this application’s documents come from')
-    toast.error('Choose a source folder before saving the patient')
+    // The folder comes with the code, so a missing one means no code was
+    // chosen -- the thing to ask for.
+    if (folder.trim()) return true
+    toast.error('Choose a patient code before saving the patient')
     return false
   }
+
 
   async function onPatientSaved(saved: Patient) {
     setPatient(saved)
@@ -203,24 +156,24 @@ export function ApplicationWizard({
     goTo(2)
   }
 
-  function onPatientChosen(chosen: Patient) {
-    setPatient(chosen)
-  }
+  async function onCodeChosen(chosen: AvailableCode) {
+    setCode(chosen.code)
+    setFolder(chosen.folder)
 
-  function clearChosenPatient() {
-    setPatient(undefined)
-  }
+    if (!chosen.patient_exists) {
+      // Created from the documents: the form opens with the code locked.
+      setPatient(undefined)
+      return
+    }
 
-  function recordUploadFolder(landedIn: string) {
-    if (!patient || patient.original_file_path) return
-
-    void updatePatient
-      .mutateAsync({
-        id: patient.id,
-        values: { ...toPatientFormValues(patient), original_file_path: landedIn },
-      })
-      .then(setPatient)
-      .catch(() => undefined)
+    setChoosingCode(true)
+    try {
+      setPatient(await patientsApi.get(chosen.code))
+    } catch {
+      toast.error(`Could not load patient ${chosen.code}`)
+    } finally {
+      setChoosingCode(false)
+    }
   }
 
   async function submitApplication() {
@@ -247,6 +200,7 @@ export function ApplicationWizard({
   const rejected = rejectedCount(files.data ?? [])
 
   const locked = isReadOnly(record?.status)
+
 
   return (
     <div className="space-y-6">
@@ -287,58 +241,35 @@ export function ApplicationWizard({
             disabled={locked || updateApplication.isPending}
           />
 
-          <Card className="p-5">
-            <h2 className="text-[11px] font-bold tracking-widest text-[rgb(var(--foreground-muted))] uppercase">
-              Documents
-            </h2>
-            <div className="mt-4">
-              <FolderPathField
-                label="Source folder"
-                required
-                value={folder}
-                files={folderFiles}
-                disabled={locked || isSaving}
-                onSelect={(path, files) => {
-
-                  setFolder(path || folder)
-                  setFolderFiles(files)
-                  if (path || files.length) setFolderError(null)
-                }}
-                onPathChange={(path) => {
-                  setFolder(path)
-                  if (path) setFolderError(null)
-                }}
-                {...(folderError ? { error: folderError } : {})}
-                hint="Required. This application's own folder -- a later application for the same patient may use a different one. Anything selected here is uploaded in step 2."
-              />
-            </div>
-          </Card>
-
-          {}
-          {patient || locked ? null : (
-            <PatientSourceChoice value={source} onChange={setSource} />
+          {record ? (
+            <Card className="p-4 text-sm">
+              For patient code{' '}
+              <span className="font-mono text-base font-bold">{code}</span>
+              <span className="text-[rgb(var(--foreground-muted))]">
+                {' '}
+                -- fixed once the application exists.
+              </span>
+            </Card>
+          ) : (
+            <IntakeCodePicker
+              value={code}
+              onChoose={(chosen) => void onCodeChosen(chosen)}
+              disabled={locked || isSaving || choosingCode}
+            />
           )}
 
-          {source === 'existing' && !patient && !locked ? (
-            <ExistingPatientPicker onSelect={onPatientChosen} />
-          ) : (
+          {code && !choosingCode ? (
             <>
-              {}
-              {source === 'existing' && patient && !record ? (
-                <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
-                  <p className="text-sm text-[rgb(var(--foreground-muted))]">
-                    Check <strong>{patientName(patient)}</strong>'s details
-                    below, correct anything out of date, then save to
-                    continue.
-                  </p>
-                  <Button variant="outline" size="sm" onClick={clearChosenPatient}>
-                    Choose a different patient
-                  </Button>
+              {!patient ? (
+                <Card className="p-4 text-sm text-[rgb(var(--foreground-muted))]">
+                  No patient has code{' '}
+                  <strong className="font-mono">{code}</strong> yet. Fill in
+                  what you know and it is created with that code.
                 </Card>
               ) : null}
-
               <PatientForm
-                {...(patient ? { patient } : {})}
+                key={code}
+                {...(patient ? { patient } : { code })}
                 cancelTo="/applications"
                 submitLabel={patient ? 'Save and continue' : 'Create and continue'}
                 onBeforeSubmit={stepOneIsComplete}
@@ -346,18 +277,18 @@ export function ApplicationWizard({
                 readOnly={locked}
               />
             </>
-          )}
+          ) : null}
         </div>
       ) : null}
 
       {current === 2 ? (
         record ? (
           <>
+            {!locked && patient ? (
+              <IntakeFilePicker applicationId={record.id} code={patient.id} />
+            ) : null}
             <FileReviewPanel
               applicationId={record.id}
-              onUploaded={recordUploadFolder}
-              initialFiles={folderFiles}
-              onInitialFilesTaken={() => setFolderFiles([])}
               readOnly={locked}
             />
             <div className="flex flex-wrap justify-between gap-3">

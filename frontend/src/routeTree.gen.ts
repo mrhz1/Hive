@@ -16,11 +16,13 @@ import { Route as ApplicationsIndexRouteImport } from './routes/applications/ind
 import { Route as ApplicationsApplicationIdRouteImport } from './routes/applications/$applicationId'
 import { Route as ApplicationsNewRouteImport } from './routes/applications/new'
 import { Route as FilesIndexRouteImport } from './routes/files/index'
+import { Route as IntakeIndexRouteImport } from './routes/intake/index'
 import { Route as LogsIndexRouteImport } from './routes/logs/index'
 import { Route as LogsLogIdRouteImport } from './routes/logs/$logId'
 import { Route as MetadataIndexRouteImport } from './routes/metadata/index'
 import { Route as PatientsIndexRouteImport } from './routes/patients/index'
 import { Route as PatientsNewRouteImport } from './routes/patients/new'
+import { Route as RejectionsIndexRouteImport } from './routes/rejections/index'
 import { Route as RolesIndexRouteImport } from './routes/roles/index'
 import { Route as RolesNewRouteImport } from './routes/roles/new'
 import { Route as UsersIndexRouteImport } from './routes/users/index'
@@ -65,6 +67,11 @@ const FilesIndexRoute = FilesIndexRouteImport.update({
   path: '/files/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const IntakeIndexRoute = IntakeIndexRouteImport.update({
+  id: '/intake/',
+  path: '/intake/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LogsIndexRoute = LogsIndexRouteImport.update({
   id: '/logs/',
   path: '/logs/',
@@ -88,6 +95,11 @@ const PatientsIndexRoute = PatientsIndexRouteImport.update({
 const PatientsNewRoute = PatientsNewRouteImport.update({
   id: '/patients/new',
   path: '/patients/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RejectionsIndexRoute = RejectionsIndexRouteImport.update({
+  id: '/rejections/',
+  path: '/rejections/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RolesIndexRoute = RolesIndexRouteImport.update({
@@ -138,9 +150,11 @@ export interface FileRoutesByFullPath {
   '/access-logs/': typeof AccessLogsIndexRoute
   '/applications/': typeof ApplicationsIndexRoute
   '/files/': typeof FilesIndexRoute
+  '/intake/': typeof IntakeIndexRoute
   '/logs/': typeof LogsIndexRoute
   '/metadata/': typeof MetadataIndexRoute
   '/patients/': typeof PatientsIndexRoute
+  '/rejections/': typeof RejectionsIndexRoute
   '/roles/': typeof RolesIndexRoute
   '/users/': typeof UsersIndexRoute
   '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
@@ -159,9 +173,11 @@ export interface FileRoutesByTo {
   '/access-logs': typeof AccessLogsIndexRoute
   '/applications': typeof ApplicationsIndexRoute
   '/files': typeof FilesIndexRoute
+  '/intake': typeof IntakeIndexRoute
   '/logs': typeof LogsIndexRoute
   '/metadata': typeof MetadataIndexRoute
   '/patients': typeof PatientsIndexRoute
+  '/rejections': typeof RejectionsIndexRoute
   '/roles': typeof RolesIndexRoute
   '/users': typeof UsersIndexRoute
   '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
@@ -181,9 +197,11 @@ export interface FileRoutesById {
   '/access-logs/': typeof AccessLogsIndexRoute
   '/applications/': typeof ApplicationsIndexRoute
   '/files/': typeof FilesIndexRoute
+  '/intake/': typeof IntakeIndexRoute
   '/logs/': typeof LogsIndexRoute
   '/metadata/': typeof MetadataIndexRoute
   '/patients/': typeof PatientsIndexRoute
+  '/rejections/': typeof RejectionsIndexRoute
   '/roles/': typeof RolesIndexRoute
   '/users/': typeof UsersIndexRoute
   '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
@@ -204,9 +222,11 @@ export interface FileRouteTypes {
     | '/access-logs/'
     | '/applications/'
     | '/files/'
+    | '/intake/'
     | '/logs/'
     | '/metadata/'
     | '/patients/'
+    | '/rejections/'
     | '/roles/'
     | '/users/'
     | '/patients/$patientId/edit'
@@ -225,9 +245,11 @@ export interface FileRouteTypes {
     | '/access-logs'
     | '/applications'
     | '/files'
+    | '/intake'
     | '/logs'
     | '/metadata'
     | '/patients'
+    | '/rejections'
     | '/roles'
     | '/users'
     | '/patients/$patientId/edit'
@@ -246,9 +268,11 @@ export interface FileRouteTypes {
     | '/access-logs/'
     | '/applications/'
     | '/files/'
+    | '/intake/'
     | '/logs/'
     | '/metadata/'
     | '/patients/'
+    | '/rejections/'
     | '/roles/'
     | '/users/'
     | '/patients/$patientId/edit'
@@ -268,9 +292,11 @@ export interface RootRouteChildren {
   AccessLogsIndexRoute: typeof AccessLogsIndexRoute
   ApplicationsIndexRoute: typeof ApplicationsIndexRoute
   FilesIndexRoute: typeof FilesIndexRoute
+  IntakeIndexRoute: typeof IntakeIndexRoute
   LogsIndexRoute: typeof LogsIndexRoute
   MetadataIndexRoute: typeof MetadataIndexRoute
   PatientsIndexRoute: typeof PatientsIndexRoute
+  RejectionsIndexRoute: typeof RejectionsIndexRoute
   RolesIndexRoute: typeof RolesIndexRoute
   UsersIndexRoute: typeof UsersIndexRoute
   PatientsPatientIdEditRoute: typeof PatientsPatientIdEditRoute
@@ -329,6 +355,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FilesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/intake/': {
+      id: '/intake/'
+      path: '/intake'
+      fullPath: '/intake/'
+      preLoaderRoute: typeof IntakeIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/logs/': {
       id: '/logs/'
       path: '/logs'
@@ -362,6 +395,13 @@ declare module '@tanstack/react-router' {
       path: '/patients/new'
       fullPath: '/patients/new'
       preLoaderRoute: typeof PatientsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rejections/': {
+      id: '/rejections/'
+      path: '/rejections'
+      fullPath: '/rejections/'
+      preLoaderRoute: typeof RejectionsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/roles/': {
@@ -428,9 +468,11 @@ const rootRouteChildren: RootRouteChildren = {
   AccessLogsIndexRoute: AccessLogsIndexRoute,
   ApplicationsIndexRoute: ApplicationsIndexRoute,
   FilesIndexRoute: FilesIndexRoute,
+  IntakeIndexRoute: IntakeIndexRoute,
   LogsIndexRoute: LogsIndexRoute,
   MetadataIndexRoute: MetadataIndexRoute,
   PatientsIndexRoute: PatientsIndexRoute,
+  RejectionsIndexRoute: RejectionsIndexRoute,
   RolesIndexRoute: RolesIndexRoute,
   UsersIndexRoute: UsersIndexRoute,
   PatientsPatientIdEditRoute: PatientsPatientIdEditRoute,

@@ -1,8 +1,9 @@
-from conftest import ADMIN_ID, VIEWER_ID, minimal_patient
+from conftest import ADMIN_ID, VIEWER_ID, minimal_patient, next_patient_code
 
 
 def _wizard_patient_payload(**overrides):
     payload = {
+        "id": next_patient_code(),
         "fstname": "Jane",
         "lstname": "Doe",
         "ptemail": None,

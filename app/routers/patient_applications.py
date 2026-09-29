@@ -1,7 +1,9 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from pydantic import BaseModel
 
+from app import intake
 from app.audit import record_audit
 from app.crud import file_metadata as metadata_crud
 from app.crud import patient_application_files as files_crud
@@ -17,6 +19,7 @@ from app.logging_setup import get_logger
 from app.notifications import notify_assigned
 from app.schemas import (
     PatientApplication,
+    PatientApplicationFile,
     PatientApplicationCreate,
     PatientApplicationUpdate,
     StatusReason,
@@ -29,6 +32,9 @@ log = get_logger(__name__)
 router = APIRouter(prefix="/applications", tags=["applications"])
 
 NON_REJECTABLE = ("submitted", "deleted")
+
+# Sent, or gone: nothing more can be attached to either.
+CLOSED_TO_FILES = ("submitted", "deleted")
 
 
 def _snapshot(application: PatientApplication) -> dict:
@@ -141,10 +147,13 @@ def _with_user_names(cursor, applications: List[PatientApplication]):
 @router.get("", response_model=List[PatientApplication])
 def list_applications(
     patient_id: Optional[str] = None,
+    status: Optional[str] = None,
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    return _with_user_names(cursor, crud.list_applications(cursor, patient_id))
+    return _with_user_names(
+        cursor, crud.list_applications(cursor, patient_id, status)
+    )
 
 
 @router.get("/{application_id}", response_model=PatientApplication)
@@ -255,6 +264,9 @@ def delete_application(
     metadata_crud.delete_metadata_for_files(cursor, [f.id for f in orphaned])
 
     for record in orphaned:
+        # Picked from intake: back to the pool, not off the disk.
+        if intake.release_claim(cursor, record.id):
+            continue
         remove_deid_artifacts(record.file_path, record.deidentified_file_name or "")
         remove_from_disk(record.file_path)
         if record.de_identified_file_path:
@@ -284,3 +296,55 @@ def delete_application(
         new_values=_snapshot(after),
         request_id=request.headers.get("X-Request-ID"),
     )
+
+
+class IntakeSelection(BaseModel):
+    intake_file_ids: List[str]
+
+
+@router.post(
+    "/{application_id}/intake-files",
+    response_model=List[PatientApplicationFile],
+    status_code=201,
+)
+def attach_intake_files(
+    application_id: str,
+    payload: IntakeSelection,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("application:update")),
+):
+    """Attach already-redacted files from the drop folder.
+
+    The files must carry this application's patient code -- the code on the
+    document is the only evidence of whose it is -- and must not already be
+    on another application.
+    """
+    application = crud.get_application_or_404(cursor, application_id)
+    if application.status in CLOSED_TO_FILES:
+        raise ValidationError(
+            f"An application that is '{application.status}' cannot take new files"
+        )
+
+    try:
+        attached = intake.attach_to_application(
+            cursor, application, payload.intake_file_ids
+        )
+    except intake.AttachError as exc:
+        raise ValidationError(str(exc)) from exc
+
+    background.add_task(
+        record_audit,
+        action="UPDATE",
+        entity_type="patient_application",
+        entity_id=application_id,
+        user_id=actor.id,
+        old_values=None,
+        new_values={
+            "attached_from_intake": [f.original_file_name for f in attached],
+            "patient_id": application.patient_id,
+        },
+        request_id=request.headers.get("X-Request-ID"),
+    )
+    return attached

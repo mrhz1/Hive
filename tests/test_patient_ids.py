@@ -1,26 +1,117 @@
-import re
+"""Patient codes and document serials.
+
+Codes are supplied, not generated: the sending system writes one into the
+path or the file name, and the same code means the same person everywhere.
+Nothing can check a candidate against the patient table -- patients do not
+exist until their files have been redacted -- so the pattern carries the
+whole weight.
+"""
 
 import pytest
 
 from app.ids import (
-    PATIENT_ID_ALPHABET,
-    PATIENT_ID_LENGTH,
+    DEFAULT_PATIENT_CODE_PATTERN,
+    is_patient_code,
     new_document_serial,
-    new_patient_id,
-    random_patient_id,
+    normalise_patient_code,
+    patient_code_pattern,
 )
 from conftest import minimal_patient
 
-SIX_ALNUM = re.compile(r"^[A-Z0-9]{6}$")
+
+@pytest.mark.parametrize(
+    "code", ["AA0001", "AA1200", "AVDD001", "AVDD1200", "ABC123", "ZZZZ9999"]
+)
+def test_real_codes_are_accepted(code):
+    assert is_patient_code(code), code
 
 
-def test_created_patient_gets_a_six_character_id(as_admin):
-    created = as_admin.post("/patients", json=minimal_patient()).json()
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        "REPORT",      # six letters -- the loose pattern would have taken it
+        "SCAN01",
+        "IMAGE1",
+        "CHEST001",    # five letters
+        "A0001",       # one letter
+        "AVDDD1200",   # five letters
+        "AA12",        # two digits
+        "AA12345",     # five digits
+        "AA1234X",
+        "",
+        "  ",
+    ],
+)
+def test_things_that_only_look_like_codes_are_refused(candidate):
+    assert not is_patient_code(candidate), candidate
 
-    assert SIX_ALNUM.match(created["id"]), created["id"]
+
+def test_a_code_is_matched_whole():
+    """A pattern without anchors must not match a prefix.
+
+    `re.match` would accept 'AA1234_scan' here, which is exactly how a
+    file name fragment becomes a patient.
+    """
+    assert not is_patient_code("AA1234_scan")
+    assert not is_patient_code("AA1234\n")
 
 
-def test_the_id_is_usable_as_a_key(as_admin):
+def test_codes_are_trimmed_and_upper_cased():
+    assert normalise_patient_code(" aa1234 ") == "AA1234"
+    assert is_patient_code(normalise_patient_code("avdd1200"))
+
+
+def test_the_pattern_can_be_widened_without_a_restart(monkeypatch):
+    assert not is_patient_code("XX12")
+
+    monkeypatch.setenv("PATIENT_CODE_PATTERN", r"[A-Z]{2}[0-9]{2}")
+    assert patient_code_pattern() != DEFAULT_PATIENT_CODE_PATTERN
+    assert is_patient_code("XX12")
+
+
+def test_a_patient_is_created_with_the_code_it_was_given(as_admin):
+    created = as_admin.post(
+        "/patients", json=minimal_patient(id="AVDD1200")
+    ).json()
+
+    assert created["id"] == "AVDD1200"
+
+
+def test_a_lower_case_code_is_stored_upper_case(as_admin):
+    created = as_admin.post("/patients", json=minimal_patient(id="bb0042")).json()
+
+    assert created["id"] == "BB0042"
+    assert as_admin.get("/patients/BB0042").status_code == 200
+
+
+def test_a_patient_cannot_be_created_without_a_code(as_admin):
+    payload = minimal_patient()
+    del payload["id"]
+
+    response = as_admin.post("/patients", json=payload)
+
+    assert response.status_code == 422
+
+
+def test_a_code_that_is_not_a_code_is_refused(as_admin):
+    response = as_admin.post("/patients", json=minimal_patient(id="REPORT"))
+
+    assert response.status_code == 422
+    assert "not a patient code" in response.text
+
+
+def test_the_same_code_twice_is_a_conflict(as_admin):
+    as_admin.post("/patients", json=minimal_patient(id="CC0001"))
+
+    again = as_admin.post(
+        "/patients", json=minimal_patient(id="CC0001", ptemail="other@example.com")
+    )
+
+    assert again.status_code == 409
+    assert "already exists" in again.text
+
+
+def test_the_code_is_usable_as_a_key(as_admin):
     created = as_admin.post("/patients", json=minimal_patient()).json()
 
     fetched = as_admin.get(f"/patients/{created['id']}")
@@ -29,42 +120,14 @@ def test_the_id_is_usable_as_a_key(as_admin):
     assert fetched.json()["id"] == created["id"]
 
 
-def test_ids_are_distinct_across_patients(as_admin):
-    ids = {
-        as_admin.post(
-            "/patients", json=minimal_patient(ptemail=f"p{n}@example.com")
-        ).json()["id"]
-        for n in range(25)
-    }
+def test_updating_a_patient_cannot_change_its_code(as_admin):
+    created = as_admin.post("/patients", json=minimal_patient(id="DD0001")).json()
 
-    assert len(ids) == 25
+    as_admin.put(f"/patients/{created['id']}", json={"id": "DD0002", "fstname": "Ann"})
 
-
-def test_generation_retries_past_a_taken_id():
-    taken = {"AAAAAA", "BBBBBB"}
-    handed_out = iter(["AAAAAA", "BBBBBB", "C3D4E5"])
-
-    import app.ids as ids
-
-    original = ids.random_patient_id
-    ids.random_patient_id = lambda: next(handed_out)
-    try:
-        assert new_patient_id(lambda c: c in taken) == "C3D4E5"
-    finally:
-        ids.random_patient_id = original
-
-
-def test_generation_gives_up_rather_than_looping_forever():
-    with pytest.raises(RuntimeError, match="saturated"):
-        new_patient_id(lambda candidate: True)
-
-
-def test_alphabet_and_length():
-    for _ in range(200):
-        candidate = random_patient_id()
-        assert len(candidate) == PATIENT_ID_LENGTH
-        assert set(candidate) <= set(PATIENT_ID_ALPHABET)
-
+    assert as_admin.get("/patients/DD0002").status_code == 404
+    after = as_admin.get("/patients/DD0001").json()
+    assert after["fstname"] == "Ann"
 
 
 def test_serial_is_exactly_sixteen_digits():

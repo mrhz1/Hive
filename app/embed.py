@@ -17,7 +17,15 @@ def generated_facts(
     output_name: str = "",
     output_type: str = "",
     by: str = "",
+    source_name: str = "",
 ) -> Dict[str, str]:
+    """The facts this system worked out, for embedding in the output.
+
+    `source_name` is the document this was made from. Renaming the copy to
+    the patient-code scheme severs the link on disk, so the file carries it
+    internally too -- the intake table is the queryable record, this is the
+    copy that survives being moved off the volume.
+    """
     facts = {
         "deidentified": "yes",
         "deidentified_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -31,6 +39,8 @@ def generated_facts(
         facts["deidentified_file_type"] = output_type
     if by:
         facts["deidentified_by"] = by
+    if source_name:
+        facts["deidentified_from"] = source_name
     return facts
 
 

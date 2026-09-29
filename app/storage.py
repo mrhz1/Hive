@@ -41,11 +41,70 @@ def deid_dir_for(extension: str) -> Path:
     return DEID_DIRS.get((extension or "").lower().lstrip("."), DEID_PDF_DIR)
 
 
+def intake_root() -> Path:
+    """The drop folder, read per call so it follows INTAKE_DIR.
+
+    It is a storage root because an attached document is read from it in
+    place until the application is submitted: the original and its redacted
+    twin stay in the drop tree while a draft is being put together, and only
+    move once it is sent.
+    """
+    return _configured_dir("INTAKE_DIR", "storage/incoming_data")
+
+
+def submitted_root() -> Path:
+    """Where a submitted application's documents end up, per patient:
+
+        <root>/<CODE>/original/...
+        <root>/<CODE>/de_identified/...
+
+    Both copies side by side, because they are only useful together -- the
+    redacted one is what goes out, the original is what it is checked
+    against.
+    """
+    return _configured_dir("SUBMITTED_DIR", "storage/submitted")
+
+
+def submitted_dir_for(patient_id: str) -> Path:
+    return submitted_root() / safe_path_segment(patient_id)
+
+
 def _allowed_roots():
     return [
         root.resolve()
-        for root in (STORAGE_ROOT, DEID_PDF_DIR, DEID_DICOM_DIR, DEID_WORD_DIR)
+        for root in (
+            STORAGE_ROOT,
+            DEID_PDF_DIR,
+            DEID_DICOM_DIR,
+            DEID_WORD_DIR,
+            intake_root(),
+            submitted_root(),
+        )
     ]
+
+
+def move_into(source: Path, directory: Path) -> Path:
+    """Move a file into a folder, never over another file.
+
+    Two documents for one patient can share a name -- `image.dcm` from two
+    different series -- and the second must not silently replace the first.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / source.name
+
+    if target.exists() and target.resolve() != source.resolve():
+        for n in range(2, 10_000):
+            candidate = directory / f"{source.stem}_{n}{source.suffix}"
+            if not candidate.exists():
+                target = candidate
+                break
+        else:  # pragma: no cover - ten thousand namesakes
+            raise ValidationError(f"No free name for {source.name} in {directory}")
+
+    if target.resolve() != source.resolve():
+        shutil.move(str(source), str(target))
+        log.info("file_moved", source=str(source), path=str(target))
+    return target
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 _MAX_NAME = 120

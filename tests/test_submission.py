@@ -9,19 +9,18 @@ from conftest import minimal_patient
 
 @pytest.fixture
 def deid_dirs(tmp_path, monkeypatch):
-    pdf = tmp_path / "final" / "pdf"
-    dicom = tmp_path / "final" / "dicom"
-    word = tmp_path / "final" / "word"
+    """The submitted root: `<root>/<CODE>/{original,de_identified}/`."""
+    root = tmp_path / "submitted"
+    monkeypatch.setenv("SUBMITTED_DIR", str(root))
+    return root
 
-    monkeypatch.setattr(storage, "DEID_PDF_DIR", pdf)
-    monkeypatch.setattr(storage, "DEID_DICOM_DIR", dicom)
-    monkeypatch.setattr(storage, "DEID_WORD_DIR", word)
-    monkeypatch.setattr(
-        storage,
-        "DEID_DIRS",
-        {"pdf": pdf, "dcm": dicom, "dicom": dicom, "doc": word, "docx": word},
-    )
-    return {"pdf": pdf, "dicom": dicom, "word": word}
+
+def redacted_dir(root, code):
+    return root / code / "de_identified"
+
+
+def original_dir(root, code):
+    return root / code / "original"
 
 
 def _pdf(path: pathlib.Path, pages: int = 2) -> pathlib.Path:
@@ -76,7 +75,7 @@ def test_submitting_stamps_and_files_the_pdf(
 
     submission.finalise_submission(application_id)
 
-    final = deid_dirs["pdf"] / patient_id / staged.name
+    final = redacted_dir(deid_dirs, patient_id) / staged.name
     assert final.is_file(), "output was not moved to the configured location"
     assert not staged.exists(), "the staging copy was left behind"
 
@@ -106,7 +105,7 @@ def test_the_row_points_at_the_final_location(
     submission.finalise_submission(application_id)
 
     after = as_admin.get(f"/files/{record['id']}").json()
-    assert after["de_identified_file_path"] == str(deid_dirs["pdf"] / patient_id / staged.name)
+    assert after["de_identified_file_path"] == str(redacted_dir(deid_dirs, patient_id) / staged.name)
 
 
 def test_dicom_goes_to_the_dicom_directory_and_is_not_stamped(
@@ -129,7 +128,7 @@ def test_dicom_goes_to_the_dicom_directory_and_is_not_stamped(
 
     submission.finalise_submission(application_id)
 
-    final = deid_dirs["dicom"] / patient_id / staged.name
+    final = redacted_dir(deid_dirs, patient_id) / staged.name
     assert final.is_file()
     assert final.read_bytes() == b"redacted bytes", "a DICOM was rewritten"
 
@@ -146,7 +145,7 @@ def test_files_that_are_not_done_are_left_alone(as_admin, storage_root, deid_dir
     submission.finalise_submission(application_id)
 
     assert staged.is_file()
-    assert not (deid_dirs["pdf"] / patient_id / staged.name).exists()
+    assert not (redacted_dir(deid_dirs, patient_id) / staged.name).exists()
 
 
 def test_a_missing_staged_file_does_not_raise(as_admin, storage_root, deid_dirs):
@@ -178,7 +177,7 @@ def test_submitting_through_the_api_triggers_it(as_admin, storage_root, deid_dir
     )
 
     assert response.status_code == 200
-    assert (deid_dirs["pdf"] / patient_id / staged.name).is_file()
+    assert (redacted_dir(deid_dirs, patient_id) / staged.name).is_file()
 
 
 def test_an_extensionless_dicom_is_filed_with_the_dicoms(
@@ -203,8 +202,7 @@ def test_an_extensionless_dicom_is_filed_with_the_dicoms(
 
     as_admin.put(f"/applications/{application_id}", json={"status": "submitted"})
 
-    assert (deid_dirs["dicom"] / patient_id / staged.name).is_file()
-    assert not (deid_dirs["pdf"] / patient_id / staged.name).exists()
+    assert (redacted_dir(deid_dirs, patient_id) / staged.name).is_file()
 
 
 def test_re_saving_an_already_submitted_application_does_not_refile(
@@ -220,7 +218,7 @@ def test_re_saving_an_already_submitted_application_does_not_refile(
     as_admin.put(f"/applications/{application_id}", json={"status": "submitted"})
     as_admin.put(f"/applications/{application_id}", json={"status": "submitted"})
 
-    final = deid_dirs["pdf"] / patient_id / staged.name
+    final = redacted_dir(deid_dirs, patient_id) / staged.name
     document = fitz.open(str(final))
     stamps = [w for w in document[0].get_text("words") if w[4] == patient_id]
     document.close()
@@ -228,7 +226,7 @@ def test_re_saving_an_already_submitted_application_does_not_refile(
     assert len(stamps) == 1, "the id was stamped more than once"
 
 
-def test_submitting_removes_the_identified_original(
+def test_submitting_files_the_original_beside_its_redacted_copy(
     as_admin, storage_root, deid_dirs
 ):
     patient_id, application_id, record = _submitted_application(
@@ -241,12 +239,72 @@ def test_submitting_removes_the_identified_original(
         f"/files/{record['id']}",
         json={"deid_status": "done", "de_identified_file_path": str(staged)},
     )
-    assert original.is_file()
+
+    submission.finalise_submission(application_id)
+
+    moved = original_dir(deid_dirs, patient_id) / original.name
+    assert moved.is_file(), "the original was not filed"
+    assert not original.exists(), "the original was copied, not moved"
+    assert (redacted_dir(deid_dirs, patient_id) / staged.name).is_file()
+
+    after = as_admin.get(f"/files/{record['id']}").json()
+    assert after["file_path"] == str(moved)
+
+
+def test_both_copies_are_reachable_from_the_one_row(
+    as_admin, storage_root, deid_dirs
+):
+    """The pairing is the row, not the file names.
+
+    A redacted copy is named for its own run, so the two names do not
+    match on disk. What links them is the row holding both paths.
+    """
+    _, application_id, record = _submitted_application(as_admin, storage_root)
+    staged = _stage_output(record, storage_root)
+
+    as_admin.put(
+        f"/files/{record['id']}",
+        json={
+            "deid_status": "done",
+            "is_deidentified": True,
+            "de_identified_file_path": str(staged),
+            "deidentified_file_name": staged.name,
+        },
+    )
+
+    submission.finalise_submission(application_id)
+
+    after = as_admin.get(f"/files/{record['id']}").json()
+    assert pathlib.Path(after["file_path"]).is_file()
+    assert pathlib.Path(after["de_identified_file_path"]).is_file()
+
+    identified = as_admin.get(f"/files/{record['id']}/content")
+    redacted = as_admin.get(f"/files/{record['id']}/content?deidentified=true")
+    assert identified.status_code == 200
+    assert redacted.status_code == 200
+    assert identified.content != redacted.content
+
+
+def test_turning_the_flag_off_discards_the_original(
+    as_admin, storage_root, deid_dirs, monkeypatch
+):
+    monkeypatch.setenv("DEID_KEEP_ORIGINAL", "false")
+
+    patient_id, application_id, record = _submitted_application(
+        as_admin, storage_root
+    )
+    original = pathlib.Path(record["file_path"])
+    staged = _stage_output(record, storage_root)
+
+    as_admin.put(
+        f"/files/{record['id']}",
+        json={"deid_status": "done", "de_identified_file_path": str(staged)},
+    )
 
     submission.finalise_submission(application_id)
 
     assert not original.exists(), "the identified copy is still on disk"
-    assert (deid_dirs["pdf"] / patient_id / staged.name).is_file()
+    assert (redacted_dir(deid_dirs, patient_id) / staged.name).is_file()
 
 
 def test_an_original_without_a_redacted_copy_is_kept(
@@ -267,9 +325,11 @@ def test_an_original_without_a_redacted_copy_is_kept(
 
 
 
-def test_submitting_clears_out_the_upload_folder(
-    as_admin, storage_root, deid_dirs
+def test_discarding_the_original_clears_out_the_upload_folder(
+    as_admin, storage_root, deid_dirs, monkeypatch
 ):
+    monkeypatch.setenv("DEID_KEEP_ORIGINAL", "false")
+
     _, application_id, record = _submitted_application(as_admin, storage_root)
     original = pathlib.Path(record["file_path"])
     staged = _stage_output(record, storage_root)
@@ -282,6 +342,54 @@ def test_submitting_clears_out_the_upload_folder(
     submission.finalise_submission(application_id)
 
     assert not original.parent.exists(), "the upload folder was left behind"
+
+
+def test_submitting_leaves_no_empty_folders_behind(
+    as_admin, storage_root, deid_dirs
+):
+    """Both copies leave, so neither folder they came from should linger."""
+    _, application_id, record = _submitted_application(as_admin, storage_root)
+    original = pathlib.Path(record["file_path"])
+    staged = _stage_output(record, storage_root)
+
+    as_admin.put(
+        f"/files/{record['id']}",
+        json={"deid_status": "done", "de_identified_file_path": str(staged)},
+    )
+
+    submission.finalise_submission(application_id)
+
+    assert not staged.parent.exists(), "the staging folder was left behind"
+    assert not original.parent.exists(), "the upload folder was left behind"
+
+
+def test_two_documents_with_one_name_do_not_overwrite_each_other(
+    as_admin, storage_root, deid_dirs
+):
+    """`image.dcm` from two series is two documents, not one."""
+    patient_id, application_id, first = _submitted_application(
+        as_admin, storage_root, name="image.pdf"
+    )
+    second = as_admin.post(
+        f"/applications/{application_id}/files",
+        files=[("files", ("image.pdf", b"%PDF-1.4 other", "application/pdf"))],
+    ).json()[0]
+
+    for record in (first, second):
+        staged = _stage_output(record, storage_root)
+        # Same redacted name for both, as two runs could produce.
+        clash = staged.parent / record["id"] / "AA_same_name.pdf"
+        clash.parent.mkdir()
+        staged.rename(clash)
+        as_admin.put(
+            f"/files/{record['id']}",
+            json={"deid_status": "done", "de_identified_file_path": str(clash)},
+        )
+
+    submission.finalise_submission(application_id)
+
+    redacted = sorted(p.name for p in redacted_dir(deid_dirs, patient_id).iterdir())
+    assert redacted == ["AA_same_name.pdf", "AA_same_name_2.pdf"]
 
 
 def test_submitting_takes_the_run_s_text_and_report_with_it(
@@ -343,7 +451,7 @@ def test_a_document_attached_already_redacted_survives_submission(
 
     submission.finalise_submission(application_id)
 
-    filed = deid_dirs["pdf"] / patient_id / record["deidentified_file_name"]
+    filed = redacted_dir(deid_dirs, patient_id) / record["deidentified_file_name"]
     assert filed.is_file(), "the attached document is gone after submitting"
 
     listed = as_admin.get(f"/applications/{application_id}/files").json()

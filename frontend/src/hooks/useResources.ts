@@ -6,6 +6,7 @@ import {
   accessLogsApi,
   applicationsApi,
   applicationFilesApi,
+  intakeApi,
   deidentifiedFilesApi,
   fileMetadataApi,
   patientsApi,
@@ -52,10 +53,23 @@ export const roleHooks = createCrudHooks<Role, RoleFormValues>({
   alsoInvalidate: [queryKeys.users.all, queryKeys.me],
 })
 
-export function useApplications(patientId?: string, enabled = true) {
+export function useApplications(
+  patientId?: string,
+  enabled = true,
+  status?: string
+) {
   return useQuery({
-    queryKey: queryKeys.applications.list(patientId),
-    queryFn: () => applicationsApi.list(patientId),
+    queryKey: queryKeys.applications.list(patientId, status),
+    queryFn: () => applicationsApi.list(patientId, status),
+    enabled,
+  })
+}
+
+/** Every file a reviewer turned down, across all applications. */
+export function useRejectedFiles(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.applicationFiles.rejected(),
+    queryFn: () => applicationFilesApi.listRejected(),
     enabled,
   })
 }
@@ -146,6 +160,38 @@ export function useReviewApplicationFile(applicationId: string) {
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.applicationFiles.list(applicationId),
+      })
+      toast.success(
+        variables.reviewStatus === 'approved' ? 'File approved' : 'File rejected'
+      )
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not record the review'))
+    },
+  })
+}
+
+/**
+ * Review a file from the rejection queue, where each row belongs to a
+ * different application -- so this invalidates every file list rather than
+ * one application's.
+ */
+export function useReviewRejectedFile() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (variables: {
+      fileId: string
+      reviewStatus: 'approved' | 'rejected'
+      note?: string
+    }) =>
+      applicationFilesApi.review(
+        variables.fileId,
+        variables.reviewStatus,
+        variables.note
+      ),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.applicationFiles.all,
       })
       toast.success(
         variables.reviewStatus === 'approved' ? 'File approved' : 'File rejected'
@@ -527,5 +573,122 @@ export function useDeleteDeidentifiedFile() {
     onError: (error) => {
       toast.error(errorMessage(error, 'Could not delete the file'))
     },
+  })
+}
+
+
+/**
+ * The drop folder's tally. Polled, because redaction runs out of process and
+ * the page is where somebody watches a batch go through.
+ */
+export function useIntakeCounts() {
+  return useQuery({
+    queryKey: queryKeys.intake.counts(),
+    queryFn: () => intakeApi.counts(),
+    refetchInterval: 15_000,
+  })
+}
+
+export function useIntakeFiles(status?: string) {
+  return useQuery({
+    queryKey: queryKeys.intake.files(status),
+    queryFn: () => intakeApi.files(status),
+    refetchInterval: 15_000,
+  })
+}
+
+export function useResolveIntakeConflict() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (variables: { fileId: string; code: string }) =>
+      intakeApi.resolve(variables.fileId, variables.code),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
+      toast.success(`Filed under ${variables.code} and queued`)
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not resolve the conflict'))
+    },
+  })
+}
+
+export function useIntakeCodes(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.intake.codes(),
+    queryFn: () => intakeApi.codes(),
+    enabled,
+  })
+}
+
+/** A code's redacted files that nobody has attached yet. */
+export function useAvailableIntakeFiles(patientCode: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.intake.files('done', patientCode),
+    queryFn: () => intakeApi.files('done', patientCode),
+    enabled: Boolean(patientCode),
+  })
+}
+
+export function useAttachIntakeFiles(applicationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (intakeFileIds: string[]) =>
+      intakeApi.attach(applicationId, intakeFileIds),
+    onSuccess: (attached) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.applicationFiles.all,
+      })
+      toast.success(
+        `Attached ${attached.length} document${attached.length === 1 ? '' : 's'}`
+      )
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not attach those files'))
+    },
+  })
+}
+
+export function useRetryIntakeFile() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (fileId: string) => intakeApi.retry(fileId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
+      toast.success('Queued again -- picked up by the next run')
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not retry this file'))
+    },
+  })
+}
+
+/** Refreshed every 10 seconds: this is what somebody watches a batch by. */
+export function useIntakeProgress() {
+  return useQuery({
+    queryKey: queryKeys.intake.progress(),
+    queryFn: () => intakeApi.progress(),
+    refetchInterval: 10_000,
+  })
+}
+
+export function useIntakeBatchProgress() {
+  return useQuery({
+    queryKey: queryKeys.intake.batchProgress(),
+    queryFn: () => intakeApi.batchProgress(),
+    refetchInterval: 30_000,
+  })
+}
+
+/**
+ * The first `limit` files of a status. "Show more" raises the limit rather
+ * than paging, so what is on screen is always the newest-first head of the
+ * list and a refresh never jumps.
+ */
+export function useIntakePage(status: string, limit: number) {
+  return useQuery({
+    queryKey: queryKeys.intake.page(status, limit),
+    queryFn: () => intakeApi.page(status, limit, 0),
+    refetchInterval: 15_000,
   })
 }

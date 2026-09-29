@@ -7,6 +7,7 @@ from fastapi import Response
 from fastapi.responses import FileResponse
 
 from app import deid_progress
+from app import intake
 from app import uploads
 from app.crud import file_metadata as metadata_crud
 from app.crud import patient_application_files as crud
@@ -35,6 +36,7 @@ from app.schemas import (
     FileReview,
     PatientApplicationFile,
     PatientApplicationFileUpdate,
+    RejectedFile,
     UploadJob,
     User,
     WordPreview,
@@ -313,6 +315,50 @@ def get_upload_job(
             "ago, or the API may have restarted since it ran"
         )
     return job
+
+
+def _on_disk(stored: Optional[str]) -> bool:
+    if not stored:
+        return False
+    try:
+        return resolve_stored_path(stored).is_file()
+    except Exception:
+        return False
+
+
+@router.get("/files/rejected", response_model=List[RejectedFile])
+def list_rejected_files(
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("application:view")),
+):
+    """Every file a reviewer turned down, across all applications.
+
+    Declared before `/files/{file_id}` so the literal path is matched
+    first. Patients come from one pass over the applications rather than a
+    lookup per file -- on Hive the query count is the cost.
+    """
+    patients = {
+        application.id: application.patient_id
+        for application in applications_crud.list_applications(cursor)
+    }
+
+    return [
+        RejectedFile(
+            id=record.id,
+            application_id=record.application_id,
+            patient_id=patients.get(record.application_id, ""),
+            original_file_name=record.original_file_name,
+            deidentified_file_name=record.deidentified_file_name,
+            file_extension=(record.file_extension or "").lower(),
+            file_size=record.file_size,
+            created_at=record.created_at,
+            deid_status=record.deid_status,
+            review_note=record.review_note,
+            has_original=_on_disk(record.file_path),
+            has_deidentified=_on_disk(record.de_identified_file_path),
+        )
+        for record in crud.list_files(cursor, review_status="rejected")
+    ]
 
 
 @router.get("/files/{file_id}", response_model=PatientApplicationFile)
@@ -799,6 +845,11 @@ def delete_application_file(
 ):
     record = crud.delete_file(cursor, file_id)
     metadata_crud.delete_metadata_for_files(cursor, [file_id])
+
+    # A document picked from intake still belongs to the drop folder: taking
+    # it off this application hands it back to the pool, originals intact.
+    if intake.release_claim(cursor, file_id):
+        return None
 
     remove_deid_artifacts(record.file_path, record.deidentified_file_name or "")
 

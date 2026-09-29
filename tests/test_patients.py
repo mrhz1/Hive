@@ -3,6 +3,7 @@ from conftest import (
     NOBODY_USER,
     VIEWER_USER,
     minimal_patient,
+    next_patient_code,
     patient_columns,
 )
 
@@ -89,14 +90,24 @@ def test_any_one_identifier_satisfies_the_rule(as_admin):
         {"ptemail": "jane@example.com"},
     ):
         response = as_admin.post(
-            "/patients", json={"original_file_path": "/data/x.pdf", **identifier}
+            "/patients",
+            json={
+                "id": next_patient_code(),
+                "original_file_path": "/data/x.pdf",
+                **identifier,
+            },
         )
         assert response.status_code == 201, (identifier, response.text)
 
 
 def test_a_patient_with_no_identifier_at_all_is_rejected(as_admin):
     response = as_admin.post(
-        "/patients", json={"original_file_path": "/data/x.pdf", "ptcity": "Springfield"}
+        "/patients",
+        json={
+            "id": next_patient_code(),
+            "original_file_path": "/data/x.pdf",
+            "ptcity": "Springfield",
+        },
     )
     assert response.status_code == 422
     detail = str(response.json()["error"]["fields"])
@@ -106,13 +117,20 @@ def test_a_patient_with_no_identifier_at_all_is_rejected(as_admin):
 def test_blank_identifiers_do_not_count_as_present(as_admin):
     response = as_admin.post(
         "/patients",
-        json={"original_file_path": "/data/x.pdf", "fstname": "  ", "lstname": ""},
+        json={
+            "id": next_patient_code(),
+            "original_file_path": "/data/x.pdf",
+            "fstname": "  ",
+            "lstname": "",
+        },
     )
     assert response.status_code == 422
 
 
 def test_a_patient_can_be_created_before_any_documents_exist(as_admin):
-    response = as_admin.post("/patients", json={"fstname": "Jane"})
+    response = as_admin.post(
+        "/patients", json={"id": next_patient_code(), "fstname": "Jane"}
+    )
 
     assert response.status_code == 201, response.text
     assert response.json()["original_file_path"] is None
@@ -121,14 +139,21 @@ def test_a_patient_can_be_created_before_any_documents_exist(as_admin):
 def test_a_blank_source_path_is_stored_as_nothing(as_admin):
     for value in ("", "   "):
         response = as_admin.post(
-            "/patients", json={"fstname": "Jane", "original_file_path": value}
+            "/patients",
+            json={
+                "id": next_patient_code(),
+                "fstname": "Jane",
+                "original_file_path": value,
+            },
         )
         assert response.status_code == 201, response.text
         assert response.json()["original_file_path"] is None
 
 
 def test_the_source_path_can_still_be_set_afterwards(as_admin):
-    created = as_admin.post("/patients", json={"fstname": "Jane"}).json()
+    created = as_admin.post(
+        "/patients", json={"id": next_patient_code(), "fstname": "Jane"}
+    ).json()
 
     updated = as_admin.put(
         f"/patients/{created['id']}",
@@ -266,7 +291,9 @@ def test_a_patients_source_folder_is_optional(as_admin):
 
 
 def test_a_patient_can_be_created_without_a_source_folder(as_admin):
-    response = as_admin.post("/patients", json={"fstname": "Jane"})
+    response = as_admin.post(
+        "/patients", json={"id": next_patient_code(), "fstname": "Jane"}
+    )
 
     assert response.status_code == 201, response.text
 

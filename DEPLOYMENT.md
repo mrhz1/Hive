@@ -385,8 +385,8 @@ what the Files section serves from — a path outside them is refused as a
 traversal attempt.
 
 The stamp is what makes a redacted document filable again: it carries no
-name, so the six-character patient id in the corner is the only thing
-tying it back to a person. It goes into the page content stream rather
+name, so the patient code in the corner is the only thing tying it back to
+a person. It goes into the page content stream rather
 than an annotation, so a "print without markup" export cannot drop it.
 
 ### The Files section

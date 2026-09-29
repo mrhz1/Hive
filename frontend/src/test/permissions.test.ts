@@ -75,6 +75,7 @@ describe('userFormSchema', () => {
 describe('patientFormSchema', () => {
   const valid = {
     ...EMPTY_PATIENT_FORM,
+    id: 'AA0001',
     fstname: 'Jane',
     lstname: 'Doe',
     ptemail: 'jane@example.com',
@@ -88,6 +89,24 @@ describe('patientFormSchema', () => {
       patientFormSchema.safeParse({ ...valid, ptphone: '(415) 555-0182' }).success
     ).toBe(true)
   })
+
+  it('requires a patient code', () => {
+    expect(patientFormSchema.safeParse({ ...valid, id: '' }).success).toBe(false)
+  })
+
+  it.each(['AA0001', 'AA1200', 'AVDD001', 'AVDD1200', 'aa1234'])(
+    'accepts the patient code %s',
+    (code) => {
+      expect(patientFormSchema.safeParse({ ...valid, id: code }).success).toBe(true)
+    }
+  )
+
+  it.each(['REPORT', 'SCAN01', 'IMAGE1', 'CHEST001', 'AA12', 'AA12345', 'A0001'])(
+    'rejects %s, which only looks like a patient code',
+    (code) => {
+      expect(patientFormSchema.safeParse({ ...valid, id: code }).success).toBe(false)
+    }
+  )
 
   it('rejects a phone number containing letters', () => {
     expect(patientFormSchema.safeParse({ ...valid, ptphone: 'call-me' }).success).toBe(
@@ -103,7 +122,11 @@ describe('patientFormSchema', () => {
   })
 
   it('accepts a record carrying only one of the three identifiers', () => {
-    const base = { ...EMPTY_PATIENT_FORM, original_file_path: '/data/x.pdf' }
+    const base = {
+      ...EMPTY_PATIENT_FORM,
+      id: 'AA0002',
+      original_file_path: '/data/x.pdf',
+    }
 
     expect(patientFormSchema.safeParse({ ...base, fstname: 'Jane' }).success).toBe(true)
     expect(patientFormSchema.safeParse({ ...base, lstname: 'Doe' }).success).toBe(true)

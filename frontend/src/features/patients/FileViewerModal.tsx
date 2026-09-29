@@ -1,5 +1,12 @@
-import { ChevronLeft, ChevronRight, Download, X } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Eye,
+  ShieldCheck,
+  X,
+} from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
@@ -22,7 +29,11 @@ export type ViewableFile = {
   original_file_name: string
   sanitized_file_name?: string
   deidentified_file_name?: string | null
+
+  de_identified_file_path?: string | null
 }
+
+type Side = 'original' | 'deidentified'
 
 export type ViewerSource = 'application' | 'library'
 
@@ -301,6 +312,7 @@ export function FileViewerModal({
   blobUrl,
   isDeidentified,
   source = 'application',
+  canViewOriginal = true,
   onClose,
 }: {
   file: ViewableFile
@@ -309,6 +321,8 @@ export function FileViewerModal({
   blobUrl?: string | null
   isDeidentified: boolean
   source?: ViewerSource
+
+  canViewOriginal?: boolean
   onClose: () => void
 }) {
   const close = useCallback(() => onClose(), [onClose])
@@ -316,6 +330,19 @@ export function FileViewerModal({
   const { can } = usePermissions()
   const canDownload = can('files:download')
   const [isDownloading, setIsDownloading] = useState(false)
+
+  const [side, setSide] = useState<Side>(
+    isDeidentified ? 'deidentified' : 'original'
+  )
+  const showingDeidentified = side === 'deidentified'
+
+  // Both copies hang off one file id -- the row holds both paths -- so the
+  // viewer can flip between them rather than being closed and reopened.
+  // Only the library has a single side to show.
+  const canCompare =
+    source === 'application' &&
+    canViewOriginal &&
+    (Boolean(file.de_identified_file_path) || isDeidentified)
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -325,17 +352,69 @@ export function FileViewerModal({
     return () => window.document.removeEventListener('keydown', onKeyDown)
   }, [close])
 
-  const displayName = isDeidentified
+  const displayName = showingDeidentified
     ? (file.deidentified_file_name ??
       file.sanitized_file_name ??
       file.original_file_name)
     : file.original_file_name
 
   const extension =
-    isDeidentified && ['doc', 'docx'].includes(file.file_extension)
+    showingDeidentified && ['doc', 'docx'].includes(file.file_extension)
       ? 'docx'
       : file.file_extension
   const kind = previewKind(extension)
+
+  // The caller pre-fetched the blob for the side it opened on; anything
+  // else this viewer fetches itself, and revokes what it made.
+  const ownUrls = useRef<string[]>([])
+  const [pdfUrls, setPdfUrls] = useState<Partial<Record<Side, string>>>(() =>
+    blobUrl ? { [isDeidentified ? 'deidentified' : 'original']: blobUrl } : {}
+  )
+  // Per side, so switching back to a side that loaded fine is not shown
+  // the other side's failure -- and nothing has to be cleared in an effect.
+  const [pdfErrors, setPdfErrors] = useState<Partial<Record<Side, string>>>({})
+  const pdfError = pdfErrors[side] ?? null
+
+  useEffect(
+    () => () => {
+      ownUrls.current.forEach((url) => URL.revokeObjectURL(url))
+      ownUrls.current = []
+    },
+    []
+  )
+
+  const pdfUrl = pdfUrls[side] ?? null
+
+  useEffect(() => {
+    if (kind !== 'pdf' || pdfUrl || pdfError) return
+
+    let cancelled = false
+
+    const wanted = side
+    applicationFilesApi
+      .fetchContent(fileId, wanted === 'deidentified')
+      .then((blob) => {
+        const url = URL.createObjectURL(blob)
+        if (cancelled) {
+          URL.revokeObjectURL(url)
+          return
+        }
+        ownUrls.current.push(url)
+        setPdfUrls((current) => ({ ...current, [wanted]: url }))
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setPdfErrors((current) => ({
+            ...current,
+            [wanted]: errorText(caught, 'Could not open this file'),
+          }))
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [kind, pdfUrl, pdfError, fileId, side])
 
   async function saveACopy() {
     setIsDownloading(true)
@@ -343,7 +422,11 @@ export function FileViewerModal({
       const blob =
         source === 'library'
           ? await deidentifiedFilesApi.fetchContent(fileId, true)
-          : await applicationFilesApi.fetchContent(fileId, isDeidentified, true)
+          : await applicationFilesApi.fetchContent(
+              fileId,
+              showingDeidentified,
+              true
+            )
 
       const url = URL.createObjectURL(blob)
       const anchor = window.document.createElement('a')
@@ -376,12 +459,32 @@ export function FileViewerModal({
             </p>
             <p className="text-xs text-[rgb(var(--foreground-muted))]">
               {file.mime_type} · {formatFileSize(file.file_size)}
-              {isDeidentified ? ' · de-identified copy' : ''}
+              {showingDeidentified ? ' · de-identified copy' : ''}
             </p>
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {}
+            {canCompare ? (
+              <div
+                className="flex items-center rounded-lg border border-[rgb(var(--border))] p-0.5"
+                role="group"
+                aria-label="Which copy to show"
+              >
+                <SideButton
+                  icon={<Eye className="size-3.5" aria-hidden="true" />}
+                  label="Original"
+                  isActive={side === 'original'}
+                  onSelect={() => setSide('original')}
+                />
+                <SideButton
+                  icon={<ShieldCheck className="size-3.5" aria-hidden="true" />}
+                  label="De-identified"
+                  isActive={side === 'deidentified'}
+                  onSelect={() => setSide('deidentified')}
+                />
+              </div>
+            ) : null}
+
             {canDownload ? (
               <Button
                 variant="outline"
@@ -401,23 +504,33 @@ export function FileViewerModal({
 
         {kind === 'image' ? (
           <DicomViewer
+            key={side}
             fileId={fileId}
             source={source}
-            isDeidentified={isDeidentified}
+            isDeidentified={showingDeidentified}
             name={displayName}
           />
         ) : kind === 'text' ? (
           <WordViewer
+            key={side}
             fileId={fileId}
             source={source}
-            isDeidentified={isDeidentified}
+            isDeidentified={showingDeidentified}
           />
-        ) : kind === 'pdf' && blobUrl ? (
-          <iframe
-            src={blobUrl}
-            title={`Preview of ${displayName}`}
-            className="min-h-0 w-full flex-1 bg-[rgb(var(--background-secondary))]"
-          />
+        ) : kind === 'pdf' ? (
+          pdfError ? (
+            <ViewerMessage tone="error">{pdfError}</ViewerMessage>
+          ) : pdfUrl ? (
+            <iframe
+              src={pdfUrl}
+              title={`Preview of ${displayName}`}
+              className="min-h-0 w-full flex-1 bg-[rgb(var(--background-secondary))]"
+            />
+          ) : (
+            <ViewerMessage>
+              <Spinner size="md" label="Opening document" />
+            </ViewerMessage>
+          )
         ) : (
           <ViewerMessage>
             {`'${file.file_extension || 'This'}' files cannot be shown here. `}
@@ -426,5 +539,34 @@ export function FileViewerModal({
         )}
       </div>
     </div>
+  )
+}
+
+function SideButton({
+  icon,
+  label,
+  isActive,
+  onSelect,
+}: {
+  icon: React.ReactNode
+  label: string
+  isActive: boolean
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={isActive}
+      onClick={onSelect}
+      className={
+        'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ' +
+        (isActive
+          ? 'bg-[rgb(var(--background-secondary))] text-[rgb(var(--foreground))]'
+          : 'text-[rgb(var(--foreground-muted))] hover:text-[rgb(var(--foreground))]')
+      }
+    >
+      {icon}
+      {label}
+    </button>
   )
 }
