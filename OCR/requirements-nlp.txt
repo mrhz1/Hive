@@ -1,42 +1,17 @@
-# Stage 2: PII detection + redaction. Install into .venv-nlp.
+# Stage 2 (PII detection + redaction), install into .venv-nlp
+# Don't add paddleocr/paddlepaddle here (see requirements-ocr.txt).
 #
-# This file MUST NOT gain paddleocr/paddlepaddle -- see
-# requirements-ocr.txt for the exact conflict.
-#
-# Install torch FIRST from the CPU index, otherwise pip pulls the ~3GB
-# CUDA build (nvidia-cublas, nvidia-cudnn, ...) for what is a CPU job:
+# Install CPU torch first:
 #   pip install torch --index-url https://download.pytorch.org/whl/cpu
 #   pip install -r requirements-nlp.txt
 
-# The [transformers] extra pulls the HF stack Presidio needs for a
-# transformers NLP engine. spaCy is still required even so: Presidio uses
-# it for tokenization/lemmatization while NER comes from transformers.
-#
-# >=2.2.363 is the floor deliberately: that is the first release that
-# requires pyyaml>=6.0.3, i.e. the first one that could not have shared a
-# venv with paddle. Keeping the floor there stops anyone "fixing" a
-# future conflict by quietly reverting to the old combined install.
 presidio-analyzer[transformers]>=2.2.363
 presidio-anonymizer>=2.2.363
 spacy>=3.7.0,<4
-
-# Applies the real redactions (removes underlying content) rather than
-# drawing cosmetic boxes.
 pymupdf>=1.24.0
-
 numpy>=1.24.0
-
-# Writes redacted pixels back into DICOM and scrubs its identifying tags.
 pydicom>=2.4.0
-
-# Decoding a compressed study needs a plugin -- see the longer note in
-# requirements-ocr.txt. Both stages decode, so both stages need these.
-# The redacted output is written back uncompressed (Explicit VR Little
-# Endian), so nothing has to re-encode.
 pylibjpeg>=2.0
-pylibjpeg-libjpeg>=2.1     # JPEG, JPEG Lossless, JPEG-LS
-pylibjpeg-openjpeg>=2.2    # JPEG 2000, HTJ2K
-
-# Word documents are redacted here rather than in stage 1: their text
-# needs no OCR, only PII detection, which is this stage's job.
+pylibjpeg-libjpeg>=2.1
+pylibjpeg-openjpeg>=2.2
 python-docx>=1.1.0

@@ -25,18 +25,13 @@ export default tseslint.config(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      // The API boundary is validated by zod; `any` should never be needed.
       '@typescript-eslint/no-explicit-any': 'error',
     },
   },
   {
-    // TanStack Router's file routes must export both `Route` and their
-    // component from the same module, which is exactly what this rule
-    // objects to. The cost is a slightly coarser HMR boundary on route
-    // files; the rule still applies everywhere else.
+    // route files export Route and the component together
     files: ['src/routes/**/*.tsx'],
     rules: { 'react-refresh/only-export-components': 'off' },
   },
-  // Prettier last so it wins on formatting rules.
   prettier
 )

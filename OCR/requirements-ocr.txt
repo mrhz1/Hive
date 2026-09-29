@@ -1,49 +1,15 @@
-# Stage 1: OCR only. Install into .venv-ocr.
-#
-# This file MUST NOT gain a presidio/transformers/torch dependency. The
-# whole reason for two files is that paddle and presidio are mutually
-# unsatisfiable:
-#
-#   paddleocr -> paddlex          pins  PyYAML==6.0.2
-#   presidio-analyzer >= 2.2.363  needs pyyaml>=6.0.3
-#
-# Note there is deliberately no `pyyaml` line below: paddlex's exact pin
-# has to win uncontested, and nothing in deid/ imports yaml itself.
-#
-# Python 3.10 (matches the repo venv standard, 3.10.20, and the
-# Hive/impyla side).
+# Stage 1 (OCR), install into .venv-ocr
+# Don't add presidio/transformers/torch here, paddlex pins PyYAML==6.0.2
+# and presidio needs >=6.0.3.
 
-# PP-OCRv6 landed in PaddleOCR 3.7.0 (June 2026); earlier versions do not
-# know the PP-OCRv6_* model names and will fail to resolve them.
 paddleocr>=3.7.0,<4
 paddlepaddle>=3.0.0,<4
-
-# Rasterises pages for OCR. Also present in the NLP env, which is where
-# redaction happens -- pure wheel, no poppler/system binaries, so
-# duplicating it across both venvs costs nothing.
 pymupdf>=1.24.0
-
 pillow>=10.0.0
-# Upper bound is paddlex's (numpy<2.4); stated here so a resolution
-# failure names numpy rather than a transitive paddle package.
 numpy>=1.24.0,<2.4
-
-# Reads DICOM pixel data so burned-in PHI can be OCR'd like any other
-# image. Header tags are not touched in this stage -- scrubbing happens
-# in stage 2, alongside the redaction that consumes these spans.
 pydicom>=2.4.0
 
-# pydicom decodes only uncompressed and RLE pixel data on its own; every
-# compressed transfer syntax needs a plugin, and `dataset.pixel_array`
-# raises without one ("Could not decode DICOM pixel data").
-#
-# pillow alone covers JPEG Baseline and JPEG 2000 -- but NOT JPEG
-# Lossless (1.2.840.10008.1.2.4.57/.70) or JPEG-LS (.80/.81), which is
-# what most CT/CR/MR studies off a PACS actually arrive as. These three
-# close every remaining syntax, HTJ2K included.
-#
-# Required in BOTH venvs: stage 1 decodes frames to OCR them, stage 2
-# decodes again to paint the boxes in.
+# DICOM decoders for compressed images (needed in both venvs)
 pylibjpeg>=2.0
-pylibjpeg-libjpeg>=2.1     # JPEG, JPEG Lossless, JPEG-LS
-pylibjpeg-openjpeg>=2.2    # JPEG 2000, HTJ2K
+pylibjpeg-libjpeg>=2.1
+pylibjpeg-openjpeg>=2.2
