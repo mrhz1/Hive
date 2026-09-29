@@ -5,7 +5,6 @@ import {
   FileJson,
   FileSearch,
   ShieldCheck,
-  ShieldOff,
   Trash2,
   X,
 } from 'lucide-react'
@@ -26,8 +25,6 @@ import {
   useApplicationFiles,
   useApproveAllFiles,
   useBackgroundUpload,
-  useDeidentifyAllFiles,
-  useDeidentifyFile,
   useDeleteApplicationFile,
   useReviewApplicationFile,
 } from '@/hooks/useResources'
@@ -35,13 +32,11 @@ import { ApiError } from '@/lib/api/client'
 import { applicationFilesApi } from '@/lib/api/resources'
 import {
   approvableCount,
-  canDeidentify,
   deidTone,
   fileTally,
   fileHaystack,
   formatFileSize,
   hasExtractableMetadata,
-  isDeidInFlight,
   previewKind,
   reviewTone,
   undecidedCount,
@@ -51,7 +46,9 @@ import {
 import { FileTallyBar } from './FileTallyBar'
 import { UploadProgress } from './UploadProgress'
 
-const NOT_REVIEWABLE = 'De-identify this document before reviewing it'
+// De-identification happens in intake, before a document can be picked;
+// a file without a redacted copy is one attached the old way.
+const NOT_REVIEWABLE = 'There is no de-identified copy of this document to review'
 
 export function FileReviewPanel({
   applicationId,
@@ -70,7 +67,6 @@ export function FileReviewPanel({
   readOnly?: boolean
 }) {
   const filesQuery = useApplicationFiles(applicationId)
-  const deidentify = useDeidentifyFile(applicationId)
   const review = useReviewApplicationFile(applicationId)
   const remove = useDeleteApplicationFile(applicationId)
 
@@ -113,7 +109,6 @@ export function FileReviewPanel({
   const [search, setSearch] = useState('')
 
   const approveAll = useApproveAllFiles(applicationId)
-  const deidentifyAll = useDeidentifyAllFiles(applicationId)
 
   const files = useMemo(() => filesQuery.data ?? [], [filesQuery.data])
 
@@ -161,7 +156,6 @@ export function FileReviewPanel({
   }
 
   function actionsFor(file: ApplicationFile): MenuAction[] {
-    const deidentifying = deidentify.isPending && deidentify.variables === file.id
     const reviewing = review.isPending && review.variables?.fileId === file.id
 
     const viewDeidentified: MenuAction = {
@@ -209,25 +203,6 @@ export function FileReviewPanel({
         onSelect: () => setShowingMetadata({ file, deidentified: false }),
       },
       deidentifiedMetadata,
-      {
-        id: 'deidentify',
-        separatorBefore: true,
-        label: file.deid_status === 'done' ? 'Re-run de-identification' : 'De-identify',
-        icon: canDeidentify(file.file_extension) ? (
-          <ShieldCheck className="size-4" aria-hidden="true" />
-        ) : (
-          <ShieldOff className="size-4" aria-hidden="true" />
-        ),
-        disabled:
-          !canDeidentify(file.file_extension) || isDeidInFlight(file.deid_status),
-        title: !canDeidentify(file.file_extension)
-          ? 'Only PDF, DICOM and Word files can be de-identified'
-          : isDeidInFlight(file.deid_status)
-            ? 'Already running'
-            : undefined,
-        isLoading: deidentifying,
-        onSelect: () => deidentify.mutate(file.id),
-      },
       {
         id: 'approve',
         separatorBefore: true,
@@ -377,22 +352,13 @@ export function FileReviewPanel({
                   ? `Approve the ${approvable} document${approvable === 1 ? '' : 's'} still waiting`
                   : undecided === 0
                     ? 'Every document has been decided'
-                    : 'De-identify these documents before reviewing them'
+                    : 'None of these has a de-identified copy to review'
               }
               isLoading={approveAll.isPending}
               leadingIcon={<CheckCheck className="size-4" aria-hidden="true" />}
               onClick={() => approveAll.mutate()}
             >
               Approve all
-            </Button>
-            <Button
-              variant="outline"
-              disabled={files.length === 0}
-              isLoading={deidentifyAll.isPending}
-              leadingIcon={<ShieldCheck className="size-4" aria-hidden="true" />}
-              onClick={() => deidentifyAll.mutate()}
-            >
-              De-identify all
             </Button>
           </div>
         )}
@@ -471,6 +437,7 @@ export function FileReviewPanel({
           fileId={viewing.file.id}
           blobUrl={viewing.url}
           isDeidentified={viewing.isDeidentified}
+          canViewOriginal={!readOnly}
           onClose={closeViewer}
         />
       ) : null}

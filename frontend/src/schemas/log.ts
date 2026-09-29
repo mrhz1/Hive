@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { idSchema, timestampSchema } from './common'
 
-export const AUDIT_ACTIONS = ['CREATE', 'UPDATE', 'DELETE'] as const
+export const AUDIT_ACTIONS = ['CREATE', 'UPDATE', 'DELETE', 'REPLACE'] as const
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]
 
 export const auditLogSchema = z.object({

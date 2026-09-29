@@ -654,7 +654,7 @@ def _upload_deidentified(
     )
 
 
-REDACTED_DOCUMENT = re.compile(r"^[A-Z0-9]{6}-[a-z0-9]+-\d{8}-\d{16}_deid\.[a-z0-9]+$")
+REDACTED_DOCUMENT = re.compile(r"^[A-Z0-9]+_\d{8}_\d{16}\.[a-z0-9]+$")
 
 
 def test_an_uploaded_redacted_file_arrives_finished(as_admin, storage_root):
@@ -677,7 +677,7 @@ def test_an_uploaded_redacted_file_is_named_like_a_produced_one(as_admin, storag
     name = record["deidentified_file_name"]
 
     assert REDACTED_DOCUMENT.match(name), name
-    assert name.startswith(f"{patient_id}-")
+    assert name.startswith(f"{patient_id}_")
     assert record["original_file_name"] == "clean.pdf"
     assert record["sanitized_file_name"] == name
 

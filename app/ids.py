@@ -1,11 +1,20 @@
-import secrets
+import os
+import re
 import threading
 import time
 
-PATIENT_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-PATIENT_ID_LENGTH = 6
-
-PATIENT_ID_ATTEMPTS = 10
+# Patient codes are not ours to invent. The sending system puts one in the
+# path or the file name, and the same code means the same person
+# everywhere -- so a patient is created *with* its code rather than being
+# handed a generated one.
+#
+# Two to four letters, then three or four digits: AA0001, AA1200, AVDD001,
+# AVDD1200. The tightness is the point. Nothing can check a candidate
+# against the patient table (patients do not exist until their files have
+# been redacted), so this pattern is the only thing between a real code and
+# a folder called REPORT -- which a looser `[A-Z0-9]{6}` would have
+# accepted, along with SCAN01 and IMAGE1.
+DEFAULT_PATIENT_CODE_PATTERN = r"[A-Z]{2,4}[0-9]{3,4}"
 
 SERIAL_DIGITS = 16
 
@@ -16,21 +25,28 @@ _last_millis = 0
 _sequence = 0
 
 
-def random_patient_id() -> str:
-    return "".join(
-        secrets.choice(PATIENT_ID_ALPHABET) for _ in range(PATIENT_ID_LENGTH)
-    )
+def patient_code_pattern() -> str:
+    """Read per call, so a deployment can widen it without a restart."""
+    return os.environ.get("PATIENT_CODE_PATTERN", DEFAULT_PATIENT_CODE_PATTERN)
 
 
-def new_patient_id(is_taken) -> str:
-    for _ in range(PATIENT_ID_ATTEMPTS):
-        candidate = random_patient_id()
-        if not is_taken(candidate):
-            return candidate
-    raise RuntimeError(
-        f"Could not find a free {PATIENT_ID_LENGTH}-character patient id in "
-        f"{PATIENT_ID_ATTEMPTS} attempts; the id space is saturated"
-    )
+def normalise_patient_code(value):
+    """Trim and upper-case a candidate; anything else is passed through.
+
+    Codes arrive from file names typed by other systems, so `aa1234` and
+    `AA1234 ` are the same patient.
+    """
+    if not isinstance(value, str):
+        return value
+    return value.strip().upper()
+
+
+def is_patient_code(value) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    # fullmatch, so a trailing newline or a stray character cannot ride
+    # along on a pattern whose author forgot to anchor it.
+    return re.fullmatch(patient_code_pattern(), value) is not None
 
 
 def new_document_serial() -> str:

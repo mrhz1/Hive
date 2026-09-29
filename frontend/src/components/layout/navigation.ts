@@ -3,6 +3,8 @@ import {
   Eye,
   FileCheck2,
   FileStack,
+  FileWarning,
+  Inbox,
   LayoutDashboard,
   Shield,
   Table2,
@@ -31,6 +33,12 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'patient:view',
   },
   {
+    label: 'Intake',
+    to: '/intake',
+    icon: Inbox,
+    permission: 'application:view',
+  },
+  {
     label: 'Applications',
     to: '/applications',
     icon: FileStack,
@@ -41,6 +49,12 @@ export const NAV_ITEMS: NavItem[] = [
     to: '/files',
     icon: FileCheck2,
     permission: 'files:read',
+  },
+  {
+    label: 'Rejections',
+    to: '/rejections',
+    icon: FileWarning,
+    permission: 'application:view',
   },
   {
 

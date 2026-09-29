@@ -1,3 +1,4 @@
+import itertools
 import json
 import re
 from datetime import date, datetime
@@ -45,6 +46,8 @@ def _seed():
         "file_metadata": [],
         "audit_logs": [],
         "access_logs": [],
+        "intake_files": [],
+        "intake_batches": [],
     }
 
 
@@ -73,6 +76,17 @@ _INSERT_PARTITIONED = re.compile(
     re.S,
 )
 _UPDATE = re.compile(r"^UPDATE `(?P<table>\w+)` SET (?P<sets>.+?) WHERE `(?P<key>\w+)` = %s$", re.S)
+_UPDATE_IN = re.compile(
+    r"^UPDATE `(?P<table>\w+)` SET (?P<sets>.+?) WHERE `(?P<key>\w+)` IN \((?P<slots>[%s, ]+)\)$", re.S
+)
+# A condition that consumes parameters, in the order it appears: `col` op %s,
+# substr(`col`, 1, n) IN (...), or `col` IN (...).
+_CONDITION = re.compile(
+    r"substr\(`(?P<scol>\w+)`, 1, (?P<n>\d+)\) IN \((?P<sslots>[%s, ]+)\)"
+    r"|`(?P<icol>\w+)` IN \((?P<islots>[%s, ]+)\)"
+    r"|`(?P<col>\w+)` (?P<op>=|>=|<=|<|>) %s"
+)
+_CASE = re.compile(r"^CASE `(?P<col>\w+)` (?P<whens>(?:WHEN %s THEN %s ?)+)ELSE `(?P<else>\w+)` END$")
 _DELETE = re.compile(r"^DELETE FROM `(?P<table>\w+)` WHERE `(?P<key>\w+)` = %s$", re.S)
 _DELETE_IN = re.compile(r"^DELETE FROM `(?P<table>\w+)` WHERE `(?P<key>\w+)` IN \((?P<slots>[%s, ]+)\)$", re.S)
 _WHERE = re.compile(r"`(?P<col>\w+)` (?P<op>=|>=|<=|<|>) %s")
@@ -126,17 +140,25 @@ class FakeHiveCursor:
         table, rest = match.group("table"), match.group("rest")
         columns = _COL.findall(match.group("cols"))
 
-        rows = list(self._rows(table))
-        for where in _WHERE.finditer(rest):
-            wanted = params.pop(0)
-            rows = _compare(rows, where.group("col"), where.group("op"), wanted)
+        rows = _filter(list(self._rows(table)), rest.split(" GROUP BY ")[0], params)
+
+        if " GROUP BY " in rest:
+            keys = _COL.findall(rest.split(" GROUP BY ")[1])
+            groups: dict = {}
+            for row in rows:
+                groups.setdefault(tuple(row.get(k) for k in keys), []).append(row)
+            return [key + (len(members),) for key, members in groups.items()]
 
         if "ORDER BY `created_at` DESC" in rest:
             rows.sort(key=lambda r: str(r.get("created_at")), reverse=True)
 
-        limit = re.search(r"LIMIT (\d+)", rest)
+        if "ORDER BY `found_at` DESC" in rest:
+            rows.sort(key=lambda r: str(r.get("found_at")), reverse=True)
+
+        limit = re.search(r"LIMIT (\d+)(?: OFFSET (\d+))?", rest)
         if limit:
-            rows = rows[: int(limit.group(1))]
+            start = int(limit.group(2) or 0)
+            rows = rows[start : start + int(limit.group(1))]
 
         return [tuple(_wire(r.get(c)) for c in columns) for r in rows]
 
@@ -169,6 +191,15 @@ class FakeHiveCursor:
         match = _INSERT.match(sql)
         assert match, f"unparsed INSERT: {sql}"
         columns = _COL.findall(match.group("cols"))
+
+        tuples = _tuples(sql.split(" VALUES ", 1)[1])
+        if len(tuples) > 1:
+            for group in tuples:
+                values = [_eval_value(e, params) for e in _split_values(group)]
+                self._rows(match.group("table")).append(dict(zip(columns, values)))
+            assert not params, f"INSERT binds {len(params)} params too many: {sql}"
+            return []
+
         expressions = _split_values(match.group("vals"))
         assert len(columns) == len(expressions), (
             f"INSERT into `{match.group('table')}` supplies "
@@ -201,19 +232,38 @@ class FakeHiveCursor:
         return []
 
     def _update(self, sql, params):
-        match = _UPDATE.match(sql)
+        many = _UPDATE_IN.match(sql)
+        match = many or _UPDATE.match(sql)
         assert match, f"unparsed UPDATE: {sql}"
-        key = params.pop()
 
         assignments = {}
         for part in _split_values(match.group("sets")):
             column, _, expression = part.partition(" = ")
-            assignments[_COL.findall(column)[0]] = _eval_value(expression, params)
-        assert not params, f"UPDATE binds {len(params)} params too many: {sql}"
+            case = _CASE.match(expression.strip())
+            if case:
+                pairs = case.group("whens").count("WHEN")
+                mapping = {}
+                for _ in range(pairs):
+                    when = params.pop(0)
+                    mapping[when] = params.pop(0)
+                assignments[_COL.findall(column)[0]] = ("case", case.group("col"), mapping)
+            else:
+                assignments[_COL.findall(column)[0]] = _eval_value(expression, params)
+
+        keys = set(params) if many else {params.pop()}
+        if not many:
+            assert not params, f"UPDATE binds {len(params)} params too many: {sql}"
 
         for row in self._rows(match.group("table")):
-            if row.get(match.group("key")) == key:
-                row.update(assignments)
+            if row.get(match.group("key")) not in keys:
+                continue
+            for column, value in assignments.items():
+                if isinstance(value, tuple) and value and value[0] == "case":
+                    _, on, mapping = value
+                    if row.get(on) in mapping:
+                        row[column] = mapping[row.get(on)]
+                else:
+                    row[column] = value
         return []
 
     def _delete(self, sql, params):
@@ -231,6 +281,38 @@ class FakeHiveCursor:
         wanted = set(params)
         self.store[table] = [r for r in self._rows(table) if r.get(key) not in wanted]
         return []
+
+
+def _filter(rows, clause, params):
+    """Apply every parameter-consuming condition, in the order written."""
+    for cond in _CONDITION.finditer(clause):
+        if cond.group("scol"):
+            count = cond.group("sslots").count("%s")
+            wanted = {params.pop(0) for _ in range(count)}
+            n = int(cond.group("n"))
+            rows = [r for r in rows if str(r.get(cond.group("scol")) or "")[:n] in wanted]
+        elif cond.group("icol"):
+            count = cond.group("islots").count("%s")
+            wanted = {params.pop(0) for _ in range(count)}
+            rows = [r for r in rows if r.get(cond.group("icol")) in wanted]
+        else:
+            rows = _compare(rows, cond.group("col"), cond.group("op"), params.pop(0))
+    return rows
+
+
+def _tuples(values_clause):
+    """`(a, b), (c, d)` -> ["a, b", "c, d"], respecting nested parens."""
+    groups, depth, start = [], 0, None
+    for index, char in enumerate(values_clause):
+        if char == "(":
+            if depth == 0:
+                start = index + 1
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                groups.append(values_clause[start:index])
+    return groups
 
 
 def _compare(rows, column, op, wanted):
@@ -300,21 +382,39 @@ def cursor(store):
     return FakeHiveCursor(store)
 
 
+# Every module that opens its own connection instead of taking the
+# request's cursor -- background work, mostly. A module missing from here
+# does not fail loudly: it reaches the *real* database, and a test that
+# quietly writes to production Hive is worse than one that errors.
+_OPENS_ITS_OWN_CURSOR = (
+    "app.audit",
+    "app.deid",
+    "app.deid_notices",
+    "app.submission",
+    "app.uploads",
+    "app.access_log",
+    "app.intake_worker",
+    "app.intake_run",
+)
+
+
 @pytest.fixture
-def client(cursor, monkeypatch):
+def patched_hive(cursor, monkeypatch):
+    """Point every module that opens its own cursor at the fake store."""
     import contextlib
 
     @contextlib.contextmanager
     def fake_hive_cursor():
         yield cursor
 
-    monkeypatch.setattr("app.audit.hive_cursor", fake_hive_cursor)
-    monkeypatch.setattr("app.deid.hive_cursor", fake_hive_cursor)
-    monkeypatch.setattr("app.deid_notices.hive_cursor", fake_hive_cursor)
-    monkeypatch.setattr("app.submission.hive_cursor", fake_hive_cursor)
-    monkeypatch.setattr("app.uploads.hive_cursor", fake_hive_cursor)
-    monkeypatch.setattr("app.access_log.hive_cursor", fake_hive_cursor)
+    for module in _OPENS_ITS_OWN_CURSOR:
+        monkeypatch.setattr(f"{module}.hive_cursor", fake_hive_cursor)
 
+    return cursor
+
+
+@pytest.fixture
+def client(cursor, patched_hive):
     app.dependency_overrides[get_cursor] = lambda: cursor
     with TestClient(app) as test_client:
         yield test_client
@@ -325,6 +425,37 @@ def client(cursor, monkeypatch):
 def as_admin(client):
     client.headers.update({"REMOTE-USER": ADMIN_USER})
     return client
+
+
+@pytest.fixture(autouse=True)
+def _no_real_database(monkeypatch):
+    """Make reaching the real Hive from a test an error, not a quiet write.
+
+    `_OPENS_ITS_OWN_CURSOR` redirects the modules it names. A module it
+    misses -- a new one, or one importing hive_cursor inside a function --
+    used to fall through to the live database and write there silently.
+    This catches it at the one place every connection is made.
+    """
+
+    def refuse(engine, *args, **kwargs):
+        raise AssertionError(
+            f"a test tried to open a real {engine} connection -- add the "
+            "module that did it to _OPENS_ITS_OWN_CURSOR in conftest.py"
+        )
+
+    monkeypatch.setattr("app.db._connect", refuse)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_storage(tmp_path, monkeypatch):
+    """Point every folder configured by environment at the test's tmp dir.
+
+    Applies to every test, asked for or not. A test that forgets would
+    otherwise write into the repo's own storage/ -- which is exactly what
+    happened when submission started filing under SUBMITTED_DIR.
+    """
+    monkeypatch.setenv("INTAKE_DIR", str(tmp_path / "incoming_data"))
+    monkeypatch.setenv("SUBMITTED_DIR", str(tmp_path / "submitted"))
 
 
 @pytest.fixture
@@ -376,8 +507,21 @@ def sent_emails(monkeypatch):
     return outbox
 
 
+_code_counter = itertools.count(1)
+
+
+def next_patient_code() -> str:
+    """A fresh, valid code per call -- codes are supplied now, not generated."""
+    return f"AA{next(_code_counter):04d}"
+
+
 def minimal_patient(**overrides):
-    return {"fstname": "Jane", "original_file_path": "/data/jane.pdf", **overrides}
+    return {
+        "id": next_patient_code(),
+        "fstname": "Jane",
+        "original_file_path": "/data/jane.pdf",
+        **overrides,
+    }
 
 
 def patient_columns():

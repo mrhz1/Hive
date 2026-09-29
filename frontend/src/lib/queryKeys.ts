@@ -38,8 +38,13 @@ export const queryKeys = {
 
   applications: {
     all: ['applications'] as const,
-    list: (patientId?: string) =>
-      [...queryKeys.applications.all, 'list', patientId ?? null] as const,
+    list: (patientId?: string, status?: string) =>
+      [
+        ...queryKeys.applications.all,
+        'list',
+        patientId ?? null,
+        status ?? null,
+      ] as const,
     detail: (id: string) => [...queryKeys.applications.all, 'detail', id] as const,
   },
 
@@ -47,6 +52,8 @@ export const queryKeys = {
     all: ['application-files'] as const,
     list: (applicationId: string) =>
       [...queryKeys.applicationFiles.all, 'list', applicationId] as const,
+
+    rejected: () => [...queryKeys.applicationFiles.all, 'rejected'] as const,
 
     metadata: (fileId: string, deidentified = false) =>
       [
@@ -63,6 +70,18 @@ export const queryKeys = {
     all: ['file-metadata'] as const,
     list: (filters: FileMetadataFilters = {}) =>
       [...queryKeys.fileMetadata.all, 'list', filters] as const,
+  },
+
+  intake: {
+    all: ['intake'] as const,
+    counts: () => [...queryKeys.intake.all, 'counts'] as const,
+    files: (status?: string, patientCode?: string) =>
+      [...queryKeys.intake.all, 'files', status ?? null, patientCode ?? null] as const,
+    codes: () => [...queryKeys.intake.all, 'codes'] as const,
+    progress: () => [...queryKeys.intake.all, 'progress'] as const,
+    batchProgress: () => [...queryKeys.intake.all, 'batch-progress'] as const,
+    page: (status: string, limit: number) =>
+      [...queryKeys.intake.all, 'page', status, limit] as const,
   },
 
   deidentifiedFiles: {

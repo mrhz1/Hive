@@ -3,7 +3,6 @@ from typing import List, Optional
 
 from app.db import authoritative, execute
 from app.errors import ConflictError, NotFoundError, ValidationError
-from app.ids import new_patient_id
 from app.logging_setup import get_logger
 from app.schemas import (
     PATIENT_IDENTIFIERS,
@@ -132,9 +131,14 @@ def create_patient(cursor, payload: PatientCreate) -> Patient:
     fields = payload.model_dump()
     _assert_unique(cursor, fields)
 
-    patient_id = new_patient_id(lambda candidate: _id_exists(cursor, candidate))
-
-    fields["id"] = patient_id
+    # The code came in with the documents; the schema has already checked
+    # its shape. All that is left is whether it is taken -- and like every
+    # other uniqueness check here, this is a pre-check rather than a
+    # constraint, because Hive has none. Two concurrent creates of the same
+    # code can still both pass.
+    patient_id = fields["id"]
+    if _id_exists(cursor, patient_id):
+        raise ConflictError(f"Patient code '{patient_id}' already exists")
     for column in DATE_COLUMNS:
         value = fields[column]
         fields[column] = value.isoformat() if value else None

@@ -9,6 +9,7 @@ from deid.analyzer import analyze_text, build_analyzer
 from deid.config import Config
 from deid.mapping import build_page_text, map_pii_to_boxes, redact_text
 from deid.documents import (
+    DICOM,
     DOCX,
     apply_redactions,
     close_document,
@@ -220,6 +221,9 @@ class Deidentifier:
                     ", ".join(stripped),
                 )
 
+            if kind == DICOM:
+                result.method = dicom_method(result)
+
             os.makedirs(os.path.dirname(os.path.abspath(output_pdf)), exist_ok=True)
             save_document(doc, kind, output_pdf)
 
@@ -336,6 +340,28 @@ class Deidentifier:
             },
             "pages": [asdict(p) for p in result.pages],
         }
+
+
+PIXELS_AND_TAGS = "pixels and tags"
+TAGS_ONLY_NO_TEXT = "tags only: no text in the image"
+TAGS_ONLY_NOTHING_IDENTIFYING = "tags only: text in the image, nothing identifying"
+
+
+def dicom_method(result: DocumentResult) -> str:
+    """Which way a DICOM was de-identified, for the record.
+
+    Pixels are only ever written back when there is something to black out
+    (apply_redactions returns before touching them otherwise), so an image
+    with no text -- or with only an orientation marker or a measurement --
+    keeps its pixels exactly as they were and has its metadata de-identified.
+    That is the policy; this names which case each file fell into, so it can
+    be audited afterwards.
+    """
+    if result.total_boxes:
+        return PIXELS_AND_TAGS
+    if any(page.ocr_spans for page in result.pages):
+        return TAGS_ONLY_NOTHING_IDENTIFYING
+    return TAGS_ONLY_NO_TEXT
 
 
 def run_stage(jobs: List[Dict[str, Any]], config: Config) -> List[DocumentResult]:

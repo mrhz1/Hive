@@ -50,11 +50,13 @@ Interactive docs at `http://localhost:8100/docs` once `make run` is up.
 |---|---|
 | `roles` | `id`, `name`, `permissions ARRAY<STRING>` |
 | `users` | `role_id` FK to roles; reads join in `role_name` + `permissions` |
-| `patient` | singular, matching the Cloudera metastore. `fstname`/`lstname` + provider (`p*`) and patient (`pt*`) contact blocks, `dt_reg`/`dt_b`/`dt_d` DATEs; no role, and no lifecycle columns — record data only |
+| `patient` | singular, matching the Cloudera metastore. `id` is the **patient code off the documents**, supplied not generated — see [Patient codes](#patient-codes). `fstname`/`lstname` + provider (`p*`) and patient (`pt*`) contact blocks, `dt_reg`/`dt_b`/`dt_d` DATEs; no role, and no lifecycle columns — record data only |
 | `patient_application_files` | one row per uploaded document, keyed on `application_id` — documents belong to a submission, not to a patient directly. Bytes live under `FILE_STORAGE_DIR`; the row carries the de-identification state. No per-file review verdict: that is recorded once, on the application |
 | `file_metadata` | one row per file, holding the metadata the document **arrived carrying** (PDF info dict / DICOM tags / Word core properties), extracted at upload, as JSON-in-STRING. Schemaless on purpose — a DICOM study and a Word document share almost no fields. Facts this system generates afterwards are deliberately **not** here; see [Metadata](#metadata) |
 | `patient_applications` | one submission of a patient + their documents for review; holds who did what and when, and `assigned_to_id` -- the user set to work on it, who is emailed about its uploads |
 | `audit_logs` | append-only; `user_id` names the acting caller; `old_values`/`new_values` are JSON-in-STRING |
+| `intake_files` | one row per file found in a dropped batch, **including the ones we refuse** — a file nobody can place has to be visible and fixable. Also the only record of which original produced which redacted copy; see [Intake](#intake-the-drop-folder) |
+| `intake_batches` | one sweep of the drop folder. Counts are derived, not stored |
 
 ### Endpoints
 
@@ -73,6 +75,15 @@ Documents hang off an **application**, not a patient:
 `?deidentified=true` for the redacted copy), `/files/{id}/deidentify`
 (POST) and `/files/{id}/metadata` (GET -- what was extracted from the
 document at upload time).
+
+**De-identification is no longer started from an application.** Documents
+are redacted in intake, before they can be picked (see
+[Intake](#intake-the-drop-folder)), so the application page offers no
+*De-identify* or *De-identify all* control. The endpoints
+`/files/{id}/deidentify` and `/applications/{id}/files/deidentify-all` are
+kept, unreachable from the UI, as an escape hatch for re-running a single
+redaction found wanting at review; a bad redaction is otherwise fixed from
+the Rejections page by attaching a better copy.
 
 `/applications/{id}/files/background` (POST multipart) is the same upload
 without the wait: it stages the bytes, answers 202 with an upload job,
@@ -220,6 +231,431 @@ A file that is neither recognised nor named keeps whatever its name
 claimed — an unknown format stays unknown rather than being guessed into
 the wrong pipeline.
 
+### Intake: the drop folder
+
+Documents arrive by being **put in a folder**, not uploaded through the
+application. Everything under `INTAKE_DIR` is swept, matched to a patient
+code, and de-identified without anybody opening the dashboard; the
+application then picks from what came out.
+
+```
+storage/incoming_data/A/B/C/AA1234/image.dcm
+storage/incoming_data/de_identified/A/B/C/AA1234/AA1234_<date>_<serial>.dcm
+```
+
+The mirror lives **inside** the intake root and reproduces the tree exactly,
+so one folder holds a batch and its redacted twin.
+
+To run the steps by hand -- or to see what a sweep *would* do before trusting
+it -- there are separate commands:
+
+```bash
+make intake                                  # what would happen
+make intake-apply                            # record it in Hive
+python scripts/intake_sweep.py --root /some/drop --settle-seconds 0
+```
+
+Dry by default, because the sweep is deciding which patient a document
+belongs to and that judgement is worth reading before it is trusted.
+
+#### Starting by itself
+
+`scripts/intake_run.py` (`app/intake_run.py`) is what makes the drop folder
+work unattended. It is meant to be called often, and most calls find nothing
+to do. The work starts only once a push has **finished landing**:
+
+- **the sender says so** — a `batch.done` file (`INTAKE_BATCH_MARKER`)
+  anywhere in the tree starts it immediately; or
+- **the folder goes quiet** — nothing in it has changed for
+  `INTAKE_SETTLE_SECONDS`, which is what the end of a copy looks like from
+  outside.
+
+Then it sweeps and redacts in one go. A push still in progress is left alone
+entirely: taking a half-copied folder would record the files that had
+arrived and leave the rest for a later batch, splitting one delivery in two.
+
+```bash
+make intake-run      # check once -- what a scheduled Job runs
+make intake-watch    # check every minute, for as long as it runs
+```
+
+**"Changed" means mtime *or* ctime.** `cp -p` and `rsync -t` carry the
+source's modification time over, so a file copied a second ago can claim to
+be weeks old. The change time is set by the filesystem on every write and
+rename and no copy tool can set it, so the later of the two is the truth.
+Hidden files are skipped for the same reason: rsync writes
+`.image.dcm.Xy12Ab` and renames it when done, and recording that would report
+a skipped "unsupported format" for every file of a push caught mid-flight.
+
+**Never two at once.** A run holds an OS file lock
+(`<INTAKE_DIR>/.intake/run.lock`); one that finds it held exits straight away
+(`busy`). A thousand files take hours, so runs *will* overlap their
+schedule. The lock dies with its process, so a crashed run leaves nothing to
+clear by hand.
+
+A spent `batch.done` is deleted once its push has been swept — left in place,
+the next push into the same folder would be taken as finished the moment its
+first file appeared. A queue left behind by an interrupted run is drained by
+the next one even if nothing new has arrived.
+
+##### Scheduling it on Cloudera AI
+
+Create a **Job**:
+
+| | |
+|---|---|
+| Script | `scripts/intake_run.py` |
+| Schedule | every minute (cron `* * * * *`) |
+| Resources | as sized for the workers — see [Sizing the pool](#sizing-the-pool) |
+| Environment | `INTAKE_DIR`, `SUBMITTED_DIR`, `DEID_WORKERS`, `DEID_WORKER_CPU_THREADS`, `INTAKE_SETTLE_SECONDS`, plus the Hive variables |
+
+Every minute is fine: a run that finds nothing costs one walk of the folder,
+and one that finds a run already working leaves immediately. The Job needs
+`INTAKE_DIR` on the same mounted volume the sender writes to and the API
+reads from.
+
+If the sending side can write `batch.done` when a push completes, ask it to:
+that starts redaction the moment the copy ends, where the quiet window has
+to wait `INTAKE_SETTLE_SECONDS` to be sure.
+
+#### Four outcomes, all of them recorded
+
+| outcome | meaning |
+|---|---|
+| **queued** | one agreed code, a format we handle — ready to redact |
+| **skipped** | unsupported format, or no code found |
+| **conflict** | the path and the file name name different patients |
+| **superseded** | a refusal that has since come back corrected |
+
+A refused file is a **row**, not a log line. "1,000 files arrived, 3 need
+attention" and "997 files arrived" are different reports, and only the first
+one gets those three files fixed.
+
+#### Finding the code
+
+`app/intake.py`, using the same `is_patient_code` the patient records use —
+one definition of what a code is, rather than two that drift.
+
+- **A folder** claims a code when a whole segment is one; the **deepest**
+  wins. `A/B/C/AA1234/x.dcm` claims AA1234, `A/B/C/x.dcm` claims nothing,
+  and `AA1234-exported/` claims nothing either.
+- **A name** claims a code at its start, ending on a non-alphanumeric
+  boundary: `AA1234.pdf`, `AA1234_chest.pdf` and `AA1234()_-chest.pdf` all
+  claim AA1234. The boundary is load-bearing — without it `AVDD12005_x.pdf`
+  would be carved down to the real-looking `AVDD1200` and filed under a
+  patient who has nothing to do with it. A code buried mid-name
+  (`chest_AA1234.pdf`) is a description, not a claim.
+- **The type comes from the bytes** where the name does not say
+  (`app/filetype.py`), because a PACS export is routinely `IM000001` with no
+  extension at all.
+
+**A disagreement is never resolved automatically.** A file in AA1234's
+folder named for BB5678 means somebody dropped it in the wrong place; either
+choice files a document under a patient it may not belong to, and redaction
+now happens before any human looks. So it waits in the conflict list, and
+`intake.resolve_conflict` accepts **only** one of the two codes the file
+actually claimed — otherwise that list would become a way to file a document
+under any patient at all.
+
+#### Half-copied files
+
+A sweep that takes a file the moment it appears will redact half of a 400MB
+study — and report success, because half a study is a readable file. So a
+file counts as arrived only once it has sat untouched for
+`INTAKE_SETTLE_SECONDS`. If the sending side can write an
+`INTAKE_BATCH_MARKER` when it finishes, that is better than any amount of
+waiting.
+
+#### Pushing the same folder again
+
+The correction loop is: fix the file names at source, push the whole folder
+back. So a second sweep has to leave the work already done alone while
+taking the corrections — and the dedupe key is what decides whether it does.
+
+**Bytes and absolute path, not bytes alone.** Three cases forced that:
+
+- Adding a code to a file name **changes no bytes**. Keyed on content
+  alone, the sweep would reject exactly the correction it exists to accept,
+  and the file would stay skipped for ever.
+- The same document in two patients' folders is **two filings**. Keyed on
+  content alone, only the first is ever redacted and the second patient's
+  copy silently never appears.
+- A relative path **repeats across roots**, so it cannot identify a file
+  either.
+
+Identical bytes at an identical path are the same file arriving again, and
+keep the row they have — which also stops a sweep on a timer breeding a
+fresh row for every unfixed file, every run. When a refusal does come back
+fixed, the old row is marked `superseded` and says what replaced it, so it
+leaves the list somebody is working through without being deleted.
+
+#### Redacting the queue
+
+`scripts/intake_deid.py` (`make intake-deid`) drains what the sweep queued.
+It reads the queue, not the folder.
+
+```bash
+make intake-deid                            # one at a time
+python scripts/intake_deid.py --workers 4   # four at once
+python scripts/intake_deid.py --limit 1     # one file, to try it
+```
+
+Each file goes in on its own and comes out in the mirror, renamed to
+`<CODE>_<date>_<serial>`, with the original left exactly where it was. A
+run's three outputs — the copy, the extracted text and the report — are
+renamed together, because they are found as a set.
+
+Nothing here touches an application or a patient record: a patient does not
+exist yet, so this is file-in, file-out with the intake row as its only
+bookkeeping.
+
+**One thread claims, N threads run.** Hive cannot claim a row atomically, so
+four workers each asking for "the oldest queued file" are handed the same
+one four times. The claimer marks a row `processing` before passing it on,
+which is what keeps a second worker off it — serialise the claim,
+parallelise the wait.
+
+A bad document costs only itself: the row is marked `failed` with the reason
+and the batch carries on. A file that has vanished since the sweep, a
+pipeline crash, an error nobody predicted — all three land as `failed`
+rather than leaving a row stuck at `processing` for ever.
+
+#### Sizing the pool
+
+**The ceiling is memory, not cores.** A worker killed for running out of it
+(exit -9) produces nothing at all, so `DEID_WORKERS` wants setting against a
+measured peak RSS:
+
+```
+N = min(cores / cores_per_worker, RAM / RAM_per_worker)
+```
+
+`DEID_WORKER_CPU_THREADS` is injected per subprocess, because
+`OCR_CPU_THREADS` defaults to 8 — right for one worker, four times the
+machine for four of them. It caps `OMP_NUM_THREADS` and `MKL_NUM_THREADS`
+too, or the NLP stage's libraries take every core anyway and undo the
+budget.
+
+`DEID_WORKER_MEMORY_GB` is **advisory**: a process cannot cap its own
+memory, that is the container's job. It is used to refuse to start more
+workers than the machine can hold, which is the part that is enforceable
+here — eight workers on a box with room for two do not run four times
+faster, they get killed mid-document and leave files marked failed for a
+reason that has nothing to do with the file.
+
+Worth the arithmetic before turning it up. Measured on this pipeline:
+**19–31 seconds per page on a 4-core job**. A ten-page document is about
+four minutes; a thousand of them is around 67 hours in one lane.
+
+#### The Intake page
+
+`/intake` in the dashboard, gated on `application:view`
+(`frontend/src/routes/intake/index.tsx`, API in `app/routers/intake.py`).
+Five tiles that double as filters — Conflicts, Skipped, Failed, Waiting,
+De-identified — refreshed every 15 seconds, since redaction runs out of
+process and this is where a batch is watched going through.
+
+- **Skipped** and **Failed** list the **full source path** with the reason,
+  and *Copy list* puts them on the clipboard one per line
+  (`path<TAB>reason<TAB>detail`) — the thing to send whoever owns the source,
+  so they can fix and re-push.
+- **Conflicts** show both claims and offer exactly those two codes as
+  buttons. Choosing one needs `application:update`, only accepts a code the
+  file actually claimed, and is **audited** (`entity_type=intake_file`, both
+  claims in `old_values`): it is a decision about whose document this is.
+
+| endpoint | |
+|---|---|
+| `GET /intake/counts` | the tally, derived from the rows |
+| `GET /intake/files?status=` | one status's files; an unknown status is a 422 |
+| `GET /intake/batches` | sweeps, newest first |
+| `POST /intake/files/{id}/resolve` `{"code": ...}` | settle a conflict; the file goes back to `queued` |
+
+#### Putting an application together
+
+A new application starts from a **patient code**, not a patient form
+(`IntakeCodePicker`). Only codes with redacted files nobody has attached are
+offered (`GET /intake/codes`). If a patient already has that code it is
+selected; if not, the form opens with the code filled in and locked, and the
+patient is created *with* it. The application's source folder is the code's
+folder in the drop tree, filled in rather than typed.
+
+The code is shown large on purpose: a mistyped code upstream (`AA1235` for
+`AA1234`) is still a valid code, and this is the first place a person can
+notice.
+
+Step 2 lists that code's de-identified documents grouped by folder
+(`IntakeFilePicker`) — take a whole folder or single files.
+`POST /applications/{id}/intake-files` attaches them:
+
+- **One row, both copies.** `file_path` is the original in the drop tree,
+  `de_identified_file_path` its redacted twin in the mirror, `deid_status`
+  already `done`. Nothing is copied; both stay where they are until the
+  application is submitted, so an abandoned draft strands nothing.
+- **The drop folder is a storage root** (`storage.intake_root`) for that
+  reason — otherwise every read of an attached file is refused and logged as
+  a traversal attempt.
+- **The code must match.** A file carrying `BB0042` cannot go on `AA1234`'s
+  application: the code on the document is the only evidence of whose it
+  is, and a click must not override it.
+- **All or nothing.** Every file is checked before any is attached.
+- **Claimed.** The intake row goes to `claimed` with the application file's
+  id, so no second application can take it.
+
+**Taking a file back off does not delete it.** Removing an intake document
+from a draft, or deleting the whole application, hands it back to the pool
+(`intake.release_claim`) with both copies intact. Before this, removing a
+file from an application deleted both copies from disk — right for an
+uploaded file, destructive for one that belongs to the drop folder.
+
+`frontend/e2e/intake.spec.ts` walks this in a browser. It needs real
+de-identified files, which only a real sweep and OCR run produce, so it
+skips unless `E2E_INTAKE_CODE` names a code that has some.
+
+#### Submitting
+
+Submission files both copies under the patient, side by side
+(`app/submission.py`):
+
+```
+storage/submitted/AA1234/original/image.dcm
+storage/submitted/AA1234/de_identified/AA1234_20260924_1790261077741000.dcm
+```
+
+- **Both move**, and the row is pointed at both new paths in one write, so
+  there is no moment at which it names a file that has already gone. The
+  path setter is `crud.set_paths`, deliberately not part of
+  `PatientApplicationFileUpdate` — that is what `PUT /files/{id}` accepts,
+  and a path a client can set is a path a client can aim anywhere.
+- **Names never collide.** `image.dcm` from two series becomes `image.dcm`
+  and `image_2.dcm`; the second does not silently replace the first.
+- **The run's text and report are removed**, wherever the run left them —
+  beside the copy in the mirror for an intake file, in
+  `<original>/deidentified/` for an uploaded one.
+- **The drop tree empties itself.** Folders left empty on both sides are
+  pruned; other patients' files in the same tree are untouched.
+- **The intake row goes to `submitted`, not back to the pool.** Its files
+  have left the drop tree, so releasing it would offer files that are not
+  where it says. It also keeps the row as the record of where the document
+  *arrived* — which is what makes a re-pushed folder a duplicate rather than
+  new work.
+- `DEID_KEEP_ORIGINAL=false` still discards the original instead of filing
+  it; the row keeps its old path (the column is required, and whatever
+  reads it checks the disk first).
+
+The sweep **never walks `SUBMITTED_DIR`**, wherever it is configured: nested
+inside the drop folder, it would take every submitted original — and every
+already-redacted copy — as a fresh arrival and redact it again.
+
+`DEID_PDF_DIR` / `DEID_DICOM_DIR` / `DEID_WORD_DIR` are no longer where
+submission files anything. The Files library's manual upload of an
+already-redacted document still writes there.
+
+#### At millions of files
+
+Built for pushes of five million files and more, on Hive alone. Everything
+below is shaped by one fact about Hive: **a statement costs ~0.4-1 s whether
+it touches one row or a thousand**. So nothing happens a row at a time.
+
+| | How | Why |
+|---|---|---|
+| **Redaction** | a *chunk* of files per pipeline run (`DEID_CHUNK_DICOM`, `DEID_CHUNK_DOCUMENTS`) | the models load once per run. Measured on DICOMs: 1.07 s each in runs of 40, ~7.5 s each one at a time |
+| **Recording arrivals** | 500 rows per `INSERT` | 80 days of single inserts becomes about an hour |
+| **Claiming work** | a chunk per claim: one `SELECT`, one `UPDATE ... IN` | the old one-at-a-time claimer capped the whole system at ~35,000 files/day |
+| **Recording outcomes** | one `UPDATE ... CASE` per chunk | per-row values in a single statement |
+| **Counting** | `GROUP BY`, cached 10 s | loading rows to count them stops the page loading at all |
+| **Watching for arrivals** | only folders whose time changed; the mirror is never walked; a full look once a day | re-listing millions of files every minute |
+| **Lists** | paged; the whole list downloads as CSV | a hundred thousand rows in one response hangs the browser |
+
+##### Several machines: shards
+
+Each row belongs to one of 256 shards by the first two characters of its id.
+A process owns a set of them and claims only inside it, so processes on
+different machines can never take the same file -- no lock across machines
+is needed, which is fortunate, because a file lock on shared storage is not
+one you can rely on.
+
+```bash
+python scripts/intake_run.py --watch --shards 0-3  --of 12   # machine 1
+python scripts/intake_run.py --watch --shards 4-7  --of 12   # machine 2
+python scripts/intake_run.py --watch --shards 8-11 --of 12   # machine 3
+```
+
+Every shard `0..of-1` must be run by exactly one process; the one holding
+shard 0 also sweeps. On Cloudera, that is one Job per line above.
+
+##### Stopping and continuing
+
+Every outcome is appended to a local journal (`.intake/journal/`) the moment
+it is known, then published to Hive with the rest of its chunk. A worker
+killed in between loses nothing: on the next start, finished work is
+published from the journal rather than done again, and only what was
+genuinely half-done goes back in the queue -- for that process's own shards
+only. Stop it, restart it, move it to another machine: it continues from
+where it was.
+
+##### Watching it
+
+The Intake page shows files processed out of the total, speed, time left,
+each worker (live, idle or **stopped**, what it is on, how fast), and each
+push's own progress. Speed and liveness come from heartbeat files the
+workers write every few seconds (`.intake/workers/`), so they are live
+without asking Hive. If files are waiting and no worker has reported for
+`INTAKE_HEARTBEAT_STALE_SECONDS`, a red banner says so.
+
+##### DICOM: pixels only when there is something to black out
+
+Pixels are written back only when identifying text was found in them.
+An image with no text -- or only an orientation marker or a measurement --
+keeps its pixels **byte-for-byte**, and has its metadata de-identified. Each
+file's intake row records which way it went (`detail`): `pixels and tags`,
+`tags only: no text in the image`, or `tags only: text in the image,
+nothing identifying`.
+
+#### What this table is also for
+
+`intake_files` is the only thing that remembers **which original produced
+which redacted copy**. Renaming the output to the patient-code scheme breaks
+the link on disk (`image.dcm` and `AA1234_20260924_179….dcm` share no name),
+and at redaction time there is no `patient_application_files` row to hold
+both paths yet.
+
+Counts are deliberately not stored on `intake_batches`: they are a `GROUP BY`
+away, and a Hive `UPDATE` per file to keep a counter honest costs more than
+the query ever will.
+
+### Patient codes
+
+A patient id **is** the code its documents carry. It is not generated: the
+sending system writes it into the file path or the file name, the same code
+means the same person everywhere, and `POST /patients` takes it as `id`
+rather than allocating one. Two to four letters then three or four digits —
+`AA0001`, `AA1200`, `AVDD001`, `AVDD1200` — matched case-insensitively,
+stored upper-case, and settable with `PATIENT_CODE_PATTERN`.
+
+`app/ids.py` holds the pattern and `is_patient_code` / `normalise_patient_code`;
+the same pair is what the intake sweep uses to find a code in a path, so
+there is one definition of what a code is rather than two that drift.
+
+**The pattern is load-bearing, not cosmetic.** Nothing can check a candidate
+against the `patient` table — patients do not exist until their files have
+been redacted — so the shape is the only evidence that a string is a code.
+The previous scheme (six random characters from `A-Z0-9`) would have
+accepted `REPORT`, `SCAN01` and `IMAGE1` as codes and filed documents under
+them as though they were people, silently. Two-to-four letters then
+three-to-four digits rejects all three.
+
+What it cannot catch is a **typo that is still a valid code**: `AA1235` for
+`AA1234` passes, and creates a patient who should not exist. Redaction
+happens before any human looks, so the first person who can notice is
+whoever picks the files for an application — which is why the code is shown
+prominently there.
+
+Uniqueness is a pre-check `SELECT`, like every other uniqueness rule here
+(Hive has no constraints), so two concurrent creates of one code can both
+pass. That mattered less when ids were random; it matters more now that
+they arrive from outside. A duplicate code is a 409.
+
 ### Document names
 
 An uploaded document is stored as
@@ -228,13 +664,22 @@ An uploaded document is stored as
 (milliseconds plus a per-millisecond sequence, so it is unique and sorts
 by arrival).
 
-A **de-identified** copy follows the same scheme with `_deid` before the
-extension:
-`<patient code>-<type>-<de-id date>-<16-digit serial>_deid.<ext>`. The
-date and the serial are the *redaction run's* own, not the original
-upload's -- `app/deid.py::deid_output_name`. Reading the name tells you
-when the redacted copy was made, and a re-run is plainly a new document
-rather than the old one wearing the same name.
+A **de-identified** copy is named
+`<patient code>_<de-id date>-<16-digit serial>.<ext>` —
+`AA1234_20260924_1790261077741000.pdf`. The date and the serial are the
+*redaction run's* own, not the original upload's
+(`app/deid.py::deid_output_name`). Reading the name tells you when the
+redacted copy was made, and a re-run is plainly a new document rather than
+the old one wearing the same name.
+
+Every redacted file in the system reads this way — the intake sweep, the
+wizard's manual attach and a `/files-library` upload all go through the
+same function, so one name shape means one thing. There is no `_deid`
+marker and no document type in it: the copy is identified by living in a
+de-identified folder, the extension already carries the type, and the code
+is what has to be read off the page in a hurry. `deid_artifacts` finds a
+run's sidecars by the recorded name rather than by that suffix, so nothing
+depended on it.
 
 The OCR pipeline cannot know that name: it writes its three outputs (the
 copy, the extracted text, the report) named after the file it read. So
@@ -248,6 +693,44 @@ it could record anything.
 Both manual paths -- the wizard's *attach a de-identified document* and a
 `/files-library` upload -- call the same `deid_output_name`, so every
 redacted file in the system reads the same way.
+
+### Both copies, and how they stay paired
+
+Submission keeps the identified original by default
+(`DEID_KEEP_ORIGINAL`, `app/submission.py`), filing it in the patient's
+`original/` folder beside the redacted copy — see [Submitting](#submitting).
+Turning the flag off deletes it instead.
+
+**The pairing is the row, not the file names.** One
+`patient_application_files` row holds both `file_path` and
+`de_identified_file_path`, so one file id reaches either copy --
+`/files/{id}/content` serves the original, `?deidentified=true` the
+redacted one, and the preview endpoints mirror the same way. Do not try
+to pair them by name: the redacted copy carries the *redaction run's* own
+date and serial, deliberately (see above), so the two names never match.
+
+The viewer flips between the two in place rather than being closed and
+reopened -- the toggle in `FileViewerModal` switches sides on one file
+id, and only appears when a redacted copy exists. A locked (already
+submitted) application does not offer it, which preserves what the review
+panel did before originals survived submission: it never offered *View
+original* there. Now that the bytes are still on disk, whether a reviewer
+of a submitted application may see them is a policy question rather than
+a technical one.
+
+The run's own leftovers -- the extracted text and the redaction report --
+are removed at submission either way. Nothing points at them once the
+redacted copy has been moved out from under them, and the report is the
+one artifact that can hold the identifiers in the clear
+(`DEID_REPORT_INCLUDE_VALUES`).
+
+Two consequences of keeping originals, neither of them handled for you:
+
+- The identified pile under `FILE_STORAGE_DIR` now grows without bound.
+  It needs a purge policy with an owner; there isn't one yet.
+- Every read of an original is a real disclosure. `access_logs.identified`
+  is what separates those from routine work, and it matters more now that
+  both copies live side by side for good -- see [The two trails](#the-two-trails).
 
 ### Email
 
@@ -279,8 +762,10 @@ De-identification is triggered per file and each run is independent, so
 there is no batch record to hang a "finished" email off. `app/deid_notices.py`
 reads it off the rows instead: after every run settles, it asks whether any
 file on that application is still `queued` or `processing`, and only the run
-that finds none sends the notice. Ten files clicked through
-`/deidentify-all` therefore produce one email, not ten.
+that finds none sends the notice. Ten files sent through
+`/deidentify-all` therefore produce one email, not ten. (That endpoint is
+now an escape hatch only -- see [Endpoints](#endpoints). Intake redaction
+does not send per-application notices: there is no application yet.)
 
 Two runs finishing in the same instant would both see an idle table, so a
 marker under `FILE_STORAGE_DIR/.deid-notices/<application id>.json` holds
@@ -315,6 +800,39 @@ Job state is in-process, like the de-identification dispatcher's. It is
 progress for the UI to poll, not a record: the files and their rows are
 the record. A restart mid-batch loses the progress bar, not the
 documents, and `/upload-jobs/{id}` then 404s.
+
+### Rejections
+
+One page for everything a reviewer turned down --
+`frontend/src/routes/rejections/index.tsx`, gated on `application:view`:
+
+- **Rejected applications**, from `/applications?status=rejected`, with the
+  reason and a link into the submission.
+- **Rejected documents**, from `/files/rejected` -- every file whose
+  `review_status` is `rejected`, across all applications, with the note the
+  reviewer left. Per row: read either copy, download either copy, attach a
+  replacement redaction, or approve it as it stands.
+
+`/files/rejected` is declared **before** `/files/{file_id}` so the literal
+path wins, and it resolves patients in one pass over the applications
+rather than a query per file. Its `has_original` / `has_deidentified` are
+disk checks rather than columns: whether the identified copy still exists
+depends on `DEID_KEEP_ORIGINAL` and on when the application was submitted,
+so the page only offers the downloads that can actually work.
+
+**A replacement sends the file back for review.** `/files-library` with
+`replaces_file_id` now resets `review_status` to `pending` and clears the
+note: a verdict describes the bytes it was given, and nobody has looked at
+the new ones. That is also what takes the row off this queue. The rejection
+reason is not lost -- it goes into the audit entry's `old_values`.
+
+> Which uncovered a defect worth knowing about: that audit entry was
+> **never being written**. `record_audit(action="REPLACE")` failed
+> `AuditLogCreate`'s `^(CREATE|UPDATE|DELETE)$` pattern, and audit failures
+> are logged rather than raised (see [Audit logging](#audit-logging)), so
+> every replacement since the endpoint was written went unrecorded.
+> `REPLACE` is now an allowed action, in `app/schemas.py` and in the
+> frontend's `AUDIT_ACTIONS`.
 
 ### The two trails
 

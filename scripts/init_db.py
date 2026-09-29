@@ -104,9 +104,12 @@ def seed_patients(cursor) -> None:
     )
     date_columns = {"dt_reg", "dt_b"}
 
+    # Codes, not uuids: a patient id is the code its documents carry, and
+    # seeded rows have to look like the real thing or the picker cannot
+    # match anything to them.
     rows = [
         (
-            str(uuid.uuid4()),
+            f"PT{i:04d}",
             f"INST{i:03d}",
             f"Springfield Clinic {i}",
             f"clinic{i}@example.com",

@@ -72,16 +72,26 @@ def get_application_or_404(cursor, application_id: str) -> PatientApplication:
 
 
 def list_applications(
-    cursor, patient_id: Optional[str] = None
+    cursor,
+    patient_id: Optional[str] = None,
+    status: Optional[str] = None,
 ) -> List[PatientApplication]:
     sql = f"SELECT {_COLS} FROM `patient_applications`"
-    params: tuple = ()
+
+    clauses = []
+    params: list = []
     if patient_id:
-        sql += " WHERE `patient_id` = %s"
-        params = (patient_id,)
+        clauses.append("`patient_id` = %s")
+        params.append(patient_id)
+    if status:
+        clauses.append("`status` = %s")
+        params.append(status)
+
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY `created_at` DESC"
 
-    execute(cursor, sql, params)
+    execute(cursor, sql, tuple(params))
     return [_row_to_application(r) for r in cursor.fetchall()]
 
 

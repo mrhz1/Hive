@@ -255,6 +255,11 @@ async def upload_deidentified_file(
             record.deidentified_file_name or deid_output_name(patient_id, extension),
         )
 
+        # A verdict describes the bytes it was given. Replacing those sends
+        # the file back for review rather than carrying the old rejection
+        # (or approval) over to a copy nobody has looked at; the note goes
+        # with it, because it described the copy that is gone. The audit
+        # entry below keeps what it said.
         updated = crud.update_file(
             cursor,
             replaces_file_id,
@@ -263,6 +268,8 @@ async def upload_deidentified_file(
                 is_deidentified=True,
                 deidentified_file_name=stored.name,
                 de_identified_file_path=str(stored),
+                review_status="pending",
+                review_note=None,
             ),
         )
 
@@ -271,8 +278,14 @@ async def upload_deidentified_file(
 
         action = "REPLACE"
         result = updated
+        replaced = {
+            "name": record.deidentified_file_name,
+            "review_status": record.review_status,
+            "review_note": record.review_note,
+        }
 
     else:
+        replaced = None
         application = applications_crud.newest_for_patient(cursor, patient_id)
         if application is None:
             raise ValidationError(
@@ -322,7 +335,7 @@ async def upload_deidentified_file(
         entity_type="deidentified_file",
         entity_id=result.id,
         user_id=actor.id,
-        old_values=None,
+        old_values=replaced,
         new_values={"patient_id": patient_id, "name": stored.name},
         request_id=request.headers.get("X-Request-ID"),
     )

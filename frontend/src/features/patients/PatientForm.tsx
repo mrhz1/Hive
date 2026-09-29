@@ -36,8 +36,12 @@ export function PatientForm({
   cancelTo = '/patients',
   submitLabel,
   readOnly = false,
+  code,
 }: {
   patient?: Patient
+
+  /** A code taken from the documents: filled in, and not to be retyped. */
+  code?: string
   onSaved?: (patient: Patient) => void | Promise<void>
 
   onBeforeSubmit?: () => boolean
@@ -54,7 +58,9 @@ export function PatientForm({
 
   const form = useApiForm(
     patientFormSchema,
-    patient ? toPatientFormValues(patient) : EMPTY_PATIENT_FORM
+    patient
+      ? toPatientFormValues(patient)
+      : { ...EMPTY_PATIENT_FORM, ...(code ? { id: code } : {}) }
   )
   const {
     register,
@@ -107,6 +113,21 @@ export function PatientForm({
       <Section
         title="Patient"
         hint="At least one of first name, last name or email is required -- everything else may be left blank."
+      />
+      <TextField
+        label="Patient code"
+        placeholder="AA0001"
+        autoComplete="off"
+        hint={
+          patient
+            ? 'A code identifies the patient everywhere and cannot be changed.'
+            : code
+              ? 'Taken from the de-identified documents this patient is being created for.'
+              : 'As it appears on the documents -- two to four letters then three or four digits.'
+        }
+        readOnly={Boolean(patient) || Boolean(code)}
+        error={errors.id?.message}
+        {...register('id')}
       />
       <TextField
         label="First name"

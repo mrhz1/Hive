@@ -6,7 +6,7 @@ export
 
 .PHONY: up down logs init check verify test run \
         ocr-install ocr-models ocr-check-models ocr-preflight ocr-verify \
-        deid dashboard
+        deid dashboard intake intake-apply intake-deid intake-run intake-watch
 
 up:
 	docker compose up -d
@@ -67,6 +67,26 @@ ocr-preflight:
 # The check that matters: re-OCR the redacted sample and hunt for leaks.
 ocr-verify:
 	$(MAKE) -C OCR run verify
+
+# What a dropped batch would do. Reads only -- see scripts/intake_sweep.py.
+intake:
+	$(PYTHON) scripts/intake_sweep.py
+
+# The same sweep, recorded in Hive. Still redacts nothing.
+intake-apply:
+	$(PYTHON) scripts/intake_sweep.py --apply
+
+# The automatic path: once a push has finished landing, sweep and redact.
+# Once, as a scheduled Job would; or for ever, checking every minute.
+intake-run:
+	$(PYTHON) scripts/intake_run.py
+
+intake-watch:
+	$(PYTHON) scripts/intake_run.py --watch
+
+# Redact everything the sweep queued, DEID_WORKERS at a time.
+intake-deid:
+	$(PYTHON) scripts/intake_deid.py
 
 # Drain the de-identification queue, the same way the Cloudera Job does.
 deid:

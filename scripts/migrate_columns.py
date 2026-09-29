@@ -33,6 +33,35 @@ MIGRATIONS = (
     ("patient_applications", "original_file_path", "STRING"),
 )
 
+# Tables added after launch. `make init` drops and recreates everything, so
+# it is not an option on a database with data in it -- these get created in
+# place instead. The CREATE is read out of sql/schema.sql rather than
+# restated here, so there is one definition of each table.
+NEW_TABLES = ("intake_files", "intake_batches")
+
+SCHEMA_FILE = _repo_root() / "sql" / "schema.sql"
+
+
+def create_statement(table: str) -> str:
+    """Pull one table's CREATE out of the schema file."""
+    marker = f"CREATE TABLE `{table}`"
+    for statement in SCHEMA_FILE.read_text().split(";"):
+        if marker in statement:
+            # Drop the leading comments, keeping the statement itself.
+            lines = [
+                line
+                for line in statement.strip().splitlines()
+                if not line.strip().startswith("--")
+            ]
+            return "\n".join(lines).strip()
+    raise RuntimeError(f"No CREATE TABLE for '{table}' in {SCHEMA_FILE}")
+
+
+def table_exists(cursor, table: str) -> bool:
+    cursor.execute("SHOW TABLES")
+    names = {(row[0] or "").strip().lower() for row in cursor.fetchall()}
+    return table.lower() in names
+
 
 def existing_columns(cursor, table: str):
     cursor.execute(f"DESCRIBE `{table}`")
@@ -51,6 +80,17 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     with hive_cursor() as cursor:
+        missing_tables = [t for t in NEW_TABLES if not table_exists(cursor, t)]
+
+        for table in missing_tables:
+            print(f"missing table: {table}")
+
+        if missing_tables and args.apply:
+            for table in missing_tables:
+                print(f"creating: {table}")
+                cursor.execute(create_statement(table))
+            print(f"created {len(missing_tables)} table(s)\n")
+
         present = {}
         for table, _, _ in MIGRATIONS:
             if table not in present:
@@ -63,7 +103,10 @@ def main(argv=None) -> int:
         ]
 
         if not missing:
-            print("Every column is already there; nothing to do.")
+            if missing_tables and not args.apply:
+                print("\nRe-run with --apply to create them.")
+                return 0
+            print("Every table and column is already there; nothing to do.")
             return 0
 
         for table, column, kind in missing:

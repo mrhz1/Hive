@@ -9,10 +9,11 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useAuditLogs, userHooks } from '@/hooks/useResources'
 import { AUDIT_ACTIONS, type AuditAction, type AuditLog } from '@/schemas/log'
 
-const ACTION_TONE: Record<AuditAction, 'success' | 'info' | 'danger'> = {
+const ACTION_TONE: Record<AuditAction, 'success' | 'info' | 'danger' | 'warning'> = {
   CREATE: 'success',
   UPDATE: 'info',
   DELETE: 'danger',
+  REPLACE: 'warning',
 }
 
 function LogsList() {

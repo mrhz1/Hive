@@ -23,6 +23,8 @@ class DocumentResult:
     status: str = "ok"
     error: Optional[str] = None
     failed_stage: Optional[str] = None
+    # Which way a DICOM was de-identified -- see stage_nlp.dicom_method.
+    method: Optional[str] = None
 
     @property
     def total_entities(self) -> int:
@@ -50,6 +52,7 @@ class DocumentResult:
             status=data.get("status", "ok"),
             error=data.get("error"),
             failed_stage=data.get("failed_stage"),
+            method=data.get("method"),
         )
 
 
@@ -64,7 +67,8 @@ def summarise(results: List[DocumentResult]) -> dict:
         "entities_redacted": sum(r.total_entities for r in ok),
         "boxes_applied": sum(r.total_boxes for r in ok),
         "outputs": [
-            {"source": r.source_path, "output_pdf": r.output_pdf} for r in ok
+            {"source": r.source_path, "output_pdf": r.output_pdf, "method": r.method}
+            for r in ok
         ],
         "failures": [
             {"path": r.source_path, "stage": r.failed_stage, "error": r.error}
