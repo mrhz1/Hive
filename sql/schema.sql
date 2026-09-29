@@ -162,14 +162,7 @@ TBLPROPERTIES ('transactional'='true');
 
 DROP TABLE IF EXISTS `intake_files`;
 
--- One row per file found in a dropped batch, including the ones we refuse.
---
--- A file with no code, or one whose path and name disagree, has to be
--- visible and fixable rather than skipped into silence -- so refusals are
--- rows here, not log lines. This is also the only thing that remembers
--- which original produced which redacted copy: renaming the output to the
--- patient-code scheme breaks the link on disk, and at redaction time there
--- is no patient_application_files row to hold both paths yet.
+-- one row per file found in the intake folder (skipped ones too)
 CREATE TABLE `intake_files` (
   `id` STRING,
   `batch_id` STRING,
@@ -195,9 +188,6 @@ TBLPROPERTIES ('transactional'='true');
 
 DROP TABLE IF EXISTS `intake_batches`;
 
--- Counts are deliberately not stored: they are a GROUP BY over
--- intake_files, and a Hive UPDATE per file to keep a counter honest costs
--- more than the query ever will.
 CREATE TABLE `intake_batches` (
   `id` STRING,
   `root` STRING,
