@@ -1,21 +1,3 @@
-"""Redact everything a sweep queued, several files at a time.
-
-    python scripts/intake_deid.py                 # drain the queue
-    python scripts/intake_deid.py --workers 4     # four at once
-    python scripts/intake_deid.py --limit 1       # one file, to try it out
-
-Run `scripts/intake_sweep.py --apply` first: this drains what that queued,
-and does not go looking at the folder itself.
-
-Sizing, measured on this pipeline: 19-31 seconds per page on a 4-core job.
-So a ten-page document is about four minutes, and a thousand of them is
-around 67 hours in one lane -- which is what --workers is for. The ceiling
-is memory, not cores: a worker killed for running out of it (exit -9)
-produces nothing, so raise DEID_WORKERS against measured peak usage and set
-DEID_WORKER_CPU_THREADS so N workers do not each help themselves to eight
-cores.
-"""
-
 import argparse
 import os
 import sys
@@ -52,7 +34,7 @@ def main(argv=None) -> int:
     configure_logging()
 
     parser = argparse.ArgumentParser(
-        description=__doc__,
+        description="Redact all queued intake files.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -110,7 +92,7 @@ def main(argv=None) -> int:
     if after.failed:
         with hive_cursor() as cursor:
             for row in crud.list_files(cursor, status="failed"):
-                print(f"  failed: {row.relative_path} -- {row.detail or 'no detail'}")
+                print(f"  failed: {row.relative_path}: {row.detail or 'no detail'}")
 
     return 0
 

@@ -1,26 +1,3 @@
-"""De-identify whatever has finished landing in the drop folder.
-
-    python scripts/intake_run.py            # check once (for a scheduled Job)
-    python scripts/intake_run.py --watch    # check every minute, for ever
-
-On several machines, give each its share of the work:
-
-    python scripts/intake_run.py --watch --shards 0-3 --of 12    # machine 1
-    python scripts/intake_run.py --watch --shards 4-7 --of 12    # machine 2
-    python scripts/intake_run.py --watch --shards 8-11 --of 12   # machine 3
-
-Every shard 0..of-1 must be run by exactly one process. The one holding
-shard 0 also sweeps the folder.
-
-Nothing happens while a push is still being copied in. It starts when the
-sender drops a `batch.done` marker, or when nothing in the folder has changed
-for INTAKE_SETTLE_SECONDS -- whichever comes first. Then it sweeps and
-redacts, DEID_WORKERS files at a time.
-
-Safe to call as often as you like: a run that finds another still working
-exits at once, and one that finds nothing new costs a walk of the folder.
-"""
-
 import argparse
 import os
 import sys
@@ -52,16 +29,16 @@ from app import intake, intake_run  # noqa: E402
 
 
 def _say(result) -> None:
-    if result.outcome != intake_run.RAN:
-        print(f"{result.outcome}: {result.detail}")
+    if result["outcome"] != intake_run.RAN:
+        print(f"{result['outcome']}: {result['detail']}")
         return
 
     print(
-        f"swept {result.swept} new file(s): {result.skipped} skipped, "
-        f"{result.conflicts} in conflict"
+        f"swept {result['swept']} new file(s): {result['skipped']} skipped, "
+        f"{result['conflicts']} in conflict"
     )
-    print(f"redacted {result.redacted}, failed {result.failed}")
-    if result.skipped or result.conflicts or result.failed:
+    print(f"redacted {result['redacted']}, failed {result['failed']}")
+    if result["skipped"] or result["conflicts"] or result["failed"]:
         print("-> see the Intake page for what needs a person")
 
 
@@ -85,7 +62,7 @@ def main(argv=None) -> int:
     configure_logging()
 
     parser = argparse.ArgumentParser(
-        description=__doc__,
+        description="De-identify files that have finished arriving in the intake folder.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -122,7 +99,7 @@ def main(argv=None) -> int:
     root.mkdir(parents=True, exist_ok=True)
 
     if args.watch:
-        print(f"watching {root} every {args.every:g}s -- Ctrl-C to stop")
+        print(f"watching {root} every {args.every:g}s (Ctrl-C to stop)")
         try:
             intake_run.watch(root, every_seconds=args.every, shards=shards, of=args.of)
         except KeyboardInterrupt:

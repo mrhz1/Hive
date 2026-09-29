@@ -104,9 +104,6 @@ def seed_patients(cursor) -> None:
     )
     date_columns = {"dt_reg", "dt_b"}
 
-    # Codes, not uuids: a patient id is the code its documents carry, and
-    # seeded rows have to look like the real thing or the picker cannot
-    # match anything to them.
     rows = [
         (
             f"PT{i:04d}",
@@ -153,7 +150,7 @@ def main() -> int:
     try:
         conn = connect_from_env()
     except Exception as exc:
-        print(f"FAILED to connect to hive -- {exc}", file=sys.stderr)
+        print(f"FAILED to connect to hive: {exc}", file=sys.stderr)
         return 1
 
     try:
@@ -163,7 +160,7 @@ def main() -> int:
         seed_users(cursor)
         seed_patients(cursor)
     except Exception as exc:
-        print(f"FAILED during init -- {exc}", file=sys.stderr)
+        print(f"FAILED during init: {exc}", file=sys.stderr)
         return 1
     finally:
         conn.close()
