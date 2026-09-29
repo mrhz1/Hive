@@ -26,14 +26,24 @@ from deid.spans import OcrDocument, PageSpans
 log = logging.getLogger(__name__)
 
 
-class Deidentifier:
+def _make_parent_dir(path: str) -> None:
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
 
+
+def _entity_totals(result: DocumentResult) -> Dict[str, int]:
+    totals: Dict[str, int] = {}
+    for page in result.pages:
+        for entity, count in page.entity_counts.items():
+            totals[entity] = totals.get(entity, 0) + count
+    return totals
+
+
+class Deidentifier:
     def __init__(self, config: Config):
         self.config = config
         self._analyzer = None
-        self.whole_span = os.environ.get(
-            "DEID_REDACT_WHOLE_SPAN", ""
-        ).strip().lower() in ("1", "true", "yes", "on")
+        whole_span = os.environ.get("DEID_REDACT_WHOLE_SPAN", "").strip().lower()
+        self.whole_span = whole_span in ("1", "true", "yes", "on")
 
     @property
     def analyzer(self):
@@ -66,10 +76,10 @@ class Deidentifier:
 
         try:
             document = open_docx(source_path)
-        except Exception as exc:
-            log.error("open failed for %s: %s", source_path, exc)
+        except Exception as e:
+            log.error("open failed for %s: %s", source_path, e)
             result.status = "error"
-            result.error = str(exc)
+            result.error = str(e)
             result.failed_stage = "nlp"
             result.duration_seconds = round(time.perf_counter() - started, 2)
             return result
@@ -110,7 +120,7 @@ class Deidentifier:
                     ", ".join(stripped),
                 )
 
-            os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+            _make_parent_dir(output_path)
             save_document(document, DOCX, output_path)
 
             result.pages.append(
@@ -125,23 +135,19 @@ class Deidentifier:
             )
 
             if output_text and self.config.write_text:
-                os.makedirs(
-                    os.path.dirname(os.path.abspath(output_text)), exist_ok=True
-                )
-                with open(output_text, "w", encoding="utf-8") as fh:
-                    fh.write("\n".join(redacted_blocks))
+                _make_parent_dir(output_text)
+                with open(output_text, "w", encoding="utf-8") as f:
+                    f.write("\n".join(redacted_blocks))
 
             if output_report and self.config.write_report:
-                os.makedirs(
-                    os.path.dirname(os.path.abspath(output_report)), exist_ok=True
-                )
-                with open(output_report, "w", encoding="utf-8") as fh:
-                    json.dump(self._build_word_report(result), fh, indent=2)
+                _make_parent_dir(output_report)
+                with open(output_report, "w", encoding="utf-8") as f:
+                    json.dump(self._build_word_report(result), f, indent=2)
 
-        except Exception as exc:
+        except Exception as e:
             log.exception("processing failed for %s", source_path)
             result.status = "error"
-            result.error = str(exc)
+            result.error = str(e)
             result.failed_stage = "nlp"
 
         result.duration_seconds = round(time.perf_counter() - started, 2)
@@ -158,17 +164,12 @@ class Deidentifier:
         return result
 
     def _build_word_report(self, result: DocumentResult) -> dict:
-        totals: Dict[str, int] = {}
-        for page in result.pages:
-            for entity, count in page.entity_counts.items():
-                totals[entity] = totals.get(entity, 0) + count
-
         return {
             "source": result.source_path,
             "output": result.output_pdf,
             "format": "docx",
             "status": result.status,
-            "entity_totals": totals,
+            "entity_totals": _entity_totals(result),
             "pages": [asdict(page) for page in result.pages],
         }
 
@@ -190,10 +191,10 @@ class Deidentifier:
 
         try:
             doc, kind = open_document(source_path)
-        except Exception as exc:
-            log.error("open failed for %s: %s", source_path, exc)
+        except Exception as e:
+            log.error("open failed for %s: %s", source_path, e)
             result.status = "error"
-            result.error = str(exc)
+            result.error = str(e)
             result.failed_stage = "nlp"
             result.duration_seconds = round(time.perf_counter() - started, 2)
             return result
@@ -223,27 +224,23 @@ class Deidentifier:
             if kind == DICOM:
                 result.method = dicom_method(result)
 
-            os.makedirs(os.path.dirname(os.path.abspath(output_pdf)), exist_ok=True)
+            _make_parent_dir(output_pdf)
             save_document(doc, kind, output_pdf)
 
             if output_text and self.config.write_text:
-                os.makedirs(
-                    os.path.dirname(os.path.abspath(output_text)), exist_ok=True
-                )
-                with open(output_text, "w", encoding="utf-8") as fh:
-                    fh.write("\n\n".join(text_pages))
+                _make_parent_dir(output_text)
+                with open(output_text, "w", encoding="utf-8") as f:
+                    f.write("\n\n".join(text_pages))
 
             if output_report and self.config.write_report:
-                os.makedirs(
-                    os.path.dirname(os.path.abspath(output_report)), exist_ok=True
-                )
-                with open(output_report, "w", encoding="utf-8") as fh:
-                    json.dump(self._build_report(result, ocr_document), fh, indent=2)
+                _make_parent_dir(output_report)
+                with open(output_report, "w", encoding="utf-8") as f:
+                    json.dump(self._build_report(result, ocr_document), f, indent=2)
 
-        except Exception as exc:
+        except Exception as e:
             log.exception("processing failed for %s", source_path)
             result.status = "error"
-            result.error = str(exc)
+            result.error = str(e)
             result.failed_stage = "nlp"
         finally:
             close_document(doc, kind)
@@ -286,14 +283,14 @@ class Deidentifier:
 
         values: List[dict] = []
         if self.config.report_include_values:
-            values = [
-                {
-                    "entity_type": p.entity_type,
-                    "score": round(p.score, 3),
-                    "text": page_text.text[p.start : p.end],
-                }
-                for p in pii
-            ]
+            for p in pii:
+                values.append(
+                    {
+                        "entity_type": p.entity_type,
+                        "score": round(p.score, 3),
+                        "text": page_text.text[p.start : p.end],
+                    }
+                )
 
         page_result = PageResult(
             page_number=page_spans.page_number,
@@ -308,11 +305,6 @@ class Deidentifier:
     def _build_report(
         self, result: DocumentResult, ocr_document: OcrDocument
     ) -> dict:
-        totals: Dict[str, int] = {}
-        for page in result.pages:
-            for entity, count in page.entity_counts.items():
-                totals[entity] = totals.get(entity, 0) + count
-
         return {
             "source_path": result.source_path,
             "output_pdf": result.output_pdf,
@@ -323,7 +315,7 @@ class Deidentifier:
             "page_count": len(result.pages),
             "total_entities": result.total_entities,
             "total_boxes_applied": result.total_boxes,
-            "entity_totals": totals,
+            "entity_totals": _entity_totals(result),
             "models": {
                 "ocr_detection": ocr_document.models.get("detection"),
                 "ocr_recognition": ocr_document.models.get("recognition"),
@@ -359,9 +351,8 @@ def run_stage(jobs: List[Dict[str, Any]], config: Config) -> List[DocumentResult
     results: List[DocumentResult] = []
 
     first = jobs[0] if jobs else {}
-    progress = progress_writer(
-        first.get("progress"), file_total=int(first.get("file_total") or len(jobs) or 1)
-    ).load()
+    file_total = int(first.get("file_total") or len(jobs) or 1)
+    progress = progress_writer(first.get("progress"), file_total=file_total).load()
     progress.stage("redacting")
 
     for job in jobs:
@@ -380,13 +371,13 @@ def run_stage(jobs: List[Dict[str, Any]], config: Config) -> List[DocumentResult
 
         try:
             ocr_document = OcrDocument.read(job["spans"])
-        except Exception as exc:
-            log.error("could not read OCR handoff for %s: %s", source, exc)
+        except Exception as e:
+            log.error("could not read OCR handoff for %s: %s", source, e)
             results.append(
                 DocumentResult(
                     source_path=source,
                     status="error",
-                    error=f"could not read OCR handoff: {exc}",
+                    error=f"could not read OCR handoff: {e}",
                     failed_stage="nlp",
                 )
             )

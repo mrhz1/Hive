@@ -37,11 +37,15 @@ def generated_facts(
     return facts
 
 
-def _as_pairs(values: Dict[str, str]) -> List[str]:
-    return [f"{key}={value}" for key, value in values.items() if value]
+def _to_pairs(values: Dict[str, str]) -> List[str]:
+    pairs = []
+    for key, value in values.items():
+        if value:
+            pairs.append(f"{key}={value}")
+    return pairs
 
 
-def _appended(existing: Optional[str], addition: str) -> str:
+def _append_text(existing: Optional[str], addition: str) -> str:
     current = (existing or "").strip()
     if not current:
         return addition
@@ -58,8 +62,8 @@ def _embed_pdf(path: Path, values: Dict[str, str]) -> None:
 
     try:
         existing = dict(document.metadata or {})
-        existing["keywords"] = _appended(
-            existing.get("keywords"), "; ".join(_as_pairs(values))
+        existing["keywords"] = _append_text(
+            existing.get("keywords"), "; ".join(_to_pairs(values))
         )
         document.set_metadata(existing)
 
@@ -87,7 +91,7 @@ def _embed_dicom(path: Path, values: Dict[str, str]) -> None:
         existing = [existing]
 
     entries = [str(item) for item in existing]
-    for pair in _as_pairs(values):
+    for pair in _to_pairs(values):
         if len(pair) <= DICOM_LO_MAX and pair not in entries:
             entries.append(pair)
 
@@ -101,18 +105,11 @@ def _embed_word(path: Path, values: Dict[str, str]) -> None:
     document = docx.Document(str(path))
     properties = document.core_properties
 
-    properties.comments = _appended(
-        properties.comments, "; ".join(_as_pairs(values))
+    properties.comments = _append_text(
+        properties.comments, "; ".join(_to_pairs(values))
     )
 
     document.save(str(path))
-
-
-_EMBEDDERS = {
-    "pdf": _embed_pdf,
-    "dicom": _embed_dicom,
-    "word": _embed_word,
-}
 
 
 def embed_metadata(
@@ -133,13 +130,18 @@ def embed_metadata(
         return None
 
     try:
-        _EMBEDDERS[file_type](path, values)
-    except Exception as exc:
+        if file_type == "pdf":
+            _embed_pdf(path, values)
+        elif file_type == "dicom":
+            _embed_dicom(path, values)
+        elif file_type == "word":
+            _embed_word(path, values)
+    except Exception as e:
         log.error(
             "embed_metadata_failed",
             path=str(path),
             file_type=file_type,
-            error=str(exc)[:300],
+            error=str(e)[:300],
         )
         return None
 

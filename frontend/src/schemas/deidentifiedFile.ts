@@ -18,7 +18,7 @@ export type DeidentifiedFile = z.infer<typeof deidentifiedFileSchema>
 
 export const deidentifiedFileListSchema = z.array(deidentifiedFileSchema)
 
-export function fileHaystack(file: DeidentifiedFile): string {
+export function fileSearchText(file: DeidentifiedFile): string {
   return [file.name, file.original_file_name, file.patient_id, file.file_type]
     .filter(Boolean)
     .join(' ')

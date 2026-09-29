@@ -114,14 +114,15 @@ def _name_lines(names: List[str], limit: int = 20) -> List[str]:
 
 
 def _file_lines(job: UploadJob, status: str, limit: int = 20) -> List[str]:
-    entries = [f for f in job.files if f.status == status]
-    return _name_lines(
-        [
-            f"{entry.name}" + (f" ({entry.error})" if entry.error else "")
-            for entry in entries
-        ],
-        limit,
-    )
+    names = []
+    for entry in job.files:
+        if entry.status != status:
+            continue
+        if entry.error:
+            names.append(f"{entry.name} ({entry.error})")
+        else:
+            names.append(entry.name)
+    return _name_lines(names, limit)
 
 
 def _body(
@@ -171,14 +172,14 @@ def notify_upload_finished(
 
     if job.failed:
         subject = (
-            f"Document upload partly failed -- {job.failed} of {job.total} files"
+            f"Document upload partly failed: {job.failed} of {job.total} files"
         )
         headline = (
             f"{job.stored} of {job.total} documents were moved into storage; "
             f"{job.failed} could not be."
         )
     else:
-        subject = f"Documents ready -- {job.stored} file(s) uploaded"
+        subject = f"Documents ready: {job.stored} file(s) uploaded"
         headline = (
             f"All {job.stored} document(s) have finished moving into storage "
             "and are ready to work on."
@@ -229,7 +230,7 @@ def notify_deid_finished(
         )
     elif summary.failed:
         subject = (
-            f"De-identification partly failed -- {summary.failed} of "
+            f"De-identification partly failed: {summary.failed} of "
             f"{summary.total} files"
         )
         headline = (
@@ -238,7 +239,7 @@ def notify_deid_finished(
         )
     else:
         subject = (
-            f"De-identification complete -- {summary.deidentified} file(s) ready"
+            f"De-identification complete: {summary.deidentified} file(s) ready"
         )
         headline = (
             f"All {summary.deidentified} document(s) have been de-identified "

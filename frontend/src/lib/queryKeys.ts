@@ -47,7 +47,6 @@ export const queryKeys = {
     all: ['application-files'] as const,
     list: (applicationId: string) =>
       [...queryKeys.applicationFiles.all, 'list', applicationId] as const,
-
     rejected: () => [...queryKeys.applicationFiles.all, 'rejected'] as const,
 
     metadata: (fileId: string, deidentified = false) =>
@@ -56,7 +55,6 @@ export const queryKeys = {
         deidentified ? 'deid-metadata' : 'metadata',
         fileId,
       ] as const,
-
     uploadJob: (jobId: string) =>
       [...queryKeys.applicationFiles.all, 'upload-job', jobId] as const,
   },

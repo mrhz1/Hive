@@ -8,7 +8,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { DataTable, type Column } from '@/components/DataTable'
@@ -34,7 +34,7 @@ import {
   approvableCount,
   deidTone,
   fileTally,
-  fileHaystack,
+  fileSearchText,
   formatFileSize,
   hasExtractableMetadata,
   previewKind,
@@ -108,19 +108,15 @@ export function FileReviewPanel({
 
   const approveAll = useApproveAllFiles(applicationId)
 
-  const files = useMemo(() => filesQuery.data ?? [], [filesQuery.data])
-
-  const visible = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    if (!term) return files
-    return files.filter((file) => fileHaystack(file).includes(term))
-  }, [files, search])
+  const files = filesQuery.data ?? []
+  const searchText = search.trim().toLowerCase()
+  const visible = searchText
+    ? files.filter((file) => fileSearchText(file).includes(searchText))
+    : files
 
   const undecided = undecidedCount(files)
-
   const approvable = approvableCount(files)
-
-  const tally = useMemo(() => fileTally(files), [files])
+  const tally = fileTally(files)
 
   async function showFile(file: ApplicationFile, deidentified = false) {
     const extension =
@@ -206,7 +202,6 @@ export function FileReviewPanel({
         separatorBefore: true,
         label: 'Approve',
         icon: <Check className="size-4" aria-hidden="true" />,
-
         disabled: !file.is_deidentified || file.review_status === 'approved',
         title: !file.is_deidentified
           ? NOT_REVIEWABLE

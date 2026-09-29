@@ -29,6 +29,5 @@ frontend/test-results/
 frontend/playwright-report/
 
 storage
-.aider*
 *.pdf
 *.txt

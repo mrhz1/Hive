@@ -76,7 +76,6 @@ function ApplicationsList() {
       {
         id: 'assigned_to',
         header: 'Assigned to',
-
         cell: (a) => <Muted value={a.assigned_to_username} />,
         sortValue: (a) => a.assigned_to_username ?? '',
       },
@@ -108,23 +107,22 @@ function ApplicationsList() {
     [labelFor]
   )
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    if (!term) return data
-    return (data ?? []).filter((application) =>
-      [
+  const searchText = search.trim().toLowerCase()
+  let filtered = data
+  if (searchText) {
+    filtered = (data ?? []).filter((application) => {
+      const text = [
         labelFor(application),
         application.status,
         application.description,
-
         application.assigned_to_username,
       ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
-        .includes(term)
-    )
-  }, [data, search, labelFor])
+      return text.includes(searchText)
+    })
+  }
 
   const canModify = can('application:update') || can('application:delete')
 

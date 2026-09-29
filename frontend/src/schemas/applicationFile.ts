@@ -42,7 +42,7 @@ export function reviewTone(status: string): 'success' | 'danger' | 'neutral' {
   return 'neutral'
 }
 
-export function fileHaystack(file: {
+export function fileSearchText(file: {
   original_file_name: string
   file_extension: string
   description?: string | null

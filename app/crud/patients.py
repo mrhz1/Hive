@@ -52,7 +52,7 @@ COLUMNS = (
     "deidentified_file_path",
 )
 
-DATE_COLUMNS = set({"dt_reg", "dt_b", "dt_d"})
+DATE_COLUMNS = {"dt_reg", "dt_b", "dt_d"}
 
 _COLS = ", ".join(f"`{c}`" for c in COLUMNS)
 
