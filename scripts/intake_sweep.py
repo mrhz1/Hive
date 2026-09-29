@@ -1,15 +1,3 @@
-"""Look at a dropped folder and report what de-identification would do.
-
-Dry by default. Nothing is redacted, moved, renamed or written to Hive
-unless you pass --apply, because the whole point of this step is to read
-the code detection's mind before it starts deciding which patient a
-document belongs to.
-
-    python scripts/intake_sweep.py                    # what would happen
-    python scripts/intake_sweep.py --root /some/drop  # somewhere else
-    python scripts/intake_sweep.py --apply            # record it in Hive
-"""
-
 import argparse
 import os
 import sys
@@ -65,7 +53,7 @@ def _report(result, root: Path, settle_seconds: float) -> None:
 
     print(
         f"  queued    {len(result.queued):>5}   ready to de-identify\n"
-        f"  skipped   {len(result.skipped):>5}   cannot be placed -- fix at source\n"
+        f"  skipped   {len(result.skipped):>5}   cannot be placed, fix at source\n"
         f"  conflicts {len(result.conflicts):>5}   two codes, needs a person"
     )
 
@@ -93,7 +81,7 @@ def _report(result, root: Path, settle_seconds: float) -> None:
             print(f"  ... and {len(result.queued) - 40} more")
 
     if result.conflicts:
-        print("\nConflicts -- somebody has to choose:")
+        print("\nConflicts (need a manual choice):")
         _table(
             [
                 (
@@ -121,7 +109,6 @@ def _report(result, root: Path, settle_seconds: float) -> None:
 
 
 def _output_hint(candidate) -> str:
-    """Where the redacted copy would land, relative to the mirror."""
     directory = Path(candidate.relative_path).parent
     return str(directory / f"{candidate.code}_<date>_<serial>.{candidate.extension}")
 
@@ -130,7 +117,7 @@ def main(argv=None) -> int:
     configure_logging()
 
     parser = argparse.ArgumentParser(
-        description=__doc__,
+        description="Check the intake folder and show what would be de-identified (dry run unless --apply).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(

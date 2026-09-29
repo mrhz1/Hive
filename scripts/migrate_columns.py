@@ -33,21 +33,15 @@ MIGRATIONS = (
     ("patient_applications", "original_file_path", "STRING"),
 )
 
-# Tables added after launch. `make init` drops and recreates everything, so
-# it is not an option on a database with data in it -- these get created in
-# place instead. The CREATE is read out of sql/schema.sql rather than
-# restated here, so there is one definition of each table.
 NEW_TABLES = ("intake_files", "intake_batches")
 
 SCHEMA_FILE = _repo_root() / "sql" / "schema.sql"
 
 
 def create_statement(table: str) -> str:
-    """Pull one table's CREATE out of the schema file."""
     marker = f"CREATE TABLE `{table}`"
     for statement in SCHEMA_FILE.read_text().split(";"):
         if marker in statement:
-            # Drop the leading comments, keeping the statement itself.
             lines = [
                 line
                 for line in statement.strip().splitlines()
@@ -123,7 +117,7 @@ def main(argv=None) -> int:
             print(f"running: {statement}")
             cursor.execute(statement)
 
-        print(f"\ndone -- added {len(missing)} column(s)")
+        print(f"\ndone, added {len(missing)} column(s)")
 
     return 0
 

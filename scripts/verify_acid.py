@@ -23,7 +23,7 @@ def main() -> int:
     try:
         conn = connect_from_env()
     except Exception as exc:
-        print(f"FAILED to connect to hive -- {exc}", file=sys.stderr)
+        print(f"FAILED to connect to hive: {exc}", file=sys.stderr)
         return 1
 
     try:
@@ -64,14 +64,14 @@ def main() -> int:
         rows_after = cursor.fetchall()
         if rows_after:
             print(
-                f"FAILED: row id={TEST_ID} still present after DELETE -- "
+                f"FAILED: row id={TEST_ID} still present after DELETE, "
                 "table is not transactional (check STORED AS ORC + managed table)",
                 file=sys.stderr,
             )
             return 1
 
     except Exception as exc:
-        print(f"FAILED during ACID verification -- {exc}", file=sys.stderr)
+        print(f"FAILED during ACID verification: {exc}", file=sys.stderr)
         return 1
     finally:
         conn.close()
