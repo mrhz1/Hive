@@ -1,20 +1,6 @@
 import { z } from 'zod'
 import { timestampSchema } from './common'
 
-export const INTAKE_STATUSES = [
-  'queued',
-  'processing',
-  'done',
-  'failed',
-  'skipped',
-  'conflict',
-  'claimed',
-  'submitted',
-  'superseded',
-] as const
-
-export type IntakeStatus = (typeof INTAKE_STATUSES)[number]
-
 export const intakeFileSchema = z.object({
   id: z.string(),
   batch_id: z.string(),
@@ -56,31 +42,25 @@ export const intakeCountsSchema = z.object({
 
 export type IntakeCounts = z.infer<typeof intakeCountsSchema>
 
-export function intakeHaystack(file: IntakeFile): string {
-  return [
+export function intakeSearchText(file: IntakeFile): string {
+  const values = [
     file.source_path,
-    file.patient_code ?? '',
-    file.path_code ?? '',
-    file.name_code ?? '',
-    file.reason ?? '',
-    file.detail ?? '',
+    file.patient_code,
+    file.path_code,
+    file.name_code,
+    file.reason,
+    file.detail,
   ]
-    .join(' ')
-    .toLowerCase()
+  return values.filter(Boolean).join(' ').toLowerCase()
 }
 
-/**
- * The list somebody hands to whoever owns the source system: one line per
- * file, full path first, then why it was refused.
- */
-export function refusalReport(files: IntakeFile[]): string {
-  return files
-    .map((file) =>
-      [file.source_path, file.reason ?? file.status, file.detail ?? '']
-        .filter(Boolean)
-        .join('\t')
-    )
-    .join('\n')
+export function filesToText(files: IntakeFile[]): string {
+  const lines = files.map((file) => {
+    const parts = [file.source_path, file.reason ?? file.status]
+    if (file.detail) parts.push(file.detail)
+    return parts.join('\t')
+  })
+  return lines.join('\n')
 }
 
 export const availableCodeSchema = z.object({
@@ -94,25 +74,22 @@ export type AvailableCode = z.infer<typeof availableCodeSchema>
 
 export const availableCodeListSchema = z.array(availableCodeSchema)
 
-/**
- * Group a code's files by the folder they sit in, so a whole folder can be
- * taken at once. Folders are relative to the code's own folder, which is
- * what a person recognises -- the full drop path is the same on every row.
- */
-export function byFolder(files: IntakeFile[]): Array<[string, IntakeFile[]]> {
-  const groups = new Map<string, IntakeFile[]>()
+export function groupByFolder(files: IntakeFile[]): [string, IntakeFile[]][] {
+  const groups: Record<string, IntakeFile[]> = {}
   for (const file of files) {
     const parts = file.relative_path.split('/')
-    const codeAt = parts.lastIndexOf(file.patient_code ?? '')
-    const folder =
-      codeAt >= 0 && codeAt < parts.length - 1
-        ? parts.slice(codeAt, -1).join('/')
-        : parts.slice(0, -1).join('/') || '.'
-    const group = groups.get(folder) ?? []
+    const codeIndex = parts.lastIndexOf(file.patient_code ?? '')
+    let folder
+    if (codeIndex >= 0 && codeIndex < parts.length - 1) {
+      folder = parts.slice(codeIndex, -1).join('/')
+    } else {
+      folder = parts.slice(0, -1).join('/') || '.'
+    }
+    const group = groups[folder] ?? []
     group.push(file)
-    groups.set(folder, group)
+    groups[folder] = group
   }
-  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))
+  return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]))
 }
 
 export const intakeWorkerSchema = z.object({
@@ -168,24 +145,18 @@ export type IntakeBatchProgress = z.infer<typeof intakeBatchProgressSchema>
 
 export const intakeBatchProgressListSchema = z.array(intakeBatchProgressSchema)
 
-/** "3 days 4 hours", "12 minutes", "under a minute" -- the two largest units. */
 export function humanDuration(seconds: number | null): string {
   if (seconds === null || !Number.isFinite(seconds)) return '--'
   if (seconds < 60) return 'under a minute'
-  const units: Array<[string, number]> = [
-    ['day', 86400],
-    ['hour', 3600],
-    ['minute', 60],
-  ]
-  const parts: string[] = []
-  let left = Math.round(seconds)
-  for (const [name, size] of units) {
-    const n = Math.floor(left / size)
-    if (n > 0) {
-      parts.push(`${n} ${name}${n === 1 ? '' : 's'}`)
-      left -= n * size
-    }
-    if (parts.length === 2) break
-  }
-  return parts.join(' ')
+
+  const total = Math.round(seconds)
+  const days = Math.floor(total / 86400)
+  const hours = Math.floor((total % 86400) / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+
+  const parts = []
+  if (days) parts.push(`${days} day${days === 1 ? '' : 's'}`)
+  if (hours) parts.push(`${hours} hour${hours === 1 ? '' : 's'}`)
+  if (minutes) parts.push(`${minutes} minute${minutes === 1 ? '' : 's'}`)
+  return parts.slice(0, 2).join(' ')
 }

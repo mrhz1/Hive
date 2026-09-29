@@ -29,8 +29,7 @@ export function FileMetadataDetailModal({
     if (!needle) return all
     return all.filter(
       ([name, value]) =>
-        name.toLowerCase().includes(needle) ||
-        value.toLowerCase().includes(needle)
+        name.toLowerCase().includes(needle) || value.toLowerCase().includes(needle)
     )
   }, [all, query])
 
@@ -56,12 +55,7 @@ export function FileMetadataDetailModal({
             </p>
           </div>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            aria-label="Close metadata"
-          >
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close metadata">
             <X className="size-4" aria-hidden="true" />
           </Button>
         </div>

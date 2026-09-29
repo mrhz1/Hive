@@ -33,7 +33,7 @@ def _repo_root():
     )
     listing = "  ".join(sorted(p.name for p in cwd.iterdir())[:20]) or "(empty)"
     raise RuntimeError(
-        "Cannot locate the Hive repo root -- no app/deid.py under any of:\n"
+        "Cannot locate the Hive repo root, no app/deid.py under any of:\n"
         + tried
         + "\nContents of {}:\n  {}".format(cwd, listing)
         + "\nSet HIVE_REPO_ROOT (Job -> Environment Variables) to the "
@@ -104,7 +104,7 @@ def parse_args(argv=None):
             "run that died mid-file. NOTE: patient_application_files "
             "has no "
             "updated_at column, so this measures age since upload, not "
-            "since the row was claimed -- set it comfortably longer than "
+            "since the row was claimed. Set it comfortably longer than "
             "a run takes, or a file uploaded yesterday will be re-claimed "
             "the moment it starts processing."
         ),

@@ -1,49 +1,39 @@
 import { ShieldCheck, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { useUploadDeidentifiedFile } from '@/hooks/useResources'
 import type { RejectedFile } from '@/schemas/rejection'
 
-/**
- * Attach a better redacted copy in place of the one that was rejected.
- *
- * The upload keeps the file's id and its place in the application; the
- * server sends the file back to `pending` review, since nobody has looked
- * at the new bytes yet. That is also what takes the row off this queue.
- */
-export function ReplaceDeidentifiedDialog({
-  file,
-  onClose,
-  onReplaced,
-}: {
+type Props = {
   file: RejectedFile
   onClose: () => void
   onReplaced?: () => void
-}) {
+}
+
+export function ReplaceDeidentifiedDialog({ file, onClose, onReplaced }: Props) {
   const upload = useUploadDeidentifiedFile()
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [chosen, setChosen] = useState<File | null>(null)
+  const [newFile, setNewFile] = useState<File | null>(null)
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
     }
-    window.document.addEventListener('keydown', onKeyDown)
-    return () => window.document.removeEventListener('keydown', onKeyDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
   }, [onClose])
 
-  async function submit() {
-    if (!chosen) return
+  async function handleReplace() {
+    if (!newFile) return
     try {
       await upload.mutateAsync({
         patientId: file.patient_id,
-        file: chosen,
+        file: newFile,
         replacesFileId: file.id,
       })
-      onReplaced?.()
+      if (onReplaced) onReplaced()
       onClose()
     } catch {
-      // The hook toasts its own message.
+      // error toast comes from the hook
     }
   }
 
@@ -64,18 +54,13 @@ export function ReplaceDeidentifiedDialog({
               {file.original_file_name} · {file.patient_id}
             </p>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            aria-label="Close"
-          >
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">
             <X className="size-4" aria-hidden="true" />
           </Button>
         </div>
 
         <div className="space-y-4 p-5">
-          {file.review_note ? (
+          {file.review_note && (
             <div className="rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--background-secondary))] p-3">
               <p className="text-[11px] font-bold tracking-widest text-[rgb(var(--foreground-muted))] uppercase">
                 Why it was rejected
@@ -84,22 +69,21 @@ export function ReplaceDeidentifiedDialog({
                 {file.review_note}
               </p>
             </div>
-          ) : null}
+          )}
 
           <p className="text-xs text-[rgb(var(--foreground-muted))]">
-            The new copy keeps this file's id and its place in the
-            application, and goes back to <strong>pending</strong> review --
-            nobody has checked the replacement yet. The rejection note is
-            kept in the audit log. PDF, DICOM or Word.
+            The new copy keeps this file's id and its place in the application, and goes
+            back to <strong>pending</strong> review, since nobody has checked the
+            replacement yet. The rejection note is kept in the audit log. PDF, DICOM or
+            Word.
           </p>
 
           <input
-            ref={inputRef}
             type="file"
             accept=".pdf,.dcm,.dicom,.doc,.docx"
             aria-label="Replacement de-identified document"
             disabled={upload.isPending}
-            onChange={(event) => setChosen(event.target.files?.[0] ?? null)}
+            onChange={(e) => setNewFile(e.target.files?.[0] ?? null)}
             className="w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-[rgb(var(--surface-muted))] file:px-3 file:py-2 file:text-sm"
           />
 
@@ -109,10 +93,10 @@ export function ReplaceDeidentifiedDialog({
             </Button>
             <Button
               size="sm"
-              disabled={!chosen}
+              disabled={!newFile}
               isLoading={upload.isPending}
               leadingIcon={<ShieldCheck className="size-3.5" aria-hidden="true" />}
-              onClick={() => void submit()}
+              onClick={() => void handleReplace()}
             >
               Replace
             </Button>

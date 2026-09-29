@@ -311,13 +311,13 @@ def get_upload_job(
     job = uploads.get_job(job_id)
     if job is None:
         raise NotFoundError(
-            f"Upload job '{job_id}' is not known -- it may have finished long "
+            f"Upload job '{job_id}' is not known, it may have finished long "
             "ago, or the API may have restarted since it ran"
         )
     return job
 
 
-def _on_disk(stored: Optional[str]) -> bool:
+def _file_exists(stored: Optional[str]) -> bool:
     if not stored:
         return False
     try:
@@ -331,34 +331,29 @@ def list_rejected_files(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("application:view")),
 ):
-    """Every file a reviewer turned down, across all applications.
+    patient_ids = {}
+    for application in applications_crud.list_applications(cursor):
+        patient_ids[application.id] = application.patient_id
 
-    Declared before `/files/{file_id}` so the literal path is matched
-    first. Patients come from one pass over the applications rather than a
-    lookup per file -- on Hive the query count is the cost.
-    """
-    patients = {
-        application.id: application.patient_id
-        for application in applications_crud.list_applications(cursor)
-    }
-
-    return [
-        RejectedFile(
-            id=record.id,
-            application_id=record.application_id,
-            patient_id=patients.get(record.application_id, ""),
-            original_file_name=record.original_file_name,
-            deidentified_file_name=record.deidentified_file_name,
-            file_extension=(record.file_extension or "").lower(),
-            file_size=record.file_size,
-            created_at=record.created_at,
-            deid_status=record.deid_status,
-            review_note=record.review_note,
-            has_original=_on_disk(record.file_path),
-            has_deidentified=_on_disk(record.de_identified_file_path),
+    rejected = []
+    for record in crud.list_files(cursor, review_status="rejected"):
+        rejected.append(
+            RejectedFile(
+                id=record.id,
+                application_id=record.application_id,
+                patient_id=patient_ids.get(record.application_id, ""),
+                original_file_name=record.original_file_name,
+                deidentified_file_name=record.deidentified_file_name,
+                file_extension=(record.file_extension or "").lower(),
+                file_size=record.file_size,
+                created_at=record.created_at,
+                deid_status=record.deid_status,
+                review_note=record.review_note,
+                has_original=_file_exists(record.file_path),
+                has_deidentified=_file_exists(record.de_identified_file_path),
+            )
         )
-        for record in crud.list_files(cursor, review_status="rejected")
-    ]
+    return rejected
 
 
 @router.get("/files/{file_id}", response_model=PatientApplicationFile)
@@ -370,7 +365,7 @@ def get_application_file(
     return crud.get_file_or_404(cursor, file_id)
 
 
-def _metadata_of(cursor, document, deidentified: bool) -> FileMetadata:
+def _get_file_metadata(cursor, document, deidentified: bool) -> FileMetadata:
     if not deidentified:
         record = metadata_crud.get_metadata_for_file(cursor, document.id)
         if record is None:
@@ -399,7 +394,7 @@ def get_application_file_metadata(
     actor: User = Depends(require_permission("application:view")),
 ):
     document = crud.get_file_or_404(cursor, file_id)
-    record = _metadata_of(cursor, document, deidentified)
+    record = _get_file_metadata(cursor, document, deidentified)
 
     _record_file_access(
         cursor, document, actor, READ, deidentified=deidentified, note="metadata"
@@ -416,7 +411,7 @@ def export_application_file_metadata(
     actor: User = Depends(require_permission("application:view")),
 ):
     document = crud.get_file_or_404(cursor, file_id)
-    record = _metadata_of(cursor, document, deidentified)
+    record = _get_file_metadata(cursor, document, deidentified)
 
     wanted = [name.strip() for name in (fields or "").split(",") if name.strip()]
     items = sorted(record.metadata.items())
@@ -495,7 +490,7 @@ def read_application_file(
     )
 
 
-def _patient_of(cursor, application_id: str) -> Optional[str]:
+def _get_patient_id(cursor, application_id: str) -> Optional[str]:
     application = applications_crud.get_application(cursor, application_id)
     return getattr(application, "patient_id", None)
 
@@ -522,7 +517,7 @@ def _record_file_access(
         actor=actor,
         resource_type="application_file",
         resource_id=record.id,
-        patient_id=_patient_of(cursor, record.application_id),
+        patient_id=_get_patient_id(cursor, record.application_id),
         application_id=record.application_id,
         identified=not deidentified,
         detail=f"{name} ({note})" if note else name,
@@ -846,8 +841,6 @@ def delete_application_file(
     record = crud.delete_file(cursor, file_id)
     metadata_crud.delete_metadata_for_files(cursor, [file_id])
 
-    # A document picked from intake still belongs to the drop folder: taking
-    # it off this application hands it back to the pool, originals intact.
     if intake.release_claim(cursor, file_id):
         return None
 

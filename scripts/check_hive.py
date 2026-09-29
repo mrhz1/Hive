@@ -56,14 +56,14 @@ def main() -> int:
         if time.monotonic() + RETRY_SECONDS >= deadline:
             print(
                 f"FAILED to reach hive at {host}:{port} "
-                f"(auth={auth_mechanism}, user={user}) -- {failure}",
+                f"(auth={auth_mechanism}, user={user}): {failure}",
                 file=sys.stderr,
             )
             print(
                 "\nIf this says 'TSocket read 0 bytes', HiveServer2 closed the "
-                "connection. Either it is still starting -- check "
+                "connection. Either it is still starting (check "
                 "`docker compose ps` and `docker compose logs -f hiveserver2` "
-                "for 'Starting HiveServer2' -- or HIVE_AUTH in .env.local "
+                "for 'Starting HiveServer2') or HIVE_AUTH in .env.local "
                 "disagrees with hive.server2.authentication in "
                 "conf/hive-site.xml (both should be NOSASL locally).",
                 file=sys.stderr,

@@ -23,7 +23,6 @@ class DocumentResult:
     status: str = "ok"
     error: Optional[str] = None
     failed_stage: Optional[str] = None
-    # Which way a DICOM was de-identified -- see stage_nlp.dicom_method.
     method: Optional[str] = None
 
     @property
@@ -56,7 +55,7 @@ class DocumentResult:
         )
 
 
-def summarise(results: List[DocumentResult]) -> dict:
+def summarize(results: List[DocumentResult]) -> dict:
     ok = [r for r in results if r.status == "ok"]
     failed = [r for r in results if r.status != "ok"]
 

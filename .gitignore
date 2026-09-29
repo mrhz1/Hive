@@ -3,17 +3,10 @@ __pycache__/
 *.pyc
 .env.local
 
-# OCR module. Two venvs, because paddle and presidio cannot share one.
+# OCR
 OCR/.venv-ocr/
 OCR/.venv-nlp/
 OCR/out/
-
-# The local model store: ~570MB of weights, staged by
-# OCR/scripts/stage_models.py and moved to Cloudera AI by file copy,
-# because that network cannot reach github or huggingface. Deliberately
-# not in git -- half a gigabyte of binaries would be in every clone
-# forever, and git is not the transport here. The layout documentation
-# (OCR/models/README.md) is tracked; the weights are not.
 OCR/models/*
 !OCR/models/README.md
 
@@ -22,6 +15,19 @@ frontend/node_modules/
 frontend/dist/
 frontend/coverage/
 frontend/.env.local
+
+# Tests (local only)
+tests/
+OCR/tests/
+frontend/e2e/
+frontend/src/test/
+frontend/src/**/*.test.ts
+frontend/src/**/*.test.tsx
+frontend/playwright.config.ts
+test-results/
+frontend/test-results/
+frontend/playwright-report/
+
 storage
 .aider*
 *.pdf

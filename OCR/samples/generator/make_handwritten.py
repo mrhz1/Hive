@@ -1,9 +1,3 @@
-"""Render the 20-page handwritten ward chart as an aged, scanned-looking PDF.
-
-Each page is drawn as a raster image at 200 dpi: aged paper, ruled lines,
-stains, punch holes, then handwriting composited with per-word jitter, ink
-density variation and bleed, then a small page skew and scanner artefacts.
-"""
 import math
 import os
 import random
@@ -22,7 +16,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FONTDIR = os.path.join(os.path.dirname(HERE), "fonts")
 
 DPI = 200
-W, H = int(8.5 * DPI), int(11 * DPI)          # 1700 x 2200
+W, H = int(8.5 * DPI), int(11 * DPI)
 
 LEFT = 250
 RIGHT = W - 130
@@ -33,8 +27,6 @@ TEXTW = RIGHT - LEFT
 LINE_H = 58.0
 BLANK_H = 30.0
 
-# per-font point size and a vertical nudge, tuned so the hands look the
-# same size on the page despite very different font metrics
 FONTS = {
     "ashcroft":  ("Caveat.ttf", 62, 0),
     "cavanaugh": ("IndieFlower-Regular.ttf", 46, -4),
@@ -44,7 +36,6 @@ FONTS = {
     "chowdhury": ("Caveat.ttf", 58, 0),
 }
 
-# which hand wrote which page (1-indexed)
 PAGE_HAND = {
     1: "ashcroft", 2: "ashcroft", 3: "ashcroft", 4: "ashcroft", 5: "nurse",
     6: "ashcroft", 7: "ashcroft", 8: "ashcroft", 9: "cavanaugh",
@@ -54,10 +45,10 @@ PAGE_HAND = {
 }
 
 INKS = [
-    (28, 34, 74),      # blue-black fountain pen
-    (24, 26, 40),      # near black
-    (52, 40, 28),      # faded brown ink
-    (34, 44, 92),      # brighter blue biro
+    (28, 34, 74),
+    (24, 26, 40),
+    (52, 40, 28),
+    (34, 44, 92),
 ]
 
 _cache = {}
@@ -92,16 +83,11 @@ def wrap_px(text, f, width):
     return lines or [""]
 
 
-# --------------------------------------------------------------------------
-# paper
-# --------------------------------------------------------------------------
-
 def make_paper(rng, ruled, margin_rule, line_h=LINE_H):
     base = rng.randint(214, 226)
     img = Image.new("RGB", (W, H), (base + 14, base + 4, base - 26))
     d = ImageDraw.Draw(img, "RGBA")
 
-    # broad tonal blotches - uneven ageing across the sheet
     for _ in range(rng.randint(14, 22)):
         cx, cy = rng.randint(-200, W + 200), rng.randint(-200, H + 200)
         r = rng.randint(240, 900)
@@ -113,14 +99,12 @@ def make_paper(rng, ruled, margin_rule, line_h=LINE_H):
         blob = blob.filter(ImageFilter.GaussianBlur(r / 3.0))
         img.paste(blob, (cx - r, cy - r), blob)
 
-    # foxing - small rust-coloured age spots
     for _ in range(rng.randint(50, 110)):
         cx, cy = rng.randint(0, W), rng.randint(0, H)
         r = rng.randint(2, 11)
         a = rng.randint(14, 46)
         d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(126, 88, 44, a))
 
-    # edge darkening / handling grime
     edge = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     ed = ImageDraw.Draw(edge)
     band = rng.randint(60, 130)
@@ -133,7 +117,6 @@ def make_paper(rng, ruled, margin_rule, line_h=LINE_H):
     img = Image.alpha_composite(img.convert("RGBA"), edge).convert("RGB")
     d = ImageDraw.Draw(img, "RGBA")
 
-    # a coffee-cup ring, occasionally
     if rng.random() < 0.25:
         cx, cy = rng.randint(300, W - 300), rng.randint(300, H - 300)
         r = rng.randint(120, 190)
@@ -144,7 +127,6 @@ def make_paper(rng, ruled, margin_rule, line_h=LINE_H):
         img = Image.alpha_composite(img.convert("RGBA"), ring).convert("RGB")
         d = ImageDraw.Draw(img, "RGBA")
 
-    # fold crease
     if rng.random() < 0.55:
         y = rng.choice([H // 3, H // 2, 2 * H // 3]) + rng.randint(-40, 40)
         cr = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -156,7 +138,6 @@ def make_paper(rng, ruled, margin_rule, line_h=LINE_H):
         img = Image.alpha_composite(img.convert("RGBA"), cr).convert("RGB")
         d = ImageDraw.Draw(img, "RGBA")
 
-    # ruled lines
     if ruled:
         y = TOP + line_h - 14
         while y < BOTTOM + 40:
@@ -170,7 +151,6 @@ def make_paper(rng, ruled, margin_rule, line_h=LINE_H):
         d.line((x, 60, x + rng.uniform(-3, 3), H - 60),
                fill=(168, 74, 74, rng.randint(48, 78)), width=3)
 
-    # three-hole punch down the left edge
     for hy in (int(H * 0.18), int(H * 0.5), int(H * 0.82)):
         hy += rng.randint(-14, 14)
         hx = rng.randint(52, 66)
@@ -179,19 +159,13 @@ def make_paper(rng, ruled, margin_rule, line_h=LINE_H):
         d.ellipse((hx - r, hy - r, hx + r, hy + r), outline=(140, 126, 96, 200),
                   width=3)
 
-    # paper grain
     noise = Image.effect_noise((W, H), 26).convert("L")
     noise = noise.filter(ImageFilter.GaussianBlur(0.4))
     img = Image.blend(img, Image.merge("RGB", (noise, noise, noise)), 0.055)
     return img
 
 
-# --------------------------------------------------------------------------
-# handwriting
-# --------------------------------------------------------------------------
-
 def draw_line(layer, x, y, text, f, ink, rng):
-    """Draw one line word by word with jitter, onto an RGBA ink layer."""
     if layer is None:
         return
     d = ImageDraw.Draw(layer)
@@ -204,7 +178,7 @@ def draw_line(layer, x, y, text, f, ink, rng):
             continue
         dy = rng.uniform(-3.5, 3.5) + (cx - x) * baseline_drift
         a = rng.randint(196, 255)
-        if rng.random() < 0.06:          # a word gone over twice, darker
+        if rng.random() < 0.06:
             a = 255
         col = (ink[0], ink[1], ink[2], a)
         d.text((cx, y + dy), word, font=f, fill=col)
@@ -212,11 +186,6 @@ def draw_line(layer, x, y, text, f, ink, rng):
 
 
 def lay_out(blocks, hand, ink, rng, scale, layer):
-    """Place (and, when layer is not None, draw) one page. Returns (y, gt).
-
-    Word-level jitter adds a little width, so text is wrapped to a slightly
-    narrower column than the ink is allowed to occupy.
-    """
     _, base_size, nudge = FONTS[hand]
     f = font(hand, base_size * scale)
     f_title = font(hand, base_size * scale * 1.18)
@@ -241,7 +210,7 @@ def lay_out(blocks, hand, ink, rng, scale, layer):
 
         elif k == "t":
             s = blk[1]
-            if hand == "pemberton":      # this hand's capitals are unreadable
+            if hand == "pemberton":
                 s = s.title()
             draw_line(layer, LEFT + rng.uniform(0, 40), y, s, f_title, ink, rng)
             gt.append(s)
@@ -266,7 +235,7 @@ def lay_out(blocks, hand, ink, rng, scale, layer):
 
         elif k == "l":
             s, ff = blk[1], f
-            if measure(f, s) > wrapw:    # squeeze an over-long ruled line
+            if measure(f, s) > wrapw:
                 ff = font(hand, base_size * scale * wrapw / float(measure(f, s)) * 0.97)
             draw_line(layer, LEFT, y, s, ff, ink, rng)
             gt.append(s)
@@ -285,7 +254,6 @@ def render_page(blocks, pageno, rng):
     hand = PAGE_HAND[pageno]
     ink = INKS[rng.randrange(len(INKS))]
 
-    # dry pass: how tall is the page at full size? cram the hand if it overruns
     probe = random.Random(pageno * 7919)
     need, _ = lay_out(blocks, hand, ink, probe, 1.0, None)
     avail = BOTTOM - TOP
@@ -304,21 +272,18 @@ def render_page(blocks, pageno, rng):
     if overflow:
         print("  ! page %d still overruns by %.0f px" % (pageno, y - BOTTOM))
 
-    # ink bleed into the paper fibres
     bleed = layer.filter(ImageFilter.GaussianBlur(2.2))
     bleed.putalpha(bleed.getchannel("A").point(lambda v: int(v * 0.40)))
     page = Image.alpha_composite(paper.convert("RGBA"), bleed)
     page = Image.alpha_composite(page, layer.filter(ImageFilter.GaussianBlur(0.6)))
     page = page.convert("RGB")
 
-    # show-through of writing on the reverse of the sheet
     if rng.random() < 0.5:
         ghost = layer.transpose(Image.FLIP_LEFT_RIGHT)
         ghost = ghost.filter(ImageFilter.GaussianBlur(4))
         ghost.putalpha(ghost.getchannel("A").point(lambda v: int(v * 0.10)))
         page = Image.alpha_composite(page.convert("RGBA"), ghost).convert("RGB")
 
-    # scanner: small skew, soft focus, contrast loss, sensor noise
     ang = rng.uniform(-1.1, 1.1)
     fill = page.getpixel((W // 2, 30))
     page = page.rotate(ang, resample=Image.BICUBIC, fillcolor=fill)
@@ -329,7 +294,6 @@ def render_page(blocks, pageno, rng):
     n = Image.effect_noise((W, H), rng.randint(8, 16)).convert("L")
     page = Image.blend(page, Image.merge("RGB", (n, n, n)), 0.035)
 
-    # a dark scanner edge on one side, as when the lid does not close flat
     if rng.random() < 0.4:
         sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         sd = ImageDraw.Draw(sh)

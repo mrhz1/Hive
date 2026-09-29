@@ -13,7 +13,7 @@ from app.crud import users as users_crud
 from app.db import get_cursor
 from app.deid import remove_deid_artifacts
 from app.storage import delete_file as remove_from_disk, prune_stored_folders
-from app.submission import finalise_submission
+from app.submission import finalize_submission
 from app.errors import ValidationError
 from app.logging_setup import get_logger
 from app.notifications import notify_assigned
@@ -33,7 +33,6 @@ router = APIRouter(prefix="/applications", tags=["applications"])
 
 NON_REJECTABLE = ("submitted", "deleted")
 
-# Sent, or gone: nothing more can be attached to either.
 CLOSED_TO_FILES = ("submitted", "deleted")
 
 
@@ -78,7 +77,7 @@ def _assert_assignee_exists(cursor, user_id: Optional[str]) -> None:
     )
     raise ValidationError(
         f"User '{user_id}' does not exist. If they were on the list a "
-        "moment ago, reload the page -- the list may be out of date."
+        "moment ago, reload the page, the list may be out of date."
     )
 
 
@@ -187,7 +186,7 @@ def update_application(
 
     if after.status == "submitted" and before.status != "submitted":
         background.add_task(
-            finalise_submission,
+            finalize_submission,
             application_id=application_id,
             request_id=request.headers.get("X-Request-ID"),
         )
@@ -264,7 +263,6 @@ def delete_application(
     metadata_crud.delete_metadata_for_files(cursor, [f.id for f in orphaned])
 
     for record in orphaned:
-        # Picked from intake: back to the pool, not off the disk.
         if intake.release_claim(cursor, record.id):
             continue
         remove_deid_artifacts(record.file_path, record.deidentified_file_name or "")
@@ -315,12 +313,6 @@ def attach_intake_files(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:update")),
 ):
-    """Attach already-redacted files from the drop folder.
-
-    The files must carry this application's patient code -- the code on the
-    document is the only evidence of whose it is -- and must not already be
-    on another application.
-    """
     application = crud.get_application_or_404(cursor, application_id)
     if application.status in CLOSED_TO_FILES:
         raise ValidationError(

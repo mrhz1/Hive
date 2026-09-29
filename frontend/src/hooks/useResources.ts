@@ -53,11 +53,7 @@ export const roleHooks = createCrudHooks<Role, RoleFormValues>({
   alsoInvalidate: [queryKeys.users.all, queryKeys.me],
 })
 
-export function useApplications(
-  patientId?: string,
-  enabled = true,
-  status?: string
-) {
+export function useApplications(patientId?: string, enabled = true, status?: string) {
   return useQuery({
     queryKey: queryKeys.applications.list(patientId, status),
     queryFn: () => applicationsApi.list(patientId, status),
@@ -65,7 +61,6 @@ export function useApplications(
   })
 }
 
-/** Every file a reviewer turned down, across all applications. */
 export function useRejectedFiles(enabled = true) {
   return useQuery({
     queryKey: queryKeys.applicationFiles.rejected(),
@@ -171,11 +166,6 @@ export function useReviewApplicationFile(applicationId: string) {
   })
 }
 
-/**
- * Review a file from the rejection queue, where each row belongs to a
- * different application -- so this invalidates every file list rather than
- * one application's.
- */
 export function useReviewRejectedFile() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -203,10 +193,7 @@ export function useReviewRejectedFile() {
   })
 }
 
-export function useApplicationFiles(
-  applicationId: string | undefined,
-  enabled = true
-) {
+export function useApplicationFiles(applicationId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: queryKeys.applicationFiles.list(applicationId ?? ''),
     queryFn: () => applicationFilesApi.list(applicationId as string),
@@ -253,8 +240,8 @@ export function useBackgroundUpload(
       setJobId(job.id)
       toast.info(
         job.total === 1
-          ? 'Upload started -- moving 1 file'
-          : `Upload started -- moving ${job.total} files`,
+          ? 'Upload started, moving 1 file'
+          : `Upload started, moving ${job.total} files`,
         { description: 'You can carry on; an email goes out when it is done.' }
       )
     },
@@ -406,10 +393,7 @@ export function useApproveAllFiles(applicationId: string) {
   )
 }
 
-export function useFileMetadata(
-  fileId: string | undefined,
-  deidentified = false
-) {
+export function useFileMetadata(fileId: string | undefined, deidentified = false) {
   return useQuery({
     queryKey: queryKeys.applicationFiles.metadata(fileId ?? '', deidentified),
     queryFn: () => applicationFilesApi.metadata(fileId as string, deidentified),
@@ -457,10 +441,7 @@ export function useDeleteApplicationFile(applicationId: string) {
   })
 }
 
-export function useFileMetadataRows(
-  filters: FileMetadataFilters = {},
-  enabled = true
-) {
+export function useFileMetadataRows(filters: FileMetadataFilters = {}, enabled = true) {
   return useQuery({
     queryKey: queryKeys.fileMetadata.list(filters),
     queryFn: () => fileMetadataApi.list(filters),
@@ -538,11 +519,7 @@ function useLibraryInvalidation() {
 export function useUploadDeidentifiedFile() {
   const invalidate = useLibraryInvalidation()
   return useMutation({
-    mutationFn: (variables: {
-      patientId: string
-      file: File
-      replacesFileId?: string
-    }) =>
+    mutationFn: (variables: { patientId: string; file: File; replacesFileId?: string }) =>
       deidentifiedFilesApi.upload(
         variables.patientId,
         variables.file,
@@ -576,23 +553,10 @@ export function useDeleteDeidentifiedFile() {
   })
 }
 
-
-/**
- * The drop folder's tally. Polled, because redaction runs out of process and
- * the page is where somebody watches a batch go through.
- */
 export function useIntakeCounts() {
   return useQuery({
     queryKey: queryKeys.intake.counts(),
     queryFn: () => intakeApi.counts(),
-    refetchInterval: 15_000,
-  })
-}
-
-export function useIntakeFiles(status?: string) {
-  return useQuery({
-    queryKey: queryKeys.intake.files(status),
-    queryFn: () => intakeApi.files(status),
     refetchInterval: 15_000,
   })
 }
@@ -620,7 +584,6 @@ export function useIntakeCodes(enabled = true) {
   })
 }
 
-/** A code's redacted files that nobody has attached yet. */
 export function useAvailableIntakeFiles(patientCode: string | undefined) {
   return useQuery({
     queryKey: queryKeys.intake.files('done', patientCode),
@@ -655,7 +618,7 @@ export function useRetryIntakeFile() {
     mutationFn: (fileId: string) => intakeApi.retry(fileId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
-      toast.success('Queued again -- picked up by the next run')
+      toast.success('Queued again, the next run will pick it up')
     },
     onError: (error) => {
       toast.error(errorMessage(error, 'Could not retry this file'))
@@ -663,7 +626,6 @@ export function useRetryIntakeFile() {
   })
 }
 
-/** Refreshed every 10 seconds: this is what somebody watches a batch by. */
 export function useIntakeProgress() {
   return useQuery({
     queryKey: queryKeys.intake.progress(),
@@ -680,11 +642,6 @@ export function useIntakeBatchProgress() {
   })
 }
 
-/**
- * The first `limit` files of a status. "Show more" raises the limit rather
- * than paging, so what is on screen is always the newest-first head of the
- * list and a refresh never jumps.
- */
 export function useIntakePage(status: string, limit: number) {
   return useQuery({
     queryKey: queryKeys.intake.page(status, limit),

@@ -2,7 +2,7 @@ import os
 import smtplib
 from email.message import EmailMessage
 from email.utils import formataddr
-from typing import Iterable, List, Optional, Sequence
+from typing import List, Optional
 
 from app.logging_setup import get_logger
 
@@ -48,7 +48,7 @@ def is_configured() -> bool:
     return bool(_host())
 
 
-def _clean_recipients(recipients: Iterable[Optional[str]]) -> List[str]:
+def _clean_recipients(recipients: List[Optional[str]]) -> List[str]:
     seen: List[str] = []
     for address in recipients:
         value = (address or "").strip()
@@ -58,7 +58,7 @@ def _clean_recipients(recipients: Iterable[Optional[str]]) -> List[str]:
 
 
 def _build(
-    to: Sequence[str], subject: str, body: str, html: Optional[str]
+    to: List[str], subject: str, body: str, html: Optional[str]
 ) -> EmailMessage:
     message = EmailMessage()
     message["From"] = formataddr((_sender_name(), _sender()))
@@ -71,7 +71,7 @@ def _build(
 
 
 def send_email(
-    to: Iterable[Optional[str]],
+    to: List[Optional[str]],
     subject: str,
     body: str,
     html: Optional[str] = None,
@@ -100,7 +100,7 @@ def send_email(
         finally:
             try:
                 server.quit()
-            except Exception:  # pragma: no cover - the message already went
+            except Exception:
                 server.close()
     except Exception as exc:
         log.error(

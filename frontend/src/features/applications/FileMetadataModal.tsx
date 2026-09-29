@@ -88,9 +88,7 @@ export function FileMetadataModal({
             </p>
             <p className="flex items-center gap-2 text-xs text-[rgb(var(--foreground-muted))]">
               <span>
-                {deidentified
-                  ? 'De-identified copy metadata'
-                  : 'Document metadata'}
+                {deidentified ? 'De-identified copy metadata' : 'Document metadata'}
               </span>
               {data ? (
                 <>
@@ -101,12 +99,7 @@ export function FileMetadataModal({
             </p>
           </div>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            aria-label="Close metadata"
-          >
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close metadata">
             <X className="size-4" aria-hidden="true" />
           </Button>
         </div>

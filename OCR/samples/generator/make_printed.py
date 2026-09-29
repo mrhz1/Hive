@@ -1,4 +1,3 @@
-"""Render the printed 20-page clinical record + its ground-truth text."""
 import os
 import sys
 
@@ -43,10 +42,9 @@ class Renderer:
         self.c.setTitle("Inpatient Record - Whitfield, Grace E. - MRN 40-77-1592")
         self.c.setAuthor("Saint Bartholomew Regional Medical Center")
         self.c.setSubject("Synthetic clinical record for OCR testing")
-        self.gt = []          # ground-truth lines for the current page
+        self.gt = []
         self.pages_gt = []
 
-    # -- primitives ------------------------------------------------------
     def text(self, x, y, s, font, size, gt=True):
         self.c.setFont(font, size)
         self.c.drawString(x, y, s)
@@ -73,7 +71,6 @@ class Renderer:
         self.gt.append("CONFIDENTIAL - PHI")
         self.gt.append("Page %d of 20" % pageno)
 
-    # -- blocks ----------------------------------------------------------
     def page(self, blocks, pageno):
         c = self.c
         self.gt = []

@@ -57,14 +57,13 @@ export function FolderPathField({
     const path = folderPathFromFiles(picked)
 
     if (isDirectory) {
-
       if (unsupported.length > 0 && supported.length > 0) {
         toast.warning(
           `Skipped ${unsupported.length} unsupported file${unsupported.length === 1 ? '' : 's'} -- only ${SUPPORTED_FORMATS_LABEL} documents are uploaded.`
         )
       } else if (unsupported.length > 0) {
         toast.error(
-          `No supported files found in that folder -- only ${SUPPORTED_FORMATS_LABEL} documents are uploaded.`
+          `No supported files found in that folder. Only ${SUPPORTED_FORMATS_LABEL} documents are uploaded.`
         )
       }
       onSelect(path, supported)

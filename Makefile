@@ -1,5 +1,4 @@
-# The API venv. Checked rather than hardcoded because the repo has been
-# built both ways; override with `make PYTHON=... <target>`.
+# use app/.venv if it exists, otherwise .venv (override with PYTHON=...)
 PYTHON ?= $(shell [ -x app/.venv/bin/python ] && echo app/.venv/bin/python || echo .venv/bin/python)
 include .env.local
 export
@@ -30,69 +29,51 @@ test:
 	$(PYTHON) -m pytest
 
 run:
-	# --reload-exclude, not --reload-dir: uvicorn's watchfiles supervisor
-	# folds any --reload-dir back into watching the whole cwd whenever
-	# that dir is (as it always is here) a subdirectory of cwd -- see
-	# WatchFilesReload.__init__ in uvicorn/supervisors/watchfilesreload.py.
-	# --reload-exclude does not go through that path.
-	#
-	# storage/ is excluded because uploads land under storage/patient_files,
-	# inside the project tree uvicorn otherwise watches. A stored .py file
-	# (nothing stops one being uploaded) looked like a source change and
-	# restarted the server mid-batch -- taking the in-memory upload-job
-	# registry with it, so the frontend's next poll got 404 for a batch
-	# that had, in fact, finished.
+	# exclude storage/ so uploaded files don't trigger a reload
 	$(PYTHON) -m uvicorn app.main:app --host 0.0.0.0 --port $(CDSW_APP_PORT) --reload --reload-exclude "$(CURDIR)/storage"
 
-# --- de-identification -------------------------------------------------
-# Two virtualenvs: paddle and presidio cannot share one. See OCR/README.md.
+# de-identification (two venvs, see OCR/README.md)
 ocr-install:
 	$(MAKE) -C OCR venvs install
 
-# Fill OCR/models from the network. Run this where there IS network:
-# Cloudera AI blocks github and huggingface, so the store is built here
-# and copied there. See OCR/models/README.md.
+# download models (needs internet, then copy OCR/models to Cloudera)
 ocr-models:
 	$(MAKE) -C OCR models
 
-# Load every staged model with the network off. Run this ON the target
-# after copying OCR/models across -- it is the only check that catches a
-# truncated weight file.
+# load all models offline to check the copy is complete
 ocr-check-models:
 	$(MAKE) -C OCR check-models
 
 ocr-preflight:
 	$(MAKE) -C OCR preflight
 
-# The check that matters: re-OCR the redacted sample and hunt for leaks.
+# re-OCR the redacted sample and check for leaks
 ocr-verify:
 	$(MAKE) -C OCR run verify
 
-# What a dropped batch would do. Reads only -- see scripts/intake_sweep.py.
+# intake dry run
 intake:
 	$(PYTHON) scripts/intake_sweep.py
 
-# The same sweep, recorded in Hive. Still redacts nothing.
+# intake sweep, saved to Hive
 intake-apply:
 	$(PYTHON) scripts/intake_sweep.py --apply
 
-# The automatic path: once a push has finished landing, sweep and redact.
-# Once, as a scheduled Job would; or for ever, checking every minute.
+# sweep + redact once a push has finished (once, or every minute)
 intake-run:
 	$(PYTHON) scripts/intake_run.py
 
 intake-watch:
 	$(PYTHON) scripts/intake_run.py --watch
 
-# Redact everything the sweep queued, DEID_WORKERS at a time.
+# redact all queued intake files
 intake-deid:
 	$(PYTHON) scripts/intake_deid.py
 
-# Drain the de-identification queue, the same way the Cloudera Job does.
+# run the de-id queue like the Cloudera Job
 deid:
 	$(PYTHON) scripts/deid_worker.py
 
-# Serve frontend/dist the way the Cloudera Application does. Run
-# `npm run build` in frontend/ first.
+# serve frontend/dist (run npm run build first)
 dashboard:
 	$(PYTHON) scripts/serve_frontend.py

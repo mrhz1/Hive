@@ -5,10 +5,9 @@ from pydantic import BaseModel, EmailStr, Field, field_validator, model_validato
 
 from app.ids import (
     is_patient_code,
-    normalise_patient_code,
+    clean_patient_code,
     patient_code_pattern,
 )
-
 
 
 class RoleCreate(BaseModel):
@@ -25,8 +24,6 @@ class Role(BaseModel):
     id: str
     name: str
     permissions: List[str]
-
-
 
 
 class UserCreate(BaseModel):
@@ -68,8 +65,6 @@ class User(BaseModel):
     created_at: datetime
     role_name: Optional[str] = None
     permissions: List[str] = Field(default_factory=list)
-
-
 
 
 _PATIENT_OPTIONAL_FIELDS = (
@@ -116,7 +111,7 @@ PATIENT_IDENTITY_REQUIRED = (
 APPLICATION_FILE_REQUIRED = "original_file_path is required"
 
 PATIENT_CODE_REQUIRED = (
-    "A patient code is required -- it comes from the documents, not from us"
+    "A patient code is required. It comes from the documents"
 )
 
 
@@ -187,14 +182,12 @@ class _PatientFields(BaseModel):
 
 
 class PatientCreate(_PatientFields):
-    # Supplied, never generated: the code is on the documents before a
-    # patient record exists, and it is how the two are matched up.
     id: str
 
     @field_validator("id", mode="before")
     @classmethod
-    def _normalise_code(cls, value: Any) -> Any:
-        return normalise_patient_code(value)
+    def _normalize_code(cls, value: Any) -> Any:
+        return clean_patient_code(value)
 
     @field_validator("id")
     @classmethod
@@ -223,7 +216,6 @@ class Patient(_PatientFields):
     pemail: Optional[str] = None
     ptemail: Optional[str] = None
     original_file_path: Optional[str] = None
-
 
 
 DEID_STATUSES = ("pending", "queued", "processing", "done", "failed")
@@ -324,13 +316,6 @@ class DeidentifiedFile(BaseModel):
 
 
 class IntakeFile(BaseModel):
-    """One file found in a dropped batch, and what was decided about it.
-
-    `status` is one of queued / processing / done / failed / skipped /
-    conflict / claimed. The refusals -- skipped and conflict -- are rows
-    like any other, because a file nobody can place has to be visible and
-    fixable rather than quietly absent.
-    """
 
     id: str
     batch_id: str
@@ -343,8 +328,6 @@ class IntakeFile(BaseModel):
 
     patient_code: Optional[str] = None
 
-    # What each half claimed, kept even after a conflict is resolved: the
-    # disagreement is the evidence for whatever was chosen.
     path_code: Optional[str] = None
     name_code: Optional[str] = None
 
@@ -379,7 +362,6 @@ class IntakeBatch(BaseModel):
 
 
 class IntakeCounts(BaseModel):
-    """A batch's tally, derived rather than stored."""
 
     total: int = 0
     queued: int = 0
@@ -394,13 +376,6 @@ class IntakeCounts(BaseModel):
 
 
 class RejectedFile(BaseModel):
-    """A file a reviewer turned down, with both copies accounted for.
-
-    `has_original` is a disk check rather than a column: whether the
-    identified copy is still there depends on DEID_KEEP_ORIGINAL and on
-    whether this application was submitted before that was turned on. The
-    page offers to download what is actually present.
-    """
 
     id: str
     application_id: str
@@ -414,7 +389,6 @@ class RejectedFile(BaseModel):
     review_note: Optional[str] = None
     has_original: bool
     has_deidentified: bool
-
 
 
 METADATA_STATUSES = ("ok", "unsupported", "failed")
@@ -454,8 +428,6 @@ class FileMetadataRow(FileMetadata):
     patient_id: Optional[str] = None
 
 
-
-
 class WordBlock(BaseModel):
 
     kind: str
@@ -467,7 +439,6 @@ class WordPreview(BaseModel):
     blocks: List[WordBlock] = Field(default_factory=list)
     tables: List[List[List[str]]] = Field(default_factory=list)
     truncated: bool = False
-
 
 
 UPLOAD_JOB_STATUSES = ("pending", "running", "done", "partial", "failed")
@@ -494,7 +465,6 @@ class UploadJob(BaseModel):
     error: Optional[str] = None
     folder: Optional[str] = None
     files: List[UploadJobFile] = Field(default_factory=list)
-
 
 
 APPLICATION_STATUSES = ("draft", "submitted", "approved", "rejected", "deleted")
@@ -561,10 +531,6 @@ class PatientApplication(BaseModel):
 
 
 class AuditLogCreate(BaseModel):
-    # REPLACE is a CREATE and a DELETE at once -- new redacted bytes over
-    # old ones, same row. It was being written by /files-library and
-    # silently rejected here, so that overwrite went unrecorded; audit
-    # failures are logged rather than raised, which is what hid it.
     action: str = Field(pattern="^(CREATE|UPDATE|DELETE|REPLACE)$")
     entity_type: str
     entity_id: str

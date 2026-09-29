@@ -51,7 +51,7 @@ def _rows(cursor) -> List[FileMetadataRow]:
     return out
 
 
-def _haystack(row: FileMetadataRow) -> str:
+def _search_text(row: FileMetadataRow) -> str:
     parts = [
         row.file_name or "",
         row.file_id,
@@ -84,7 +84,7 @@ def _filtered(
 
     term = (search or "").strip().lower()
     if term:
-        rows = [r for r in rows if term in _haystack(r)]
+        rows = [r for r in rows if term in _search_text(r)]
 
     return rows
 

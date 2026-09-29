@@ -63,8 +63,9 @@ function PatientsList() {
   const navigate = useNavigate()
   const { can } = usePermissions()
   const [search, setSearch] = useState('')
-  const [showingApplicationsFor, setShowingApplicationsFor] =
-    useState<Patient | null>(null)
+  const [showingApplicationsFor, setShowingApplicationsFor] = useState<Patient | null>(
+    null
+  )
 
   const { data, isLoading, isFetching, error } = patientHooks.useList()
   const remove = patientHooks.useRemove()

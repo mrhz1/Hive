@@ -67,14 +67,6 @@ const optionalDate = z.union([
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD'),
 ])
 
-/**
- * The patient code, as it appears on the documents.
- *
- * Two to four letters then three or four digits -- AA0001, AVDD1200. It is
- * not generated: the sending system writes it into the file path or name,
- * and the same code means the same person everywhere. Matched
- * case-insensitively here; the API stores it upper-case.
- */
 export const PATIENT_CODE_RE = /^[A-Za-z]{2,4}[0-9]{3,4}$/
 
 const patientCode = z
@@ -200,13 +192,7 @@ export function patientMatches(patient: Patient, query: string): boolean {
   const term = query.trim().toLowerCase()
   if (!term) return true
 
-  return [
-    patient.id,
-    patient.fstname,
-    patient.lstname,
-    patient.ptemail,
-    patient.ptphone,
-  ]
+  return [patient.id, patient.fstname, patient.lstname, patient.ptemail, patient.ptphone]
     .filter(Boolean)
     .join(' ')
     .toLowerCase()

@@ -144,8 +144,6 @@ def _enqueue(event: dict) -> None:
     _ensure_writer()
 
 
-
-
 def _ensure_writer() -> None:
     global _thread
 
@@ -219,7 +217,7 @@ def _loop() -> None:
         try:
             while flush_once() == MAX_BATCH:
                 continue
-        except Exception as exc:  # pragma: no cover - the thread must not die
+        except Exception as exc:
             log.exception("access_log_writer_error", error=str(exc))
 
     log.info("access_log_writer_stopped")

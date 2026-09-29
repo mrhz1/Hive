@@ -61,8 +61,9 @@ export function fileHaystack(file: {
 }
 
 export function undecidedCount(files: Array<{ review_status: string }>): number {
-  return files.filter((file) => file.review_status !== 'approved' &&
-    file.review_status !== 'rejected').length
+  return files.filter(
+    (file) => file.review_status !== 'approved' && file.review_status !== 'rejected'
+  ).length
 }
 
 export function rejectedCount(files: Array<{ review_status: string }>): number {
@@ -112,7 +113,6 @@ export function fileTally(files: ApplicationFile[]): FileTally {
   }
 
   for (const file of files) {
-
     if (file.is_deidentified) tally.deidentified += 1
     else if (isDeidInFlight(file.deid_status)) tally.deidRunning += 1
     else if (file.deid_status === 'failed') tally.deidFailed += 1
@@ -134,9 +134,7 @@ export function isFullyReviewed(tally: FileTally): boolean {
   return tally.total > 0 && tally.undecided === 0
 }
 
-export function deidTone(
-  status: string
-): 'success' | 'warning' | 'danger' | 'neutral' {
+export function deidTone(status: string): 'success' | 'warning' | 'danger' | 'neutral' {
   if (status === 'done') return 'success'
   if (isDeidInFlight(status)) return 'warning'
   if (status === 'failed') return 'danger'

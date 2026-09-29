@@ -33,10 +33,7 @@ export function UploadProgress({
                 aria-hidden="true"
               />
             ) : (
-              <XCircle
-                className="size-4 text-[rgb(var(--danger))]"
-                aria-hidden="true"
-              />
+              <XCircle className="size-4 text-[rgb(var(--danger))]" aria-hidden="true" />
             )
           ) : (
             <Spinner size="sm" label="" />

@@ -23,7 +23,6 @@ import {
 export type SortValue = string | number | boolean | null | undefined
 
 export type Column<T> = {
-
   id: string
   header: string
 

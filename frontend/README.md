@@ -31,7 +31,7 @@ starting identity.
 ### Switching user to test RBAC
 
 Use the **Switch user** button in the header. It lists the users the
-current caller can read, switches to the one you pick, and reloads — no
+current caller can read, switches to the one you pick, and reloads, no
 dev-server restart, because the identity is resolved per request rather
 than baked in at startup. There is also a field for typing a username,
 for when the current role cannot list users.
@@ -45,7 +45,7 @@ and `/users/new` renders the 403 page.
 
 The switcher only exists when `VITE_DEV_USERNAME` is set. On Cloudera AI
 it is unset, the platform supplies the identity, and the button never
-renders — the same configuration switch that decides whether a
+renders, the same configuration switch that decides whether a
 `REMOTE-USER` header is sent by the app at all. It grants nothing extra
 locally either: the API already trusts that header in this environment,
 so this is just a faster way to do what editing `.env.local` did.
@@ -88,7 +88,7 @@ with `error while loading shared libraries: libasound.so.2`.
 There is no auth in this app by design. `VITE_DEV_USERNAME` is sent as
 `REMOTE-USER`, the same header `app/security.py` reads. On Cloudera AI the
 platform authenticates the user and sets that header itself, so the
-variable is left unset and the API resolves the caller — the app only ever
+variable is left unset and the API resolves the caller, the app only ever
 asks `GET /me`.
 
 Swapping the source of identity means changing `_current_username` in the
@@ -96,11 +96,11 @@ backend. No frontend code branches on environment.
 
 Two endpoints were added to the API for this dashboard:
 
-- `GET /me` — current user with `role_name` and `permissions` joined in.
+- `GET /me`, current user with `role_name` and `permissions` joined in.
   No permission required, or the shell could not boot.
-- `PUT /me` — self-service profile edit. Deliberately **not** gated on
+- `PUT /me`, self-service profile edit. Deliberately **not** gated on
   `user:update` (editing your own name should not require the right to
-  edit everyone), so it accepts only `first_name`/`last_name`/`email` —
+  edit everyone), so it accepts only `first_name`/`last_name`/`email`,
   never `role_id`, `status` or `is_active`. Otherwise it would be a
   privilege-escalation path.
 
@@ -119,7 +119,7 @@ src/
 
 Types are derived from zod (`z.infer`), never hand-written alongside it,
 so a schema change cannot leave a stale type behind. Responses are parsed
-at the boundary in `lib/api/resources.ts` — a backend shape change fails
+at the boundary in `lib/api/resources.ts`, a backend shape change fails
 loudly there instead of surfacing as `undefined` inside a component.
 
 ### Caching
@@ -140,7 +140,7 @@ list and every user detail in one call.
 ### Reuse
 
 - **`DataTable`** is the only table. It renders a real `<table>` from
-  `sm` up and a stacked card list below it from one column definition —
+  `sm` up and a stacked card list below it from one column definition,
   a horizontally scrolling table is unusable on a phone, and duplicating
   markup per page would drift.
 - **`ConfirmDeleteModal`** is the only delete dialog, driven by
@@ -199,7 +199,7 @@ second copy of the app shell, read-only users saw an empty "Actions"
 column, and an inactive user's status badge read "inactive (inactive)".
 
 The write path is covered by 8 Playwright tests (`e2e/crud.spec.ts`),
-which drive a real browser against the live API — all passing:
+which drive a real browser against the live API, all passing:
 
 - typing one bad character surfaces the error under the input with no
   blur and no submit, and it clears again as the value becomes valid

@@ -55,8 +55,8 @@ export function ExistingPatientPicker({
   if ((patients ?? []).length === 0) {
     return (
       <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
-        There are no patients on file yet. Switch to <strong>New patient</strong>{' '}
-        to create the first one.
+        There are no patients on file yet. Switch to <strong>New patient</strong> to
+        create the first one.
       </Card>
     )
   }

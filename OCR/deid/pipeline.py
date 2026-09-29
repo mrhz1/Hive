@@ -207,17 +207,17 @@ def _run(
             }
         )
 
-    rasterisable = [j for j in plan if needs_ocr(j["source"])]
+    rasterizable = [j for j in plan if needs_ocr(j["source"])]
     text_only = [j for j in plan if not needs_ocr(j["source"])]
 
     ocr_status: Dict[str, Any] = {}
 
     ocr_failures: List[DocumentResult] = []
 
-    if rasterisable:
+    if rasterizable:
         outcomes: List[dict] = []
 
-        for index, batch in enumerate(_batched(rasterisable, ocr_batch_size())):
+        for index, batch in enumerate(_batched(rasterizable, ocr_batch_size())):
             manifest = str(work / f"ocr-manifest-{index:03d}.json")
             write_manifest(
                 manifest,
@@ -247,7 +247,7 @@ def _run(
                 log.error(
                     "OCR stage failed for %d of %d document(s): %s",
                     len(batch),
-                    len(rasterisable),
+                    len(rasterizable),
                     exc,
                 )
                 ocr_failures.extend(
@@ -257,7 +257,7 @@ def _run(
         ocr_status = {o["source"]: o for o in outcomes}
 
     ready = [
-        j for j in rasterisable if ocr_status.get(j["source"], {}).get("status") == "ok"
+        j for j in rasterizable if ocr_status.get(j["source"], {}).get("status") == "ok"
     ] + text_only
     results = _run_nlp(ready, work)
 
@@ -286,7 +286,7 @@ def _run(
             )
         )
 
-    progress = progress_writer(progress_path, file_total=len(plan)).adopt()
+    progress = progress_writer(progress_path, file_total=len(plan)).load()
     failures = [r for r in ordered if r.status != "ok"]
     if failures and len(failures) == len(ordered):
         progress.fail(failures[0].error or "de-identification failed")

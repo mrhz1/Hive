@@ -141,14 +141,12 @@ def _fail_row(file_id: str, detail: str) -> None:
             record = files_crud.update_file(
                 cursor, file_id, PatientApplicationFileUpdate(deid_status="failed")
             )
-    except Exception as exc:  # pragma: no cover - last-resort logging
+    except Exception as exc:
         log.error("deid_fail_write_failed", file_id=file_id, error=str(exc))
         return
 
     log.error("deid_abandoned", file_id=file_id, detail=detail)
 
-    # The run never reached run_deidentification, so nothing else will tell the
-    # owner this file is out of the queue.
     deid_notices.notify_if_finished(getattr(record, "application_id", ""))
 
 
@@ -210,7 +208,7 @@ def _loop() -> None:
     while not _stop.is_set():
         try:
             worked = drain_once()
-        except Exception as exc:  # pragma: no cover - the thread must not die
+        except Exception as exc:
             log.exception("deid_dispatcher_error", error=str(exc))
             _stop.wait(ERROR_BACKOFF_SECONDS)
             continue

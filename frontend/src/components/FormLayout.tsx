@@ -25,8 +25,7 @@ export function FormLayout({
   readOnly?: boolean
 }) {
   const submitLabel =
-    submitLabelOverride ??
-    (mode === 'create' ? `Create ${entityLabel}` : 'Save changes')
+    submitLabelOverride ?? (mode === 'create' ? `Create ${entityLabel}` : 'Save changes')
 
   return (
     <form

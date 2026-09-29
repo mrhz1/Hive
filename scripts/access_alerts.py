@@ -75,7 +75,7 @@ def rules():
             "outcome": "failure",
             "limit": _threshold("ALERT_AUTH_FAILURE_LIMIT", 10),
             "why": (
-                "Only failures that reached the app are here -- the proxy "
+                "Only failures that reached the app are here, the proxy "
                 "sees the rest, and those logs have to be read there."
             ),
         },

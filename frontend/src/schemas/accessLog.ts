@@ -99,7 +99,6 @@ export function accessSummary(entry: AccessLog): string {
   if (entry.action === 'integrity') return entry.detail ?? 'Integrity check failed'
   if (accessedName(entry)) return 'Opened in the viewer'
   if (entry.resource_type === 'file_metadata' && entry.detail) {
-
     return `Browsed ${what} (${entry.detail})`
   }
   return `Viewed a ${what}`

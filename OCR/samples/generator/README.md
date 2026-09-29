@@ -6,9 +6,9 @@ line-level ground truth and the expected PHI entity list for each.
 | output | what it is |
 |---|---|
 | `ocr_test_printed_20p.pdf` | Modern typeset inpatient record. Digital-born, has a real text layer. |
-| `ocr_test_handwritten_aged_20p.pdf` | Old ward chart, six different hands, aged paper, stains, skew, JPEG scan artefacts. **No text layer** — pure raster, so OCR is genuinely exercised. |
+| `ocr_test_handwritten_aged_20p.pdf` | Old ward chart, six different hands, aged paper, stains, skew, JPEG scan artefacts. **No text layer**, pure raster, so OCR is genuinely exercised. |
 | `*.groundtruth.txt` | Rendered text, per page, for CER/WER scoring. |
-| `*.phi.txt` | `TYPE<TAB>surface form` — expected entities for PHI recall scoring. |
+| `*.phi.txt` | `TYPE<TAB>surface form`, expected entities for PHI recall scoring. |
 
 All names, MRNs, SSNs, addresses, phone numbers, insurance IDs and NPIs are
 fabricated.
@@ -36,13 +36,13 @@ python make_handwritten.py ..      # ~30 s, 200 dpi
 
 `make_handwritten.py`
 
-- `DPI` — 200 by default. 300 gives a larger, cleaner scan; 150 makes OCR
+- `DPI`, 200 by default. 300 gives a larger, cleaner scan; 150 makes OCR
   meaningfully harder.
-- `random.Random(20260817)` in `main()` — the seed. Change it for a fresh
+- `random.Random(20260817)` in `main()`, the seed. Change it for a fresh
   set of stains, skews and ink densities over the same text, i.e. a second
   independent test document.
-- `INKS`, `PAGE_HAND`, `FONTS` — which hand and ink colour each page uses.
-- The scanner block at the end of `render_page` — blur radius, contrast,
+- `INKS`, `PAGE_HAND`, `FONTS`, which hand and ink colour each page uses.
+- The scanner block at the end of `render_page`, blur radius, contrast,
   noise and `quality=74` on the JPEG. Lower these for a harder corpus.
 
 `content.py` holds all text for both documents and the PHI inventories. Edit

@@ -3,10 +3,7 @@ import { LoadingBlock } from '@/components/ui/Spinner'
 import { useApplicationFiles, userHooks } from '@/hooks/useResources'
 import { userLabel } from '@/schemas/user'
 import { patientName, type Patient } from '@/schemas/patient'
-import {
-  applicationTone,
-  type PatientApplication,
-} from '@/schemas/patientApplication'
+import { applicationTone, type PatientApplication } from '@/schemas/patientApplication'
 import {
   deidTone,
   formatFileSize,
@@ -81,9 +78,7 @@ export function ApplicationSummary({
             <h2 className="text-[11px] font-bold tracking-widest text-[rgb(var(--foreground-muted))] uppercase">
               Application
             </h2>
-            <Badge tone={applicationTone(application.status)}>
-              {application.status}
-            </Badge>
+            <Badge tone={applicationTone(application.status)}>{application.status}</Badge>
           </div>
 
           <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
@@ -110,7 +105,6 @@ export function ApplicationSummary({
               {assignee ? (
                 userLabel(assignee)
               ) : application.assigned_to_id ? (
-
                 (application.assigned_to_username ?? application.assigned_to_id)
               ) : (
                 <span className="text-[rgb(var(--foreground-muted))]">Nobody</span>
@@ -120,9 +114,7 @@ export function ApplicationSummary({
             {application.status_reason ? (
               <DescriptionItem
                 label={
-                  application.status === 'rejected'
-                    ? 'Why it was rejected'
-                    : 'Reason'
+                  application.status === 'rejected' ? 'Why it was rejected' : 'Reason'
                 }
               >
                 {application.status_reason}
@@ -178,12 +170,8 @@ export function ApplicationSummary({
           {files.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               <Badge tone="success">{approved} approved</Badge>
-              {rejected > 0 ? (
-                <Badge tone="danger">{rejected} rejected</Badge>
-              ) : null}
-              {undecided > 0 ? (
-                <Badge tone="neutral">{undecided} undecided</Badge>
-              ) : null}
+              {rejected > 0 ? <Badge tone="danger">{rejected} rejected</Badge> : null}
+              {undecided > 0 ? <Badge tone="neutral">{undecided} undecided</Badge> : null}
             </div>
           ) : null}
         </div>
@@ -220,9 +208,7 @@ export function ApplicationSummary({
                   <Badge tone={reviewTone(file.review_status)}>
                     {file.review_status}
                   </Badge>
-                  <Badge tone={deidTone(file.deid_status)}>
-                    {file.deid_status}
-                  </Badge>
+                  <Badge tone={deidTone(file.deid_status)}>{file.deid_status}</Badge>
                   {file.is_deidentified ? (
                     <Badge tone="success">de-identified</Badge>
                   ) : (

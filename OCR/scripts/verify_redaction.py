@@ -30,7 +30,7 @@ SAMPLE_MUST_KEEP = [
 ]
 
 
-def normalise(text: str) -> str:
+def normalize(text: str) -> str:
     return " ".join(text.lower().split())
 
 
@@ -63,24 +63,24 @@ def main() -> int:
     doc.close()
 
     ocr_text = "\n".join(ocr_text_parts)
-    haystack = normalise(layer_text + "\n" + ocr_text)
+    haystack = normalize(layer_text + "\n" + ocr_text)
 
     print(f"--- verifying {args.pdf} ---")
     print(f"residual text-layer chars: {len(layer_text.strip())}")
     print(f"re-OCR'd chars: {len(ocr_text.strip())}\n")
 
-    leaked = [s for s in secrets if normalise(s) in haystack]
-    missing = [k for k in keepers if normalise(k) not in haystack]
+    leaked = [s for s in secrets if normalize(s) in haystack]
+    missing = [k for k in keepers if normalize(k) not in haystack]
 
     for secret in secrets:
-        status = "LEAKED " if normalise(secret) in haystack else "removed"
+        status = "LEAKED " if normalize(secret) in haystack else "removed"
         print(f"  [{status}] {secret}")
 
     if keepers:
         print()
         for keeper in keepers:
-            status = "kept   " if normalise(keeper) not in [
-                normalise(m) for m in missing
+            status = "kept   " if normalize(keeper) not in [
+                normalize(m) for m in missing
             ] else "LOST   "
             print(f"  [{status}] {keeper}")
 

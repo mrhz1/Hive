@@ -1,26 +1,12 @@
-import {
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  Eye,
-  ShieldCheck,
-  X,
-} from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, Eye, ShieldCheck, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 import { usePermissions } from '@/hooks/useCurrentUser'
 import { ApiError } from '@/lib/api/client'
-import {
-  applicationFilesApi,
-  deidentifiedFilesApi,
-} from '@/lib/api/resources'
-import {
-  formatFileSize,
-  previewKind,
-  type WordPreview,
-} from '@/schemas/applicationFile'
+import { applicationFilesApi, deidentifiedFilesApi } from '@/lib/api/resources'
+import { formatFileSize, previewKind, type WordPreview } from '@/schemas/applicationFile'
 
 export type ViewableFile = {
   mime_type: string
@@ -29,7 +15,6 @@ export type ViewableFile = {
   original_file_name: string
   sanitized_file_name?: string
   deidentified_file_name?: string | null
-
   de_identified_file_path?: string | null
 }
 
@@ -109,11 +94,7 @@ function DicomFrame({
       {state.status === 'loading' ? (
         <Spinner size="lg" label="Rendering image" />
       ) : (
-        <img
-          src={state.url}
-          alt={alt}
-          className="max-h-full max-w-full object-contain"
-        />
+        <img src={state.url} alt={alt} className="max-h-full max-w-full object-contain" />
       )}
     </div>
   )
@@ -159,7 +140,7 @@ function DicomViewer({
             <ChevronLeft className="size-4" aria-hidden="true" />
           </Button>
           <span
-            className="text-xs font-semibold tabular-nums text-[rgb(var(--foreground-muted))]"
+            className="text-xs font-semibold text-[rgb(var(--foreground-muted))] tabular-nums"
             aria-live="polite"
           >
             Frame {frame + 1} of {frames}
@@ -169,9 +150,7 @@ function DicomViewer({
             variant="outline"
             aria-label="Next frame"
             disabled={frame >= frames - 1}
-            onClick={() =>
-              setFrame((current) => Math.min(frames - 1, current + 1))
-            }
+            onClick={() => setFrame((current) => Math.min(frames - 1, current + 1))}
           >
             <ChevronRight className="size-4" aria-hidden="true" />
           </Button>
@@ -206,8 +185,7 @@ function WordViewer({
         if (!cancelled) setDocument(body)
       })
       .catch((caught) => {
-        if (!cancelled)
-          setError(errorText(caught, 'Could not read this document'))
+        if (!cancelled) setError(errorText(caught, 'Could not read this document'))
       })
 
     return () => {
@@ -237,10 +215,7 @@ function WordViewer({
 
         {document.blocks.map((block, index) =>
           block.kind === 'heading' ? (
-            <h3
-              key={index}
-              className="text-lg font-bold text-[rgb(var(--foreground))]"
-            >
+            <h3 key={index} className="text-lg font-bold text-[rgb(var(--foreground))]">
               {block.text}
             </h3>
           ) : (
@@ -317,61 +292,48 @@ export function FileViewerModal({
 }: {
   file: ViewableFile
   fileId: string
-
   blobUrl?: string | null
   isDeidentified: boolean
   source?: ViewerSource
-
   canViewOriginal?: boolean
   onClose: () => void
 }) {
-  const close = useCallback(() => onClose(), [onClose])
-
   const { can } = usePermissions()
   const canDownload = can('files:download')
   const [isDownloading, setIsDownloading] = useState(false)
 
-  const [side, setSide] = useState<Side>(
-    isDeidentified ? 'deidentified' : 'original'
-  )
+  const [side, setSide] = useState<Side>(isDeidentified ? 'deidentified' : 'original')
   const showingDeidentified = side === 'deidentified'
 
-  // Both copies hang off one file id -- the row holds both paths -- so the
-  // viewer can flip between them rather than being closed and reopened.
-  // Only the library has a single side to show.
   const canCompare =
     source === 'application' &&
     canViewOriginal &&
     (Boolean(file.de_identified_file_path) || isDeidentified)
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close()
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
     }
-    window.document.addEventListener('keydown', onKeyDown)
-    return () => window.document.removeEventListener('keydown', onKeyDown)
-  }, [close])
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
 
-  const displayName = showingDeidentified
-    ? (file.deidentified_file_name ??
-      file.sanitized_file_name ??
-      file.original_file_name)
-    : file.original_file_name
+  let displayName = file.original_file_name
+  if (showingDeidentified) {
+    displayName =
+      file.deidentified_file_name ?? file.sanitized_file_name ?? file.original_file_name
+  }
 
-  const extension =
-    showingDeidentified && ['doc', 'docx'].includes(file.file_extension)
-      ? 'docx'
-      : file.file_extension
+  let extension = file.file_extension
+  if (showingDeidentified && (extension === 'doc' || extension === 'docx')) {
+    extension = 'docx'
+  }
   const kind = previewKind(extension)
 
-  // The caller pre-fetched the blob for the side it opened on; anything
-  // else this viewer fetches itself, and revokes what it made.
   const ownUrls = useRef<string[]>([])
   const [pdfUrls, setPdfUrls] = useState<Partial<Record<Side, string>>>(() =>
     blobUrl ? { [isDeidentified ? 'deidentified' : 'original']: blobUrl } : {}
   )
-  // Per side, so switching back to a side that loaded fine is not shown
-  // the other side's failure -- and nothing has to be cleared in an effect.
   const [pdfErrors, setPdfErrors] = useState<Partial<Record<Side, string>>>({})
   const pdfError = pdfErrors[side] ?? null
 
@@ -402,11 +364,11 @@ export function FileViewerModal({
         ownUrls.current.push(url)
         setPdfUrls((current) => ({ ...current, [wanted]: url }))
       })
-      .catch((caught) => {
+      .catch((err) => {
         if (!cancelled) {
           setPdfErrors((current) => ({
             ...current,
-            [wanted]: errorText(caught, 'Could not open this file'),
+            [wanted]: errorText(err, 'Could not open this file'),
           }))
         }
       })
@@ -416,32 +378,74 @@ export function FileViewerModal({
     }
   }, [kind, pdfUrl, pdfError, fileId, side])
 
-  async function saveACopy() {
+  async function download() {
     setIsDownloading(true)
     try {
-      const blob =
-        source === 'library'
-          ? await deidentifiedFilesApi.fetchContent(fileId, true)
-          : await applicationFilesApi.fetchContent(
-              fileId,
-              showingDeidentified,
-              true
-            )
+      let blob
+      if (source === 'library') {
+        blob = await deidentifiedFilesApi.fetchContent(fileId, true)
+      } else {
+        blob = await applicationFilesApi.fetchContent(fileId, showingDeidentified, true)
+      }
 
       const url = URL.createObjectURL(blob)
-      const anchor = window.document.createElement('a')
-      anchor.href = url
-      anchor.download = displayName
-
-      window.document.body.append(anchor)
-      anchor.click()
-      anchor.remove()
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    } catch (caught) {
-      toast.error(errorText(caught, 'Could not download this file'))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = displayName
+      document.body.append(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err) {
+      toast.error(errorText(err, 'Could not download this file'))
     } finally {
       setIsDownloading(false)
     }
+  }
+
+  let viewer
+  if (kind === 'image') {
+    viewer = (
+      <DicomViewer
+        key={side}
+        fileId={fileId}
+        source={source}
+        isDeidentified={showingDeidentified}
+        name={displayName}
+      />
+    )
+  } else if (kind === 'text') {
+    viewer = (
+      <WordViewer
+        key={side}
+        fileId={fileId}
+        source={source}
+        isDeidentified={showingDeidentified}
+      />
+    )
+  } else if (kind === 'pdf' && pdfError) {
+    viewer = <ViewerMessage tone="error">{pdfError}</ViewerMessage>
+  } else if (kind === 'pdf' && pdfUrl) {
+    viewer = (
+      <iframe
+        src={pdfUrl}
+        title={`Preview of ${displayName}`}
+        className="min-h-0 w-full flex-1 bg-[rgb(var(--background-secondary))]"
+      />
+    )
+  } else if (kind === 'pdf') {
+    viewer = (
+      <ViewerMessage>
+        <Spinner size="md" label="Opening document" />
+      </ViewerMessage>
+    )
+  } else {
+    viewer = (
+      <ViewerMessage>
+        {`'${file.file_extension || 'This'}' files cannot be shown here. `}
+        {canDownload && 'Use Download to open it locally.'}
+      </ViewerMessage>
+    )
   }
 
   return (
@@ -464,7 +468,7 @@ export function FileViewerModal({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {canCompare ? (
+            {canCompare && (
               <div
                 className="flex items-center rounded-lg border border-[rgb(var(--border))] p-0.5"
                 role="group"
@@ -483,60 +487,26 @@ export function FileViewerModal({
                   onSelect={() => setSide('deidentified')}
                 />
               </div>
-            ) : null}
+            )}
 
-            {canDownload ? (
+            {canDownload && (
               <Button
                 variant="outline"
                 size="sm"
                 isLoading={isDownloading}
                 leadingIcon={<Download className="size-3.5" aria-hidden="true" />}
-                onClick={() => void saveACopy()}
+                onClick={() => void download()}
               >
                 Download
               </Button>
-            ) : null}
-            <Button variant="ghost" size="sm" onClick={close} aria-label="Close viewer">
+            )}
+            <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close viewer">
               <X className="size-4" aria-hidden="true" />
             </Button>
           </div>
         </div>
 
-        {kind === 'image' ? (
-          <DicomViewer
-            key={side}
-            fileId={fileId}
-            source={source}
-            isDeidentified={showingDeidentified}
-            name={displayName}
-          />
-        ) : kind === 'text' ? (
-          <WordViewer
-            key={side}
-            fileId={fileId}
-            source={source}
-            isDeidentified={showingDeidentified}
-          />
-        ) : kind === 'pdf' ? (
-          pdfError ? (
-            <ViewerMessage tone="error">{pdfError}</ViewerMessage>
-          ) : pdfUrl ? (
-            <iframe
-              src={pdfUrl}
-              title={`Preview of ${displayName}`}
-              className="min-h-0 w-full flex-1 bg-[rgb(var(--background-secondary))]"
-            />
-          ) : (
-            <ViewerMessage>
-              <Spinner size="md" label="Opening document" />
-            </ViewerMessage>
-          )
-        ) : (
-          <ViewerMessage>
-            {`'${file.file_extension || 'This'}' files cannot be shown here. `}
-            {canDownload ? 'Use Download to open it locally.' : ''}
-          </ViewerMessage>
-        )}
+        {viewer}
       </div>
     </div>
   )

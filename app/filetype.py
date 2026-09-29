@@ -17,7 +17,7 @@ ZIP_MAGIC = b"PK\x03\x04"
 
 SNIFF_BYTES = 4096
 
-KNOWN_EXTENSIONS = frozenset(METADATA_EXTENSIONS)
+KNOWN_EXTENSIONS = set(METADATA_EXTENSIONS)
 
 
 def name_extension(name: str) -> str:
@@ -67,7 +67,7 @@ def resolve_extension(name: str, head: bytes) -> str:
     return sniffed
 
 
-def head_of(path) -> bytes:
+def read_header(path) -> bytes:
     try:
         with open(path, "rb") as handle:
             return handle.read(SNIFF_BYTES)

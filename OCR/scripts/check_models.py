@@ -61,7 +61,7 @@ def check_transformers(config) -> bool:
         return False
 
     labels = sorted(set(model.config.id2label.values()))
-    log.info("  OK -- labels: %s", ", ".join(labels))
+    log.info("  OK, labels: %s", ", ".join(labels))
 
     from deid.config import MODEL_TO_PRESIDIO_ENTITY
 

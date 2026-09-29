@@ -1,13 +1,13 @@
 from io import BytesIO
-from typing import Iterable, Sequence
+from typing import List
 
 MIN_WIDTH = 12
 MAX_WIDTH = 80
 
 
 def workbook_bytes(
-    headers: Sequence[str],
-    rows: Iterable[Sequence[object]],
+    headers: List[str],
+    rows: List[List[object]],
     sheet_title: str = "Sheet1",
 ) -> bytes:
     from openpyxl import Workbook

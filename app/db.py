@@ -60,7 +60,7 @@ def written_table(sql: str) -> str:
     found = _WRITTEN_TABLE.match(sql or "")
     return found.group(1) if found else ""
 
-IMPALA_VERBS = frozenset({"select", "with"})
+IMPALA_VERBS = set({"select", "with"})
 
 
 def engine_for(sql: str) -> str:
@@ -153,7 +153,7 @@ def _pooled(engine: str) -> bool:
 def _close_session(engine: str, connection) -> None:
     try:
         connection.close()
-    except Exception as exc:  # pragma: no cover - closing a dead session
+    except Exception as exc:
         log.debug("db_session_close_failed", engine=engine, error=str(exc))
 
 
@@ -324,7 +324,7 @@ class RoutingCursor:
                 continue
             try:
                 connection.close()
-            except Exception as exc:  # pragma: no cover - close is best effort
+            except Exception as exc:
                 log.warning("db_close_failed", engine=engine, error=str(exc))
 
 
@@ -333,7 +333,7 @@ def authoritative(cursor):
     previous = getattr(cursor, "force_hive", False)
     try:
         cursor.force_hive = True
-    except AttributeError:  # pragma: no cover - a cursor that does not route
+    except AttributeError:
         yield
         return
 

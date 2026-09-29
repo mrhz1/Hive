@@ -52,9 +52,7 @@ function AccessLogPage() {
       id: 'when',
       header: 'When',
       cell: (entry) => (
-        <span className="whitespace-nowrap text-sm">
-          {formatWhen(entry.occurred_at)}
-        </span>
+        <span className="text-sm whitespace-nowrap">{formatWhen(entry.occurred_at)}</span>
       ),
       sortValue: (entry) => entry.occurred_at,
     },
@@ -78,9 +76,7 @@ function AccessLogPage() {
       header: 'What',
       cell: (entry) => (
         <div className="min-w-0">
-          <Badge tone={accessTone(entry.action, entry.outcome)}>
-            {entry.action}
-          </Badge>
+          <Badge tone={accessTone(entry.action, entry.outcome)}>{entry.action}</Badge>
           <span className="mt-1 block truncate text-xs text-[rgb(var(--foreground-muted))]">
             {accessSummary(entry)}
           </span>
@@ -119,9 +115,7 @@ function AccessLogPage() {
     {
       id: 'patient',
       header: 'Patient',
-      cell: (entry) => (
-        <code className="text-xs">{entry.patient_id ?? '--'}</code>
-      ),
+      cell: (entry) => <code className="text-xs">{entry.patient_id ?? '--'}</code>,
       sortValue: (entry) => entry.patient_id ?? '',
     },
     {
@@ -129,7 +123,6 @@ function AccessLogPage() {
       header: 'Identified',
       cell: (entry) =>
         entry.identified ? (
-
           <Badge tone="danger">identified</Badge>
         ) : entry.identified === false ? (
           <Badge tone="success">de-identified</Badge>
@@ -140,15 +133,14 @@ function AccessLogPage() {
     },
   ]
 
-  const anyFilter =
-    actor || patientId || action || identifiedOnly || dateFrom || dateTo
+  const anyFilter = actor || patientId || action || identifiedOnly || dateFrom || dateTo
 
   return (
     <RequirePermission permission="log:view">
       <div className="space-y-6">
         <PageHeader
           title="Access log"
-          description="Who read, downloaded or exported what -- and who was refused."
+          description="Who read, downloaded or exported what, and who was refused."
         />
 
         <div className="grid gap-4 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -176,7 +168,7 @@ function AccessLogPage() {
             type="date"
             value={dateFrom}
             onChange={(event) => setDateFrom(event.target.value)}
-            hint="Bounding the dates keeps the query fast -- it selects partitions."
+            hint="Bounding the dates keeps the query fast."
           />
           <TextField
             label="To"
@@ -217,9 +209,7 @@ function AccessLogPage() {
           error={error}
           loadingLabel="Loading access log"
           emptyMessage={
-            anyFilter
-              ? 'No access matches those filters.'
-              : 'Nothing recorded yet.'
+            anyFilter ? 'No access matches those filters.' : 'Nothing recorded yet.'
           }
         />
       </div>

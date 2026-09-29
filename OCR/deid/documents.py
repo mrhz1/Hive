@@ -44,7 +44,6 @@ def supported_globs(recursive: bool) -> List[str]:
     return [f"{prefix}{extension}" for extension in sorted(EXTENSIONS)]
 
 
-
 def open_document(path: str):
     kind = kind_for(path)
 
@@ -72,7 +71,7 @@ def render_pages(handle, kind: str, dpi: int):
 
         return render_frames(handle, dpi)
 
-    raise RuntimeError(f"cannot rasterise a {kind or 'unknown'} document")
+    raise RuntimeError(f"cannot rasterize a {kind or 'unknown'} document")
 
 
 def page_count(handle, kind: str) -> int:
@@ -132,7 +131,7 @@ def _scrub_pdf(handle, redact) -> List[str]:
     try:
         handle.del_xml_metadata()
         touched.append("<xmp>")
-    except Exception:  # pragma: no cover - not every PDF has XMP
+    except Exception:
         pass
 
     return touched

@@ -19,13 +19,6 @@ def generated_facts(
     by: str = "",
     source_name: str = "",
 ) -> Dict[str, str]:
-    """The facts this system worked out, for embedding in the output.
-
-    `source_name` is the document this was made from. Renaming the copy to
-    the patient-code scheme severs the link on disk, so the file carries it
-    internally too -- the intake table is the queryable record, this is the
-    copy that survives being moved off the volume.
-    """
     facts = {
         "deidentified": "yes",
         "deidentified_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -72,7 +65,7 @@ def _embed_pdf(path: Path, values: Dict[str, str]) -> None:
 
         try:
             document.del_xml_metadata()
-        except Exception:  # pragma: no cover - absent on some builds
+        except Exception:
             pass
 
         document.save(str(temporary), garbage=3, deflate=True)
