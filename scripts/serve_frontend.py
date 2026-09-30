@@ -1,4 +1,5 @@
 import os
+import ssl
 import sys
 from pathlib import Path
 
@@ -14,6 +15,23 @@ DIST = Path(
 API_PROXY_TARGET = os.environ.get("API_PROXY_TARGET", "").rstrip("/")
 
 PROXY_TIMEOUT_SECONDS = float(os.environ.get("API_PROXY_TIMEOUT_SECONDS", "120"))
+
+
+def _proxy_tls():
+    """Trust what the machine trusts, like curl does.
+
+    httpx on its own only trusts certifi's public CAs, so an API behind a
+    company or workspace CA fails with CERTIFICATE_VERIFY_FAILED even though
+    curl reaches it fine. API_PROXY_CA_BUNDLE points at a specific CA file
+    when the system store does not have it either.
+    """
+    bundle = os.environ.get("API_PROXY_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
+    if bundle:
+        return ssl.create_default_context(cafile=bundle)
+    return ssl.create_default_context()
+
+
+PROXY_TLS = _proxy_tls()
 
 _HOP_BY_HOP = {
     "connection",
@@ -70,8 +88,10 @@ if API_PROXY_TARGET:
                 headers=headers,
                 timeout=PROXY_TIMEOUT_SECONDS,
                 follow_redirects=False,
+                verify=PROXY_TLS,
             )
         except httpx.HTTPError as exc:
+            print(f"proxy to {url} failed: {exc!r}", file=sys.stderr)
             return {"error": {"code": "bad_gateway", "detail": str(exc)}}, 502
 
         passthrough = [
@@ -80,6 +100,25 @@ if API_PROXY_TARGET:
             if key.lower() not in _HOP_BY_HOP
         ]
         return Response(upstream.content, upstream.status_code, passthrough)
+
+
+if not API_PROXY_TARGET:
+
+    @app.route(
+        "/api/<path:subpath>",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    )
+    def no_proxy(subpath: str):
+        # Without this, /api/... falls through to index.html and the app gets
+        # a page of HTML where it expected JSON.
+        return {
+            "error": {
+                "code": "api_proxy_not_configured",
+                "detail": "API_PROXY_TARGET is not set on the dashboard, so "
+                "/api is not forwarded to the API. Set it to the API URL "
+                "and restart the dashboard.",
+            }
+        }, 503
 
 
 @app.get("/", defaults={"path": ""})
@@ -106,6 +145,13 @@ def main() -> int:
     print(f"serving {DIST} on {host}:{port}", file=sys.stderr)
     if API_PROXY_TARGET:
         print(f"proxying /api -> {API_PROXY_TARGET}", file=sys.stderr)
+    else:
+        print(
+            "API_PROXY_TARGET is not set: /api is NOT forwarded to the API. "
+            "Set it on this Application if the frontend was built with "
+            "VITE_API_BASE_URL=/api.",
+            file=sys.stderr,
+        )
 
     app.run(host=host, port=port, debug=False)
     return 0
