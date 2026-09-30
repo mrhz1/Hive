@@ -19,6 +19,15 @@ export const problemFileListSchema = z.array(problemFileSchema)
 
 export type ProblemList = 'failed' | 'attention'
 
+/** The code the API files problem files under when they have none. */
+export const NO_CODE = '-'
+
+export const problemCodeListSchema = z.array(
+  z.object({ code: z.string(), files: z.number() })
+)
+
+export type ProblemCode = z.infer<typeof problemCodeListSchema>[number]
+
 export const redactedFileSchema = z.object({
   id: z.string(),
   patient_code: z.string(),
@@ -65,6 +74,8 @@ export type IntakeWorker = z.infer<typeof intakeWorkerSchema>
 
 export const intakeStatusSchema = z.object({
   running: z.boolean(),
+  starting: z.boolean().default(false),
+  start_requested_at: z.number().nullable().optional(),
   remaining: z.number().nullable().optional(),
   remaining_counted_at: z.number().nullable().optional(),
   done: z.number(),

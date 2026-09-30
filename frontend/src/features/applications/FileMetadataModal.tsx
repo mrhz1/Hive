@@ -1,5 +1,6 @@
 import { Download, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { Can } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Misc'
 import { Spinner } from '@/components/ui/Spinner'
@@ -126,16 +127,18 @@ export function FileMetadataModal({
                   ? `${entries.length} of ${all.length} fields`
                   : `${all.length} fields`}
               </p>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={entries.length === 0}
-                isLoading={isExporting}
-                leadingIcon={<Download className="size-3.5" aria-hidden="true" />}
-                onClick={() => void exportFiltered()}
-              >
-                Export to Excel
-              </Button>
+              <Can permission="files:download">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={entries.length === 0}
+                  isLoading={isExporting}
+                  leadingIcon={<Download className="size-3.5" aria-hidden="true" />}
+                  onClick={() => void exportFiltered()}
+                >
+                  Export to Excel
+                </Button>
+              </Can>
             </div>
           </div>
         ) : null}

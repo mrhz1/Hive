@@ -1,10 +1,14 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Cpu, Play } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { toast } from 'sonner'
 import { Badge, Card } from '@/components/ui/Misc'
 import { Spinner } from '@/components/ui/Spinner'
 import { Can } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
 import { useIntakeRuns, useIntakeStatus, useStartIntake } from '@/hooks/useResources'
-import { humanDuration, type IntakeWorker } from '@/schemas/intake'
+import { queryKeys } from '@/lib/queryKeys'
+import { humanDuration, type IntakeRun, type IntakeWorker } from '@/schemas/intake'
 
 const formatNumber = (n: number) => n.toLocaleString()
 
@@ -82,10 +86,44 @@ function WorkerRow({ worker }: { worker: IntakeWorker }) {
   )
 }
 
+function runSummary(run: IntakeRun): string {
+  let summary = `${formatNumber(run.done)} done`
+  if (run.failed) summary += ` · ${formatNumber(run.failed)} failed`
+  if (run.set_aside) summary += ` · ${formatNumber(run.set_aside)} excluded`
+  return summary
+}
+
+/** Tell whoever is watching when a run ends, not only when it starts. */
+function useFinishedRunToast(active: boolean, runs: IntakeRun[] | undefined) {
+  const queryClient = useQueryClient()
+  const wasActive = useRef(active)
+  const announced = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (wasActive.current && !active) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
+    }
+    wasActive.current = active
+  }, [active, queryClient])
+
+  const latest = runs?.[0]
+  useEffect(() => {
+    if (!latest) return
+    if (announced.current === null) {
+      announced.current = latest.finished_at
+      return
+    }
+    if (latest.finished_at <= announced.current) return
+    announced.current = latest.finished_at
+    toast.success('De-identification finished', { description: runSummary(latest) })
+  }, [latest])
+}
+
 export function IntakeProgressPanel() {
   const { data: status, isLoading } = useIntakeStatus()
   const { data: runs } = useIntakeRuns()
   const start = useStartIntake()
+  useFinishedRunToast(Boolean(status?.running || status?.starting), runs)
 
   if (isLoading) {
     return (
@@ -125,22 +163,44 @@ export function IntakeProgressPanel() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <h2 className={titleClass}>De-identification</h2>
-            <Badge tone={status.running ? 'success' : 'neutral'}>
-              {status.running ? 'running' : 'idle'}
+            <Badge
+              tone={status.running ? 'success' : status.starting ? 'info' : 'neutral'}
+            >
+              {status.running ? 'running' : status.starting ? 'starting' : 'idle'}
             </Badge>
           </div>
           <Can permission="application:update">
             <Button
               size="sm"
-              disabled={status.running}
-              isLoading={start.isPending}
+              disabled={status.running || status.starting}
+              isLoading={start.isPending || status.starting}
               leadingIcon={<Play className="size-3.5" aria-hidden="true" />}
               onClick={() => start.mutate()}
             >
-              {status.running ? 'Running...' : 'Start de-identification'}
+              {status.running
+                ? 'Running...'
+                : status.starting
+                  ? 'Starting...'
+                  : 'Start de-identification'}
             </Button>
           </Can>
         </div>
+
+        {status.starting && (
+          <div
+            role="status"
+            className="mt-3 flex items-center gap-3 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--background-secondary))] p-3 text-sm"
+          >
+            <Spinner size="sm" label="" />
+            <span>
+              Start requested
+              {status.start_requested_at
+                ? ` at ${new Date(status.start_requested_at * 1000).toLocaleTimeString()}`
+                : ''}
+              . Waiting for a worker to pick it up, which can take a minute or two.
+            </span>
+          </div>
+        )}
 
         {status.running && (
           <div className="mt-3">
@@ -178,7 +238,7 @@ export function IntakeProgressPanel() {
             </dd>
           </div>
           <div>
-            <dt className={labelClass}>Needs attention</dt>
+            <dt className={labelClass}>Excluded</dt>
             <dd className="font-semibold tabular-nums">
               {formatNumber(status.needs_attention)}
             </dd>
@@ -209,10 +269,7 @@ export function IntakeProgressPanel() {
           <h2 className={titleClass}>Last runs</h2>
           <ul className="mt-2 divide-y divide-[rgb(var(--border))] text-xs">
             {runs.slice(0, 8).map((run) => {
-              let summary = `${formatNumber(run.done)} done`
-              if (run.failed) summary += ` · ${formatNumber(run.failed)} failed`
-              if (run.set_aside)
-                summary += ` · ${formatNumber(run.set_aside)} need attention`
+              const summary = runSummary(run)
               const took = humanDuration(run.finished_at - run.started_at)
 
               return (

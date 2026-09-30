@@ -9,6 +9,7 @@ import { TextField } from '@/components/ui/Field'
 import { Badge, Card, PageHeader } from '@/components/ui/Misc'
 import { ReplaceDeidentifiedDialog } from '@/features/files/ReplaceDeidentifiedDialog'
 import { FileViewerModal } from '@/features/patients/FileViewerModal'
+import { usePermissions } from '@/hooks/useCurrentUser'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
   useApplications,
@@ -64,6 +65,9 @@ type ViewerState = {
 
 function RejectionsPage() {
   useDocumentTitle('Rejections')
+  const { can } = usePermissions()
+  const canSeeOriginal = can('files:view_original')
+  const canSeeDeidentified = can('files:view_deidentified')
 
   const filesQuery = useRejectedFiles()
   const applicationsQuery = useApplications(undefined, true, 'rejected')
@@ -82,7 +86,7 @@ function RejectionsPage() {
     : files
 
   async function open(file: RejectedFile) {
-    const deidentified = file.has_deidentified
+    const deidentified = file.has_deidentified && canSeeDeidentified
     let extension = file.file_extension
     if (deidentified && (extension === 'doc' || extension === 'docx')) {
       extension = 'docx'
@@ -300,19 +304,24 @@ function RejectionsPage() {
             emptyMessage="Nothing has been rejected."
             rowActions={(file) => (
               <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  aria-label={`View ${file.original_file_name}`}
-                  isLoading={openingId === file.id}
-                  disabled={!file.has_original && !file.has_deidentified}
-                  leadingIcon={<Eye className="size-3.5" aria-hidden="true" />}
-                  onClick={() => void open(file)}
-                >
-                  View
-                </Button>
+                {canSeeOriginal || canSeeDeidentified ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label={`View ${file.original_file_name}`}
+                    isLoading={openingId === file.id}
+                    disabled={
+                      !(file.has_original && canSeeOriginal) &&
+                      !(file.has_deidentified && canSeeDeidentified)
+                    }
+                    leadingIcon={<Eye className="size-3.5" aria-hidden="true" />}
+                    onClick={() => void open(file)}
+                  >
+                    View
+                  </Button>
+                ) : null}
 
-                <Can permission="files:download">
+                {canSeeOriginal && can('files:download') ? (
                   <Button
                     size="sm"
                     variant="outline"
@@ -329,9 +338,9 @@ function RejectionsPage() {
                   >
                     Original
                   </Button>
-                </Can>
+                ) : null}
 
-                <Can permission="files:download">
+                {canSeeDeidentified && can('files:download') ? (
                   <Button
                     size="sm"
                     variant="outline"
@@ -348,7 +357,7 @@ function RejectionsPage() {
                   >
                     De-identified
                   </Button>
-                </Can>
+                ) : null}
 
                 <Can permission="files:upload">
                   <Button
@@ -408,7 +417,7 @@ function RejectionsPage() {
             fileId={viewing.file.id}
             blobUrl={viewing.url}
             isDeidentified={viewing.isDeidentified}
-            canViewOriginal={viewing.file.has_original}
+            canViewOriginal={viewing.file.has_original && canSeeOriginal}
             onClose={closeViewer}
           />
         )}

@@ -1,7 +1,6 @@
 import os
 import sys
 import uuid
-from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -11,7 +10,7 @@ load_dotenv(".env.local")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.security import KNOWN_PERMISSIONS, MODEL_ACTIONS  # noqa: E402
+from app.security import FILE_VIEW_PERMISSIONS, KNOWN_PERMISSIONS, MODEL_ACTIONS  # noqa: E402
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "sql" / "schema.sql"
 
@@ -20,7 +19,7 @@ ALL_PERMISSIONS = sorted(KNOWN_PERMISSIONS)
 READONLY_PERMISSIONS = [
     f"{model}:{'read' if 'read' in actions else 'view'}"
     for model, actions in MODEL_ACTIONS.items()
-]
+] + list(FILE_VIEW_PERMISSIONS)
 
 ADMIN_ROLE_ID = str(uuid.uuid4())
 VIEWER_ROLE_ID = str(uuid.uuid4())
@@ -70,19 +69,6 @@ def seed_users(cursor) -> None:
         (VIEWER_USER_ID, "viewer", "viewer@example.com", "Vic", "Viewer",
          "active", True, VIEWER_ROLE_ID),
     ]
-    rows += [
-        (
-            str(uuid.uuid4()),
-            f"user{i}",
-            f"user{i}@example.com",
-            f"First{i}",
-            f"Last{i}",
-            "active" if i % 5 != 0 else "inactive",
-            i % 5 != 0,
-            VIEWER_ROLE_ID,
-        )
-        for i in range(1, 19)
-    ]
     for row in rows:
         cursor.execute(
             "INSERT INTO `users` (`id`, `username`, `email`, `first_name`, "
@@ -91,59 +77,6 @@ def seed_users(cursor) -> None:
             row,
         )
     print(f"seeded {len(rows)} rows into users")
-
-
-def seed_patients(cursor) -> None:
-    base = datetime(2026, 7, 1, 12, 0, 0)
-    columns = (
-        "id", "instcode", "pname", "pemail", "phone1", "wphone1",
-        "street", "city", "state", "zip", "country",
-        "fstname", "lstname", "ptemail", "ptphone", "ptwphone",
-        "ptstreet", "ptcity", "ptstate", "ptzip", "ptcountry",
-        "dt_reg", "dt_b", "original_file_path",
-    )
-    date_columns = {"dt_reg", "dt_b"}
-
-    rows = [
-        (
-            f"PT{i:04d}",
-            f"INST{i:03d}",
-            f"Springfield Clinic {i}",
-            f"clinic{i}@example.com",
-            f"+1555100{i:04d}",
-            f"+1555200{i:04d}",
-            f"{i} Medical Plaza",
-            "Springfield",
-            "IL",
-            f"627{i:02d}",
-            "US",
-            f"Pat{i}",
-            f"Last{i}",
-            f"patient{i}@example.com",
-            f"+1555300{i:04d}",
-            f"+1555400{i:04d}",
-            f"{i} Elm St",
-            "Springfield",
-            "IL",
-            f"627{i:02d}",
-            "US",
-            (base + timedelta(days=i)).date().isoformat(),
-            date(1960 + i, (i % 12) + 1, (i % 28) + 1).isoformat(),
-            f"/data/patients/pat{i}.pdf",
-        )
-        for i in range(1, 11)
-    ]
-
-    column_list = ", ".join(f"`{c}`" for c in columns)
-    placeholders = ", ".join(
-        "CAST(%s AS DATE)" if c in date_columns else "%s" for c in columns
-    )
-    for row in rows:
-        cursor.execute(
-            f"INSERT INTO `patient` ({column_list}) VALUES ({placeholders})",
-            row,
-        )
-    print(f"seeded {len(rows)} rows into patient")
 
 
 def main() -> int:
@@ -158,7 +91,6 @@ def main() -> int:
         apply_schema(cursor)
         seed_roles(cursor)
         seed_users(cursor)
-        seed_patients(cursor)
     except Exception as exc:
         print(f"FAILED during init: {exc}", file=sys.stderr)
         return 1

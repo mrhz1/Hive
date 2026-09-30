@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Download, FileJson, Trash2 } from 'lucide-react'
+import { Eye, FileJson, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
@@ -112,7 +112,7 @@ function FilesPage() {
         {}
         <PageHeader
           title="Files"
-          description="De-identified documents, across every patient. Read-only. Add one from the application it belongs to."
+          description="De-identified documents, across every patient. Read-only. They arrive through intake."
         />
 
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4">
@@ -136,26 +136,28 @@ function FilesPage() {
           emptyMessage="No de-identified files yet."
           rowActions={(file) => (
             <>
-              <Can permission="files:download">
+              <Can permission="files:view_deidentified">
                 <Button
                   size="sm"
                   aria-label={`Open ${file.name}`}
                   isLoading={openingId === file.id}
-                  leadingIcon={<Download className="size-3.5" aria-hidden="true" />}
+                  leadingIcon={<Eye className="size-3.5" aria-hidden="true" />}
                   onClick={() => void open(file)}
                 >
                   Open
                 </Button>
               </Can>
-              <Button
-                size="sm"
-                variant="outline"
-                aria-label={`Show metadata for ${file.name}`}
-                leadingIcon={<FileJson className="size-3.5" aria-hidden="true" />}
-                onClick={() => setShowingMetadataFor(file)}
-              >
-                Metadata
-              </Button>
+              <Can permission="files:deid_metadata">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label={`Show metadata for ${file.name}`}
+                  leadingIcon={<FileJson className="size-3.5" aria-hidden="true" />}
+                  onClick={() => setShowingMetadataFor(file)}
+                >
+                  Metadata
+                </Button>
+              </Can>
               <Can permission="files:delete">
                 <Button
                   size="sm"

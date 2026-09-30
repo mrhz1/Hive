@@ -308,6 +308,8 @@ export function FileViewerModal({
   const canCompare =
     source === 'application' &&
     canViewOriginal &&
+    can('files:view_original') &&
+    can('files:view_deidentified') &&
     (Boolean(file.de_identified_file_path) || isDeidentified)
 
   useEffect(() => {

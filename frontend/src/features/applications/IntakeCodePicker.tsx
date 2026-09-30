@@ -6,6 +6,8 @@ import { Spinner } from '@/components/ui/Spinner'
 import { useIntakeCodes } from '@/hooks/useResources'
 import type { AvailableCode } from '@/schemas/intake'
 
+const MAX_ROWS = 200
+
 type Props = {
   value: string | undefined
   onChoose: (code: AvailableCode) => void
@@ -38,52 +40,71 @@ export function IntakeCodePicker({ value, onChoose, disabled = false }: Props) {
       </p>
     )
   } else {
+    const shown = codes.slice(0, MAX_ROWS)
     content = (
-      <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3" role="listbox">
-        {codes.map((item) => {
-          const selected = item.code === value
-          const borderClass = selected
-            ? 'border-[rgb(var(--primary))] bg-[rgb(var(--background-secondary))]'
-            : 'border-[rgb(var(--border))] hover:border-[rgb(var(--foreground-muted))]'
+      <>
+        <ul
+          className="mt-4 max-h-96 divide-y divide-[rgb(var(--border))] overflow-y-auto rounded-lg border border-[rgb(var(--border))]"
+          role="listbox"
+          aria-label="Patient codes"
+        >
+          {shown.map((item) => {
+            const selected = item.code === value
+            const rowClass = selected
+              ? 'bg-[rgb(var(--background-secondary))]'
+              : 'hover:bg-[rgb(var(--background-secondary))]'
 
-          return (
-            <li key={item.code}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={selected}
-                disabled={disabled}
-                onClick={() => onChoose(item)}
-                className={`w-full rounded-lg border p-3 text-left transition-colors disabled:opacity-50 ${borderClass}`}
-              >
-                <span className="flex items-center justify-between gap-2">
-                  <span className="font-mono text-lg font-bold tracking-wide">
+            return (
+              <li key={item.code}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  disabled={disabled}
+                  onClick={() => onChoose(item)}
+                  className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors disabled:opacity-50 ${rowClass}`}
+                >
+                  <span className="flex w-4 shrink-0 justify-center">
+                    {selected && (
+                      <Check
+                        className="size-4 text-[rgb(var(--primary))]"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </span>
+                  <span className="w-24 shrink-0 font-mono font-bold tracking-wide">
                     {item.code}
                   </span>
-                  {selected && <Check className="size-4" aria-hidden="true" />}
-                </span>
-                <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[rgb(var(--foreground-muted))]">
-                  {item.files} {item.files === 1 ? 'document' : 'documents'}
-                  {item.patient_exists ? (
-                    <Badge tone="neutral">existing patient</Badge>
-                  ) : (
-                    <Badge tone="info">
-                      <UserPlus className="mr-1 inline size-3" aria-hidden="true" />
-                      new patient
-                    </Badge>
-                  )}
-                </span>
-                <span
-                  className="mt-1 block truncate font-mono text-[11px] text-[rgb(var(--foreground-muted))]"
-                  title={item.folder}
-                >
-                  {item.folder}
-                </span>
-              </button>
-            </li>
-          )
-        })}
-      </ul>
+                  <span className="w-24 shrink-0 text-xs text-[rgb(var(--foreground-muted))]">
+                    {item.files} {item.files === 1 ? 'document' : 'documents'}
+                  </span>
+                  <span className="w-32 shrink-0">
+                    {item.patient_exists ? (
+                      <Badge tone="neutral">existing patient</Badge>
+                    ) : (
+                      <Badge tone="info">
+                        <UserPlus className="mr-1 inline size-3" aria-hidden="true" />
+                        new patient
+                      </Badge>
+                    )}
+                  </span>
+                  <span
+                    className="hidden min-w-0 flex-1 truncate font-mono text-[11px] text-[rgb(var(--foreground-muted))] sm:block"
+                    title={item.folder}
+                  >
+                    {item.folder}
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+        <p className="mt-2 text-xs text-[rgb(var(--foreground-muted))]">
+          {codes.length > MAX_ROWS
+            ? `Showing ${MAX_ROWS} of ${codes.length} codes. Type to narrow the list.`
+            : `${codes.length} ${codes.length === 1 ? 'code' : 'codes'}`}
+        </p>
+      </>
     )
   }
 

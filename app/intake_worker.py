@@ -226,6 +226,8 @@ class PatientCreator:
         self.thread.start()
 
     def add(self, code):
+        # Only dedupes codes still waiting in the queue: a code finished again
+        # after it was handled is queued again, so its new files are attached.
         if not code:
             return
         with self.seen_lock:
@@ -233,6 +235,10 @@ class PatientCreator:
                 return
             self.seen.add(code)
         self.queue.put(code)
+
+    def taken(self, code):
+        with self.seen_lock:
+            self.seen.discard(code)
 
     def scan(self):
         self.queue.put(SCAN)
@@ -255,6 +261,7 @@ class PatientCreator:
                 if code == SCAN:
                     self.add_missing()
                 else:
+                    self.taken(code)
                     self.create(code)
             except Exception as e:
                 log.exception("intake_patient_create_failed", code=code, error=str(e))
@@ -270,7 +277,8 @@ class PatientCreator:
         codes = sorted(d.name for d in root.iterdir() if d.is_dir() and not d.name.startswith("."))
         with hive_cursor() as cursor:
             existing = patients_crud.existing_ids(cursor, codes)
-        missing = [c for c in codes if c not in existing]
+            waiting = {item["code"] for item in intake.available_codes(cursor)}
+        missing = [c for c in codes if c not in existing or c in waiting]
         if missing:
             log.info("intake_patients_missing", count=len(missing))
         for code in missing:
@@ -304,16 +312,34 @@ class PatientCreator:
                     exists = patients_crud.get_patient(cursor, code) is not None
                 if not exists:
                     patients_crud.create_empty_patient(cursor, code)
+                with authoritative(cursor):
+                    application, created, attached = intake.attach_to_draft(cursor, code)
             if not exists:
                 record_audit(
                     action="CREATE",
                     entity_type="patient",
                     entity_id=code,
-                    user_id="intake",
+                    user_id=intake.INTAKE_ACTOR,
                     old_values=None,
                     new_values={"id": code},
                 )
                 log.info("intake_patient_created", code=code)
+            if created:
+                record_audit(
+                    action="CREATE",
+                    entity_type="patient_application",
+                    entity_id=application.id,
+                    user_id=intake.INTAKE_ACTOR,
+                    old_values=None,
+                    new_values={"patient_id": code, "status": "draft"},
+                )
+            if attached:
+                log.info(
+                    "intake_files_filed",
+                    code=code,
+                    application_id=application.id,
+                    attached=attached,
+                )
         finally:
             lock_file.unlink(missing_ok=True)
 
@@ -639,6 +665,11 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
         heartbeat.stop()
         if not creator.wait(PATIENT_WAIT_SECONDS):
             log.warning("intake_patients_pending", waited_seconds=PATIENT_WAIT_SECONDS)
+        if is_main:
+            try:
+                intake.prune_empty_folders(root)
+            except Exception as e:
+                log.warning("intake_prune_failed", error=str(e))
         if status_thread:
             stop_status.set()
             status_thread.join(timeout=5)

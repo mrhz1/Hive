@@ -63,7 +63,7 @@ CREATE DATABASE IF NOT EXISTS hive_patients;
 ```
 
 ```bash
-python scripts/init_db.py      # creates tables from sql/schema.sql + seed data
+python scripts/init_db.py      # creates tables from sql/schema.sql + admin/viewer logins
 python scripts/verify_acid.py  # checks INSERT/UPDATE/DELETE work
 ```
 
@@ -181,7 +181,7 @@ API Keys) and set `CML_API_KEY`.
 ```bash
 python scripts/grant_permissions.py --list
 python scripts/grant_permissions.py --role admin --all-missing
-python scripts/grant_permissions.py --role viewer --grant files:read
+python scripts/grant_permissions.py --role viewer --grant files:read,files:view_original,files:view_deidentified,files:metadata,files:deid_metadata
 ```
 
 Users need to sign out and back in after that.
@@ -189,9 +189,14 @@ Users need to sign out and back in after that.
 | Permission | Allows |
 |---|---|
 | `files:read` | browse de-identified files |
-| `files:download` | download them |
+| `files:download` | every Download button, and exporting a file's metadata |
 | `files:upload` | upload or replace a redacted file |
-| `files:delete` | delete a redacted copy |
+| `files:delete` | delete a document from an application, or a redacted copy |
+| `files:view_original` | view the identified original |
+| `files:view_deidentified` | view the de-identified copy |
+| `files:metadata` | show the original's metadata |
+| `files:deid_metadata` | show the de-identified copy's metadata |
+| `files:reject` | reject a document in step 2 of an application |
 
 ### New columns on an existing database
 

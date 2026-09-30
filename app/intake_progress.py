@@ -82,8 +82,11 @@ def progress():
         eta = round(remaining / rate * 60)
 
     counts = problem_counts(now)
+    start = None if running else intake_run.pending_start()
     return {
         "running": running,
+        "starting": start is not None,
+        "start_requested_at": start.get("requested_at") if start else None,
         "remaining": remaining,
         "remaining_counted_at": status.get("counted_at"),
         "done": sum(w["done"] for w in workers),

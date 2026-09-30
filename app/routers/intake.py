@@ -1,6 +1,6 @@
 import csv
 import io
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from fastapi.responses import StreamingResponse
@@ -62,10 +62,17 @@ def start_intake(
 ):
     if intake_run.is_running():
         raise ConflictError("De-identification is already running")
+    if intake_run.pending_start():
+        raise ConflictError("De-identification has already been asked to start")
+    intake_run.request_start(by=actor.id)
     try:
         started = intake_run.start_in_background()
     except ClouderaError as e:
+        intake_run.clear_start_request()
         raise ValidationError(str(e)) from e
+    except Exception:
+        intake_run.clear_start_request()
+        raise
     log.info("intake_started", actor=actor.id)
     return started
 
@@ -91,10 +98,11 @@ def list_files(
     kind: str,
     limit: int = 500,
     offset: int = 0,
+    code: Optional[str] = None,
     _actor: User = Depends(require_permission("application:view")),
 ):
     _check_list(kind)
-    files = intake.list_problem_files(kind)
+    files = intake.filter_by_code(intake.list_problem_files(kind), code)
     limit = min(max(1, limit), MAX_PAGE_SIZE)
     offset = max(0, offset)
     response.headers["X-Total-Count"] = str(len(files))
@@ -102,16 +110,26 @@ def list_files(
     return files[offset : offset + limit]
 
 
+@router.get("/files/codes")
+def list_file_codes(
+    kind: str,
+    _actor: User = Depends(require_permission("application:view")),
+):
+    _check_list(kind)
+    return intake.codes_in(intake.list_problem_files(kind))
+
+
 @router.get("/files/export")
 def export_files(
     kind: str,
+    code: Optional[str] = None,
     _actor: User = Depends(require_permission("application:view")),
 ):
     _check_list(kind)
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(EXPORT_COLUMNS)
-    for f in intake.list_problem_files(kind):
+    for f in intake.filter_by_code(intake.list_problem_files(kind), code):
         writer.writerow([f.get(c) for c in EXPORT_COLUMNS])
     return StreamingResponse(
         iter([buffer.getvalue()]),

@@ -5,11 +5,12 @@ import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
 import { Can, RequirePermission } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
-import { TextField } from '@/components/ui/Field'
+import { SelectField, TextField } from '@/components/ui/Field'
 import { Badge, Card, PageHeader } from '@/components/ui/Misc'
 import { IntakeProgressPanel } from '@/features/intake/IntakeProgressPanel'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
+  useIntakeFileCodes,
   useIntakeFiles,
   useIntakeStatus,
   useResolveIntakeConflict,
@@ -18,6 +19,7 @@ import {
 import { intakeApi } from '@/lib/api/resources'
 import { formatFileSize } from '@/schemas/applicationFile'
 import {
+  NO_CODE,
   filesToText,
   problemSearchText,
   type ProblemFile,
@@ -40,9 +42,9 @@ const VIEWS: { id: ProblemList; label: string; hint: string; empty: string }[] =
   },
   {
     id: 'attention',
-    label: 'Needs attention',
-    hint: 'No patient code, an unsupported format, a duplicate, or the path and file name have different codes. Fix these at the source and push them again, or pick the right code for a conflict.',
-    empty: 'Nothing needs attention.',
+    label: 'Excluded',
+    hint: 'Left out of de-identification: no patient code, an unsupported format, a duplicate, or the path and file name have different codes. Pick a code to see what was excluded for that patient. Fix these at the source and push them again, or pick the right code for a conflict.',
+    empty: 'Nothing was excluded.',
   },
 ]
 
@@ -53,7 +55,9 @@ function IntakePage() {
   const [view, setView] = useState<ProblemList>('failed')
   const [limit, setLimit] = useState(PAGE_SIZE)
   const [search, setSearch] = useState('')
-  const files = useIntakeFiles(view, limit)
+  const [code, setCode] = useState('')
+  const files = useIntakeFiles(view, limit, code)
+  const codes = useIntakeFileCodes(view)
   const resolve = useResolveIntakeConflict()
   const retry = useRetryIntakeFile()
 
@@ -68,6 +72,7 @@ function IntakePage() {
   function changeView(newView: ProblemList) {
     setView(newView)
     setSearch('')
+    setCode('')
     setLimit(PAGE_SIZE)
   }
 
@@ -78,11 +83,11 @@ function IntakePage() {
 
   async function downloadAll() {
     try {
-      const blob = await intakeApi.exportCsv(view)
+      const blob = await intakeApi.exportCsv(view, code || undefined)
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `intake-${view}.csv`
+      link.download = code ? `intake-${view}-${code}.csv` : `intake-${view}.csv`
       document.body.append(link)
       link.click()
       link.remove()
@@ -224,7 +229,7 @@ function IntakePage() {
       <div className="space-y-6">
         <PageHeader
           title="Intake"
-          description="Files in the incoming folder are de-identified when you click Start. Done files move to the data folder, and anything that could not be done is listed below."
+          description="Files in the incoming folder are de-identified when you click Start. Each done file is filed on its patient's draft application, creating the patient and the draft when needed. Anything that failed or was excluded is listed below."
         />
 
         <IntakeProgressPanel />
@@ -250,7 +255,11 @@ function IntakePage() {
                 </span>
                 <span className="mt-1 flex items-center gap-2">
                   <span className="text-2xl font-bold tabular-nums">{count}</span>
-                  {count > 0 && <Badge tone="danger">needs attention</Badge>}
+                  {count > 0 && (
+                    <Badge tone={option.id === 'failed' ? 'danger' : 'warning'}>
+                      {option.id === 'failed' ? 'needs a retry' : 'excluded'}
+                    </Badge>
+                  )}
                 </span>
               </button>
             )
@@ -268,6 +277,22 @@ function IntakePage() {
               </p>
             </div>
             <div className="flex flex-wrap items-end gap-3">
+              <div className="w-48">
+                <SelectField
+                  label="Patient code"
+                  aria-label="Filter by patient code"
+                  value={code}
+                  onChange={(e) => {
+                    setCode(e.target.value)
+                    setLimit(PAGE_SIZE)
+                  }}
+                  placeholder={`All codes${codes.data ? ` (${codes.data.length})` : ''}`}
+                  options={(codes.data ?? []).map((c) => ({
+                    value: c.code,
+                    label: `${c.code === NO_CODE ? 'No code' : c.code} (${c.files})`,
+                  }))}
+                />
+              </div>
               <TextField
                 label="Search"
                 value={search}
@@ -290,7 +315,11 @@ function IntakePage() {
                 size="sm"
                 leadingIcon={<Download className="size-3.5" aria-hidden="true" />}
                 onClick={() => void downloadAll()}
-                title="Every file in this list as CSV, not just the ones shown"
+                title={
+                  code
+                    ? `Every file in this list for ${code === NO_CODE ? 'no code' : code}, as CSV`
+                    : 'Every file in this list as CSV, not just the ones shown'
+                }
               >
                 Download all (CSV)
               </Button>

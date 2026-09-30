@@ -69,6 +69,7 @@ export function PatientForm({
   } = form
 
   const isSubmitting = create.isPending || update.isPending
+  const codeLocked = Boolean(patient) || Boolean(code)
 
   const onSubmit = handleSubmit(async (values) => {
     if (onBeforeSubmit && !onBeforeSubmit()) return
@@ -123,7 +124,10 @@ export function PatientForm({
               ? 'Taken from the de-identified documents this patient is being created for.'
               : 'As it appears on the documents: two to four letters, then three or four digits.'
         }
-        readOnly={Boolean(patient) || Boolean(code)}
+        readOnly={codeLocked}
+        aria-disabled={codeLocked}
+        tabIndex={codeLocked ? -1 : undefined}
+        className={codeLocked ? 'cursor-not-allowed opacity-50 focus:ring-0' : undefined}
         error={errors.id?.message}
         {...register('id')}
       />

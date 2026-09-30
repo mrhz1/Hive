@@ -25,6 +25,7 @@ import {
   availableCodeListSchema,
   intakeRunListSchema,
   intakeStatusSchema,
+  problemCodeListSchema,
   problemFileListSchema,
   redactedFileListSchema,
   type ProblemList,
@@ -307,11 +308,6 @@ export const applicationFilesApi = {
       api.post(`/applications/${applicationId}/files/deidentify-all`)
     ),
 
-  approveAll: (applicationId: string) =>
-    request(bulkResultSchema, () =>
-      api.post(`/applications/${applicationId}/files/approve-all`)
-    ),
-
   review: (fileId: string, reviewStatus: 'approved' | 'rejected', note?: string) =>
     request(applicationFileSchema, () =>
       api.post(`/files/${fileId}/review`, {
@@ -347,18 +343,6 @@ export const applicationFilesApi = {
   },
 
   listRejected: () => request(rejectedFileListSchema, () => api.get('/files/rejected')),
-
-  uploadDeidentified: (applicationId: string, file: File, description?: string) => {
-    const form = new FormData()
-    form.append('file', file, file.name)
-    if (description) form.append('description', description)
-
-    return request(applicationFileSchema, () =>
-      api.post(`/applications/${applicationId}/files/deidentified`, form, {
-        headers: { 'Content-Type': undefined },
-      })
-    )
-  },
 
   fetchContent: async (
     fileId: string,
@@ -480,9 +464,11 @@ export const intakeApi = {
 
   runs: () => request(intakeRunListSchema, () => api.get('/intake/runs')),
 
-  files: async (kind: ProblemList, limit: number) => {
+  files: async (kind: ProblemList, limit: number, code?: string) => {
     try {
-      const response = await api.get('/intake/files', { params: { kind, limit } })
+      const response = await api.get('/intake/files', {
+        params: { kind, limit, ...(code ? { code } : {}) },
+      })
       const rows = problemFileListSchema.parse(response.data)
       const total = Number(response.headers['x-total-count'] ?? rows.length)
       return { rows, total }
@@ -491,10 +477,15 @@ export const intakeApi = {
     }
   },
 
-  exportCsv: async (kind: ProblemList): Promise<Blob> => {
+  fileCodes: (kind: ProblemList) =>
+    request(problemCodeListSchema, () =>
+      api.get('/intake/files/codes', { params: { kind } })
+    ),
+
+  exportCsv: async (kind: ProblemList, code?: string): Promise<Blob> => {
     try {
       const response = await api.get('/intake/files/export', {
-        params: { kind },
+        params: { kind, ...(code ? { code } : {}) },
         responseType: 'blob',
       })
       return response.data as Blob
