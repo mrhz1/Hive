@@ -96,4 +96,11 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    _rc = main()
+    # Under Cloudera's ipykernel launcher any SystemExit -- even 0 -- is
+    # reported as an exception and the Job run is marked failed.
+    if _under_ipython_kernel():
+        if _rc:
+            raise SystemExit(_rc)
+    else:
+        sys.exit(_rc)
