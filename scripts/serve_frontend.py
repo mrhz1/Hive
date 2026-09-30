@@ -1,3 +1,4 @@
+import mimetypes
 import os
 import ssl
 import sys
@@ -7,6 +8,10 @@ import httpx
 from flask import Flask, Response, request, send_from_directory
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# The PDF viewer's worker ships as .mjs; a browser refuses to run a module
+# served with any type but JavaScript, and older Pythons do not map .mjs.
+mimetypes.add_type("text/javascript", ".mjs")
 
 DIST = Path(
     os.environ.get("FRONTEND_DIST", str(REPO_ROOT / "frontend" / "dist"))

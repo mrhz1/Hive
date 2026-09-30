@@ -7,6 +7,7 @@ import { usePermissions } from '@/hooks/useCurrentUser'
 import { ApiError } from '@/lib/api/client'
 import { applicationFilesApi, deidentifiedFilesApi } from '@/lib/api/resources'
 import { formatFileSize, previewKind, type WordPreview } from '@/schemas/applicationFile'
+import { PdfViewer } from './PdfViewer'
 
 export type ViewableFile = {
   mime_type: string
@@ -428,13 +429,7 @@ export function FileViewerModal({
   } else if (kind === 'pdf' && pdfError) {
     viewer = <ViewerMessage tone="error">{pdfError}</ViewerMessage>
   } else if (kind === 'pdf' && pdfUrl) {
-    viewer = (
-      <iframe
-        src={pdfUrl}
-        title={`Preview of ${displayName}`}
-        className="min-h-0 w-full flex-1 bg-[rgb(var(--background-secondary))]"
-      />
-    )
+    viewer = <PdfViewer key={side} url={pdfUrl} name={displayName} />
   } else if (kind === 'pdf') {
     viewer = (
       <ViewerMessage>
