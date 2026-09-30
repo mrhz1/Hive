@@ -6,7 +6,10 @@ const baseURL = import.meta.env.VITE_API_PROXY_TARGET
   ? '/api'
   : (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8100')
 
-export const api = axios.create({ baseURL })
+// Send the platform's login cookie with calls to an API on another origin.
+// Without it a gateway such as Cloudera's answers every call with a
+// redirect to its login page, even though the API itself is reachable.
+export const api = axios.create({ baseURL, withCredentials: true })
 
 api.interceptors.request.use((config) => {
   const username = getActiveUsername()
