@@ -39,6 +39,26 @@ def _say(result) -> None:
         print("-> see the Intake page for the files that need attention")
 
 
+def _under_ipython_kernel():
+    """Cloudera runs Job scripts through ipykernel_launcher, which adds its
+    own arguments (-f <connection file>) that are not ours to parse."""
+    prog = Path(sys.argv[0]).name if sys.argv else ""
+    if prog.startswith("ipykernel_launcher"):
+        return True
+    if "ipykernel" in sys.modules:
+        return True
+    return any(
+        arg.endswith(".json") and "jupyter" in arg and "kernel-" in arg
+        for arg in sys.argv[1:]
+    )
+
+
+def _cli_argv():
+    if _under_ipython_kernel():
+        return []
+    return sys.argv[1:]
+
+
 def _parse_shards(text, of):
     if not text:
         return None
@@ -66,7 +86,7 @@ def main(argv=None) -> int:
     parser.add_argument("--shards", default=None, help="This process's shards, e.g. 0-3 or 0,4,8 (default: all).")
     parser.add_argument("--of", type=int, default=1, help="Total number of shards across all processes.")
     parser.add_argument("--root", default=None, help="The incoming folder (default: $INTAKE_DIR).")
-    args = parser.parse_args(argv)
+    args = parser.parse_args(_cli_argv() if argv is None else argv)
 
     root = Path(args.root).expanduser().resolve() if args.root else intake.intake_root()
     shards = _parse_shards(args.shards, args.of)
