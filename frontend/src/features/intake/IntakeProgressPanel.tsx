@@ -37,9 +37,10 @@ function ProgressBar({ percent, red = false }: { percent: number; red?: boolean 
 }
 
 function WorkerRow({ worker }: { worker: IntakeWorker }) {
+  const finished = !worker.alive && worker.status === 'finished'
   let dotColor = 'bg-[rgb(var(--foreground-muted))]'
   let badgeTone: 'danger' | 'success' | 'neutral' = 'neutral'
-  if (!worker.alive) {
+  if (!worker.alive && !finished) {
     dotColor = 'bg-rose-500'
     badgeTone = 'danger'
   } else if (worker.status === 'working') {
@@ -71,7 +72,9 @@ function WorkerRow({ worker }: { worker: IntakeWorker }) {
       <span className={labelClass}>
         {shards} · {worker.workers} at once
       </span>
-      <Badge tone={badgeTone}>{worker.alive ? worker.status : 'stopped'}</Badge>
+      <Badge tone={badgeTone}>
+        {worker.alive || finished ? worker.status : 'stopped'}
+      </Badge>
       <span className="text-xs tabular-nums">{formatNumber(worker.per_hour)}/h</span>
       <span className={labelClass}>seen {lastSeen}</span>
       {currentFiles && (
