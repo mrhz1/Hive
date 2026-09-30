@@ -185,7 +185,7 @@ export function toPatientFormValues(patient: Patient): PatientFormValues {
 
 export function patientName(patient: Patient): string {
   const name = [patient.fstname, patient.lstname].filter(Boolean).join(' ').trim()
-  return name || patient.ptemail || 'Unnamed patient'
+  return name || patient.ptemail || 'No details yet'
 }
 
 export function patientMatches(patient: Patient, query: string): boolean {

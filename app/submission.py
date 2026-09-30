@@ -82,6 +82,10 @@ def process_one(record, patient_id: str) -> bool:
         except StampError as e:
             log.error("submission_stamp_failed", file_id=record.id, error=str(e))
 
+    if intake.is_data_file(staged):
+        log.info("submission_filed", file_id=record.id, patient_id=patient_id, deidentified=str(staged), moved=False)
+        return True
+
     folder = submitted_dir_for(patient_id)
     staged_dir, staged_stem = staged.parent, staged.stem
 
@@ -112,7 +116,6 @@ def process_one(record, patient_id: str) -> bool:
             files_crud.set_paths(
                 cursor, record.id, str(kept) if kept else record.file_path, str(final)
             )
-            intake.mark_submitted(cursor, record.id)
     except Exception as e:
         log.error("submission_path_write_failed", file_id=record.id, error=str(e))
 

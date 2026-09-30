@@ -39,8 +39,6 @@ Docs at `http://localhost:8100/docs`.
 | `file_metadata` | metadata read from each file at upload (JSON string) |
 | `audit_logs` | changes (create/update/delete), append only |
 | `access_logs` | who viewed/downloaded what, partitioned by day |
-| `intake_files` | every file found in the intake folder |
-| `intake_batches` | one row per intake sweep |
 
 ### Endpoints
 
@@ -101,77 +99,68 @@ The type is detected from the file content when the name has no known
 extension (`app/filetype.py`), e.g. PACS files named `IM000001`:
 DICOM (`DICM`), PDF (`%PDF-`), docx (zip with `word/`), doc (OLE2).
 
-### Intake (drop folder)
+### Intake
 
-Documents come in by being copied into `INTAKE_DIR`, not uploaded through
-the app. Each file is matched to a patient code, de-identified, and written
-to a mirror folder inside the intake root:
+Files are copied into the incoming folder (`INTAKE_DIR`). When someone
+clicks **Start de-identification** on the Intake page (or runs
+`make intake-start`), every file in it is processed and moved into
+`DATA_DIR`:
 
 ```
-storage/incoming_data/A/B/C/AA1234/image.dcm
-storage/incoming_data/de_identified/A/B/C/AA1234/AA1234_<date>_<serial>.dcm
+INTAKE_DIR/A/B/C/AA1234/image.dcm                         (incoming, the queue)
+
+DATA_DIR/original/A/B/C/AA1234/image.dcm                  original, same path
+DATA_DIR/de_identified/AA1234/A/B/C/AA1234_<date>_<serial>.dcm
+DATA_DIR/de_identified/AA1234/A/B/C/AA1234_<date>_<serial>.dcm.json   sidecar
+DATA_DIR/failed/...                                       redaction failed
+DATA_DIR/needs_attention/...                              no code, unsupported, conflict, duplicate
+DATA_DIR/.intake/                                         locks, heartbeats, run reports
 ```
 
-Commands:
+Whatever is still in the incoming folder hasn't been done yet, so a run
+can be stopped and started again at any time. `INTAKE_DIR` and `DATA_DIR`
+should be on the same disk so moves are instant. There are no intake
+tables in Hive.
 
 ```bash
-make intake          # dry run: show what a sweep would do
-make intake-apply    # sweep and record the files in Hive
-make intake-deid     # redact everything queued
-make intake-run      # check once, sweep + redact if a push has finished
-make intake-watch    # same, every minute
+make intake-preview    # show what a run would do, moves nothing
+make intake-start      # process everything in INTAKE_DIR
 
-python scripts/intake_sweep.py --root /some/drop --settle-seconds 0
-python scripts/intake_deid.py --workers 4
-python scripts/intake_deid.py --limit 1
+python scripts/intake_run.py --workers 4
+python scripts/intake_run.py --limit 10
 ```
 
-#### When a run starts
+#### What happens to a file
 
-`intake_run.py` only starts when a push has finished:
+1. Files changed in the last `INTAKE_SETTLE_SECONDS` are left for the next
+   run (still being copied).
+2. The patient code is read from the path or file name. Files without a
+   code, with an unsupported format, with two different codes, or that are
+   an exact copy of a file already in `original/` go to `needs_attention/`
+   with a `.reason.json` file next to them.
+3. The file is redacted into `de_identified/<CODE>/...` under a temporary
+   `.partial` name.
+4. The original is moved to `original/`, then the copy gets its final
+   name and a `.json` sidecar (original path, method). The pipeline's text
+   and report files are deleted.
+5. If redaction fails, the original goes to `failed/` with the reason.
+6. The code is passed to the patient creator (see below).
 
-- a `batch.done` file (`INTAKE_BATCH_MARKER`) is in the tree, or
-- nothing has changed for `INTAKE_SETTLE_SECONDS`.
+Before step 3 a small file is written to `.intake/pending/`. If the
+process is killed in the middle, the next run uses it to either redo the
+file (original still in incoming) or finish it (original already moved).
 
-"Changed" uses the later of mtime and ctime, because `cp -p` / `rsync -t`
-keep the source mtime. Hidden files (rsync temp files, `.DS_Store`) are
-ignored. The marker file is deleted after its push is swept.
+Only one run at a time (a lock file in `.intake/`). To use several
+machines, give each a share of the files:
 
-Only one run at a time: a run holds a file lock on
-`<INTAKE_DIR>/.intake/run.lock` and a second run exits with `busy`.
-If a run was interrupted, the next run finishes the queue even if nothing
-new arrived.
+```bash
+python scripts/intake_run.py --shards 0-3  --of 12   # machine 1
+python scripts/intake_run.py --shards 4-7  --of 12   # machine 2
+python scripts/intake_run.py --shards 8-11 --of 12   # machine 3
+```
 
-#### Scheduling on Cloudera AI
-
-Create a Job:
-
-| | |
-|---|---|
-| Script | `scripts/intake_run.py` |
-| Schedule | every minute (`* * * * *`) |
-| Environment | `INTAKE_DIR`, `SUBMITTED_DIR`, `DEID_WORKERS`, `DEID_WORKER_CPU_THREADS`, `INTAKE_SETTLE_SECONDS` and the Hive variables |
-
-`INTAKE_DIR` has to be on the same volume the sender writes to and the API
-reads from. If the sender can write `batch.done` at the end of a push,
-redaction starts right away instead of waiting for the settle time.
-
-#### Statuses
-
-| status | meaning |
-|---|---|
-| `queued` | has a code and a supported format, waiting to be redacted |
-| `processing` | being redacted |
-| `done` | redacted, ready to attach to an application |
-| `failed` | redaction failed, reason in `detail` |
-| `skipped` | unsupported format or no patient code |
-| `conflict` | path and file name have different codes |
-| `claimed` | attached to an application |
-| `submitted` | its application was submitted |
-| `superseded` | an old skipped/failed row that was pushed again and fixed |
-
-Skipped and conflict files are stored as rows too, so they show up on the
-Intake page and can be fixed.
+Files are split by a hash of their path, so each file is done by exactly
+one machine.
 
 #### Finding the code
 
@@ -183,17 +172,18 @@ Intake page and can be fixed.
 - **File type** comes from the file content when there is no extension
   (PACS exports like `IM000001`).
 
-If the folder and the name disagree, the file goes to `conflict` and someone
-has to pick one of the two codes on the Intake page. Only those two codes
-are accepted.
+If the folder and the name disagree, the file goes to `needs_attention/`
+and someone picks one of the two codes on the Intake page. The choice is
+saved in `.intake/code_overrides.json` and the file goes back to incoming.
 
-#### Pushing the same folder again
+#### Patients are created automatically
 
-Files are matched on checksum + full path. Same bytes at the same path is
-the same file and is skipped. This means you can fix file names at source
-and push the whole folder again: the fixed files are picked up, and the old
-skipped rows are marked `superseded`. The same document in two patients'
-folders is treated as two files.
+When a file is done, its code is passed to a background thread. If there
+is no patient with that code, it creates one with only the code filled in
+and writes an audit entry (`CREATE patient`, user `intake`). The workers
+don't wait for it. A lock file per code in `.intake/patients/` stops two
+machines creating the same patient. At the start of each run it also
+creates patients for any code folder in `de_identified/` that has none.
 
 #### Workers and memory
 
@@ -207,109 +197,54 @@ workers = min(cores / cores_per_worker, RAM / RAM_per_worker)
 - `DEID_WORKER_CPU_THREADS` sets `OCR_CPU_THREADS`, `OMP_NUM_THREADS` and
   `MKL_NUM_THREADS` for each worker (OCR defaults to 8 threads).
 - `DEID_WORKER_MEMORY_GB` caps the number of workers to what fits in free
-  memory. It does not limit memory itself; the container does that.
+  memory.
 - `DEID_CHUNK_DICOM` / `DEID_CHUNK_DOCUMENTS` set how many files go into one
   pipeline run, so the models load once per run.
 
-For reference: about 19-31 seconds per page on a 4-core job.
-
-#### Large pushes
-
-Hive statements are slow (~0.4-1 s each, however many rows), so everything
-is done in batches: 500 rows per insert, one claim query per chunk, one
-update per chunk for results, and `GROUP BY` for counts (cached 10 s).
-Only folders changed since the last sweep are walked, with a full sweep
-once a day (`INTAKE_FULL_SWEEP_HOURS`). Lists on the Intake page are paged,
-and the full list can be downloaded as CSV.
-
-To spread the work over several machines, each process takes a set of
-shards (256 in total, by the first two characters of the row id):
-
-```bash
-python scripts/intake_run.py --watch --shards 0-3  --of 12   # machine 1
-python scripts/intake_run.py --watch --shards 4-7  --of 12   # machine 2
-python scripts/intake_run.py --watch --shards 8-11 --of 12   # machine 3
-```
-
-Every shard must be covered by exactly one process. The process with shard
-0 also does the sweep.
-
-Results are written to a local journal (`.intake/journal/`) before they go
-to Hive. If a worker is killed, the next start publishes what it already
-finished and puts the rest back in the queue, so it is safe to stop and
-restart at any time.
-
-Workers write a heartbeat file every few seconds (`.intake/workers/`). The
-Intake page uses these for speed, time left and worker status, and shows a
-red banner if files are waiting and no worker has reported for
-`INTAKE_HEARTBEAT_STALE_SECONDS`.
-
-For DICOM, pixels are only changed when identifying text is found in the
-image. Otherwise only the tags are de-identified. The `detail` column says
-which one happened.
+Measured with 8 threads: about 18 s per handwritten page and 31 s per
+printed page (OCR is almost all of it).
 
 #### Intake page
 
-`/intake` (needs `application:view`). Shows progress, workers, and tiles for
-Conflicts, Skipped, Failed, Waiting and De-identified.
+`/intake` (needs `application:view`):
 
-- Skipped/Failed: full path and reason, with *Copy list* and CSV download
-  to send to whoever owns the source.
-- Failed: *Retry* puts the file back in the queue.
-- Conflicts: pick one of the two codes (needs `application:update`, audited).
+- Start button and status (running or idle, files left in incoming, done
+  this run, speed, time left), workers, last runs
+- Failed list: Retry moves the file back to incoming
+- Needs attention list: pick a code for conflicts; the rest are fixed at
+  the source and pushed again
+- Copy list and CSV download for both lists
 
 | endpoint | |
 |---|---|
-| `GET /intake/counts` | counts per status |
-| `GET /intake/files?status=` | files for a status (paged, `X-Total-Count` header) |
-| `GET /intake/files/export?status=` | CSV of all files for a status |
-| `GET /intake/codes` | codes with redacted files not attached yet |
-| `GET /intake/batches` | sweeps, newest first |
-| `GET /intake/progress` | overall progress and workers |
-| `GET /intake/progress/batches` | progress per push |
-| `POST /intake/files/{id}/resolve` `{"code": ...}` | resolve a conflict |
-| `POST /intake/files/{id}/retry` | retry a failed file |
+| `POST /intake/start` | start a run (409 if one is running) |
+| `GET /intake/status` | status, counts and workers |
+| `GET /intake/runs` | last run reports |
+| `GET /intake/files?kind=failed\|attention` | a list (paged, `X-Total-Count`) |
+| `GET /intake/files/export?kind=` | the list as CSV |
+| `POST /intake/files/retry` `{"path"}` | move a failed file back to incoming |
+| `POST /intake/files/resolve` `{"path", "code"}` | pick the code for a conflict |
+| `GET /intake/codes` | codes with de-identified files not attached yet |
+| `GET /intake/codes/{code}/files` | those files |
+
+With `DEID_BACKEND=cml_job` the Start button starts the Cloudera Job set in
+`CML_INTAKE_JOB_ID`. Otherwise it starts `scripts/intake_run.py` in the
+background on the API machine.
 
 #### Creating an application from intake
 
-Step 1 is picking a patient code (`IntakeCodePicker`). If a patient with
-that code exists it is selected, otherwise the patient form opens with the
-code filled in. Step 2 lists the code's redacted files grouped by folder
-(`IntakeFilePicker`), and `POST /applications/{id}/intake-files` attaches
-them:
+Step 1 is picking a patient code (`IntakeCodePicker`). Step 2 lists the
+code's de-identified files grouped by folder (`IntakeFilePicker`), and
+`POST /applications/{id}/intake-files` attaches them: one row per file
+with `file_path` = the original in `original/` and
+`de_identified_file_path` = the copy. Nothing is copied or moved, and a
+file can only be on one application.
 
-- one row per file, with `file_path` = original and
-  `de_identified_file_path` = redacted copy. Nothing is copied.
-- the file's code has to match the application's patient.
-- all files are checked before any are attached.
-- the intake row becomes `claimed` so no other application can take it.
-
-Removing an intake file from a draft (or deleting the application) puts it
-back to `done`. The files on disk are not deleted.
-
-`frontend/e2e/intake.spec.ts` tests this flow. It needs real redacted files,
-so it only runs when `E2E_INTAKE_CODE` is set.
-
-#### Submitting
-
-On submit both copies are moved under the patient (`app/submission.py`):
-
-```
-storage/submitted/AA1234/original/image.dcm
-storage/submitted/AA1234/de_identified/AA1234_20260924_1790261077741000.dcm
-```
-
-- If a name is taken, `_2`, `_3`... is added.
-- The OCR text and report files are deleted.
-- Empty folders left behind are removed.
-- The intake row becomes `submitted`.
-- With `DEID_KEEP_ORIGINAL=false` the original is deleted instead.
-
-The sweep never walks `SUBMITTED_DIR`, even if it is inside the intake
-folder.
-
-`intake_files` is also the only place that links an original to its
-redacted copy, since the names don't match.
+Removing a file from an application (or deleting the application) never
+deletes files under `DATA_DIR`. Submitting stamps the patient code on
+redacted PDFs but doesn't move `DATA_DIR` files; they're already in their
+final place. Files uploaded through the application page still go to
+`SUBMITTED_DIR` as before.
 
 ### Patient codes
 

@@ -304,64 +304,6 @@ class DeidentifiedFile(BaseModel):
     de_identified_file_path: Optional[str] = None
 
 
-class IntakeFile(BaseModel):
-    id: str
-    batch_id: str
-    source_path: str
-    relative_path: str
-    file_name: str
-    file_extension: str
-    file_size: int
-    checksum: Optional[str] = None
-
-    patient_code: Optional[str] = None
-
-    path_code: Optional[str] = None
-    name_code: Optional[str] = None
-
-    status: str
-    reason: Optional[str] = None
-    detail: Optional[str] = None
-
-    output_path: Optional[str] = None
-    output_name: Optional[str] = None
-    claimed_by_file_id: Optional[str] = None
-
-    found_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-
-
-class IntakeFileUpdate(BaseModel):
-    patient_code: Optional[str] = None
-    status: Optional[str] = None
-    reason: Optional[str] = None
-    detail: Optional[str] = None
-    output_path: Optional[str] = None
-    output_name: Optional[str] = None
-    claimed_by_file_id: Optional[str] = None
-
-
-class IntakeBatch(BaseModel):
-    id: str
-    root: str
-    status: str
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
-
-
-class IntakeCounts(BaseModel):
-    total: int = 0
-    queued: int = 0
-    processing: int = 0
-    done: int = 0
-    failed: int = 0
-    skipped: int = 0
-    conflict: int = 0
-    claimed: int = 0
-    submitted: int = 0
-    superseded: int = 0
-
-
 class RejectedFile(BaseModel):
     id: str
     application_id: str

@@ -33,7 +33,7 @@ MIGRATIONS = (
     ("patient_applications", "original_file_path", "STRING"),
 )
 
-NEW_TABLES = ("intake_files", "intake_batches")
+NEW_TABLES = ()
 
 SCHEMA_FILE = _repo_root() / "sql" / "schema.sql"
 

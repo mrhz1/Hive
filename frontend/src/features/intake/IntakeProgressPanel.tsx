@@ -1,7 +1,9 @@
-import { AlertTriangle, Cpu } from 'lucide-react'
+import { AlertTriangle, Cpu, Play } from 'lucide-react'
 import { Badge, Card } from '@/components/ui/Misc'
 import { Spinner } from '@/components/ui/Spinner'
-import { useIntakeBatchProgress, useIntakeProgress } from '@/hooks/useResources'
+import { Can } from '@/components/PermissionGate'
+import { Button } from '@/components/ui/Button'
+import { useIntakeRuns, useIntakeStatus, useStartIntake } from '@/hooks/useResources'
 import { humanDuration, type IntakeWorker } from '@/schemas/intake'
 
 const formatNumber = (n: number) => n.toLocaleString()
@@ -81,21 +83,32 @@ function WorkerRow({ worker }: { worker: IntakeWorker }) {
 }
 
 export function IntakeProgressPanel() {
-  const { data: progress, isLoading } = useIntakeProgress()
-  const { data: batches } = useIntakeBatchProgress()
+  const { data: status, isLoading } = useIntakeStatus()
+  const { data: runs } = useIntakeRuns()
+  const start = useStartIntake()
 
   if (isLoading) {
     return (
       <Card className="p-5">
-        <Spinner size="md" label="Loading progress" />
+        <Spinner size="md" label="Loading status" />
       </Card>
     )
   }
-  if (!progress) return null
+  if (!status) return null
+
+  const remaining = status.remaining ?? null
+  let percent = 0
+  if (remaining !== null && status.done + remaining > 0) {
+    percent = (status.done / (status.done + remaining)) * 100
+  }
+
+  let timeLeft = '-'
+  if (status.running) timeLeft = humanDuration(status.eta_seconds)
+  else if (remaining === 0) timeLeft = 'done'
 
   return (
     <div className="space-y-3">
-      {progress.stalled && (
+      {status.stalled && (
         <div
           role="alert"
           className="flex items-start gap-3 rounded-lg border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-700 dark:text-rose-300"
@@ -103,60 +116,71 @@ export function IntakeProgressPanel() {
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <div>
             <p className="font-bold">De-identification has stopped</p>
-            <p className="mt-0.5">{progress.stalled_reason}</p>
+            <p className="mt-0.5">{status.stalled_reason}</p>
           </div>
         </div>
       )}
 
       <Card className="p-5">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className={titleClass}>De-identification</h2>
-          <span className={labelClass}>updates every 10 seconds</span>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h2 className={titleClass}>De-identification</h2>
+            <Badge tone={status.running ? 'success' : 'neutral'}>
+              {status.running ? 'running' : 'idle'}
+            </Badge>
+          </div>
+          <Can permission="application:update">
+            <Button
+              size="sm"
+              disabled={status.running}
+              isLoading={start.isPending}
+              leadingIcon={<Play className="size-3.5" aria-hidden="true" />}
+              onClick={() => start.mutate()}
+            >
+              {status.running ? 'Running...' : 'Start de-identification'}
+            </Button>
+          </Can>
         </div>
 
-        <p className="mt-2 text-2xl font-bold tabular-nums">
-          {formatNumber(progress.finished)}{' '}
-          <span className="text-base font-normal text-[rgb(var(--foreground-muted))]">
-            of {formatNumber(progress.total)} files processed
-          </span>{' '}
-          <span className="text-base">({progress.percent.toFixed(1)}%)</span>
-        </p>
+        {status.running && (
+          <div className="mt-3">
+            <ProgressBar percent={percent} red={status.stalled} />
+          </div>
+        )}
 
-        <div className="mt-3">
-          <ProgressBar percent={progress.percent} red={progress.stalled} />
-        </div>
-
-        <dl className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-5">
+        <dl className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-6">
           <div>
-            <dt className={labelClass}>Remaining</dt>
+            <dt className={labelClass}>In incoming</dt>
             <dd className="font-semibold tabular-nums">
-              {formatNumber(progress.remaining)}
+              {remaining === null ? '-' : formatNumber(remaining)}
             </dd>
+          </div>
+          <div>
+            <dt className={labelClass}>Done this run</dt>
+            <dd className="font-semibold tabular-nums">{formatNumber(status.done)}</dd>
           </div>
           <div>
             <dt className={labelClass}>Speed</dt>
             <dd className="font-semibold tabular-nums">
-              {progress.per_hour > 0 ? `${formatNumber(progress.per_hour)} / hour` : '-'}
+              {status.per_hour > 0 ? `${formatNumber(status.per_hour)} / hour` : '-'}
             </dd>
           </div>
           <div>
             <dt className={labelClass}>Time left</dt>
-            <dd className="font-semibold">
-              {progress.remaining === 0 ? 'done' : humanDuration(progress.eta_seconds)}
-            </dd>
+            <dd className="font-semibold">{timeLeft}</dd>
           </div>
           <div>
             <dt className={labelClass}>Failed</dt>
             <dd
-              className={`font-semibold tabular-nums ${progress.failed ? 'text-rose-600 dark:text-rose-400' : ''}`}
+              className={`font-semibold tabular-nums ${status.failed ? 'text-rose-600 dark:text-rose-400' : ''}`}
             >
-              {formatNumber(progress.failed)}
+              {formatNumber(status.failed)}
             </dd>
           </div>
           <div>
-            <dt className={labelClass}>Need a person</dt>
+            <dt className={labelClass}>Needs attention</dt>
             <dd className="font-semibold tabular-nums">
-              {formatNumber(progress.needs_a_person)}
+              {formatNumber(status.needs_attention)}
             </dd>
           </div>
         </dl>
@@ -166,43 +190,40 @@ export function IntakeProgressPanel() {
         <h2 className={`flex items-center gap-2 ${titleClass}`}>
           <Cpu className="size-3.5" aria-hidden="true" /> Workers
         </h2>
-        {progress.workers.length === 0 ? (
+        {status.workers.length === 0 ? (
           <p className="mt-2 text-sm text-[rgb(var(--foreground-muted))]">
-            No worker has reported yet. Start one with <code>make intake-watch</code>, or
-            the scheduled Job.
+            No run yet. Click Start de-identification once the files are in the incoming
+            folder.
           </p>
         ) : (
           <ul className="mt-2">
-            {progress.workers.map((worker) => (
+            {status.workers.map((worker) => (
               <WorkerRow key={worker.name ?? ''} worker={worker} />
             ))}
           </ul>
         )}
       </Card>
 
-      {batches && batches.length > 0 && (
+      {runs && runs.length > 0 && (
         <Card className="p-5">
-          <h2 className={titleClass}>Pushes</h2>
-          <ul className="mt-2 space-y-3">
-            {batches.slice(0, 8).map((batch) => {
-              let summary = `${formatNumber(batch.finished)} / ${formatNumber(batch.total)}`
-              if (batch.failed) summary += ` · ${formatNumber(batch.failed)} failed`
-              if (batch.needs_a_person)
-                summary += ` · ${formatNumber(batch.needs_a_person)} need a person`
+          <h2 className={titleClass}>Last runs</h2>
+          <ul className="mt-2 divide-y divide-[rgb(var(--border))] text-xs">
+            {runs.slice(0, 8).map((run) => {
+              let summary = `${formatNumber(run.done)} done`
+              if (run.failed) summary += ` · ${formatNumber(run.failed)} failed`
+              if (run.set_aside)
+                summary += ` · ${formatNumber(run.set_aside)} need attention`
+              const took = humanDuration(run.finished_at - run.started_at)
 
               return (
-                <li key={batch.id}>
-                  <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
-                    <span className="text-[rgb(var(--foreground-muted))]">
-                      {batch.started_at
-                        ? new Date(batch.started_at).toLocaleString()
-                        : batch.id}
-                    </span>
-                    <span className="tabular-nums">{summary}</span>
-                  </div>
-                  <div className="mt-1">
-                    <ProgressBar percent={batch.percent} />
-                  </div>
+                <li
+                  key={`${run.host}-${run.started_at}`}
+                  className="flex flex-wrap justify-between gap-2 py-2"
+                >
+                  <span className="text-[rgb(var(--foreground-muted))]">
+                    {new Date(run.started_at * 1000).toLocaleString()} · {took}
+                  </span>
+                  <span className="tabular-nums">{summary}</span>
                 </li>
               )
             })}

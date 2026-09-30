@@ -41,129 +41,50 @@ def _table(rows, headers):
         print(f"  {'  '.join(str(v).ljust(widths[i]) for i, v in enumerate(row))}")
 
 
-def _report(result, root: Path, settle_seconds: float) -> None:
-    total = len(result.candidates)
-    print(f"\nintake root: {root}")
-    print(f"mirror:      {intake.deidentified_root(root)}")
-    print(f"found:       {total} file(s)\n")
-
-    if not total:
-        print("Nothing to do. Drop a folder in and run this again.")
-        return
-
-    print(
-        f"  queued    {len(result.queued):>5}   ready to de-identify\n"
-        f"  skipped   {len(result.skipped):>5}   cannot be placed, fix at source\n"
-        f"  conflicts {len(result.conflicts):>5}   two codes, needs a person"
-    )
-
-    unsettled = [
-        c
-        for c in result.queued
-        if not intake.is_settled(c.path, settle_seconds)
-    ]
-    if unsettled:
-        print(
-            f"\n  {len(unsettled)} of those are still being written to and would "
-            f"be left for the next sweep."
-        )
-
-    if result.queued:
-        print("\nWould de-identify:")
-        _table(
-            [
-                (c.code, c.extension, c.relative_path, _output_hint(c))
-                for c in result.queued[:40]
-            ],
-            ("code", "type", "source", "would become"),
-        )
-        if len(result.queued) > 40:
-            print(f"  ... and {len(result.queued) - 40} more")
-
-    if result.conflicts:
-        print("\nConflicts (need a manual choice):")
-        _table(
-            [
-                (
-                    c.detection.path_code,
-                    c.detection.name_code,
-                    c.relative_path,
-                )
-                for c in result.conflicts
-            ],
-            ("path says", "name says", "file"),
-        )
-
-    if result.skipped:
-        print("\nSkipped:")
-        _table(
-            [(c.reason, c.relative_path, c.detail or "") for c in result.skipped],
-            ("reason", "file", "detail"),
-        )
-
-    codes = sorted({c.code for c in result.queued if c.code})
-    if codes:
-        print(f"\n{len(codes)} patient code(s): {', '.join(codes[:20])}")
-        if len(codes) > 20:
-            print(f"  ... and {len(codes) - 20} more")
-
-
-def _output_hint(candidate) -> str:
-    directory = Path(candidate.relative_path).parent
-    return str(directory / f"{candidate.code}_<date>_<serial>.{candidate.extension}")
-
-
 def main(argv=None) -> int:
     configure_logging()
 
     parser = argparse.ArgumentParser(
-        description="Check the intake folder and show what would be de-identified (dry run unless --apply).",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Show what a de-identification run would do with the intake folder. Nothing is moved."
     )
-    parser.add_argument(
-        "--root",
-        default=None,
-        help="The folder to look at (default: $INTAKE_DIR).",
-    )
-    parser.add_argument(
-        "--apply",
-        action="store_true",
-        help="Record the sweep in Hive. Still does not redact anything.",
-    )
-    parser.add_argument(
-        "--settle-seconds",
-        type=float,
-        default=None,
-        help=(
-            "How long a file must have been untouched to count as finished "
-            "arriving (default: $INTAKE_SETTLE_SECONDS, or 20)."
-        ),
-    )
+    parser.add_argument("--root", default=None, help="The incoming folder (default: $INTAKE_DIR).")
+    parser.add_argument("--settle-seconds", type=float, default=None)
     args = parser.parse_args(argv)
 
     root = Path(args.root).expanduser().resolve() if args.root else intake.intake_root()
+    overrides = intake.load_overrides()
 
-    if not root.is_dir():
-        print(f"No such folder: {root}")
-        print("\nCreate it, or point --root (or $INTAKE_DIR) somewhere that exists.")
-        return 1
+    ready = []
+    attention = []
+    copying = 0
+    for path in intake.walk(root):
+        if not intake.is_settled(path, args.settle_seconds):
+            copying += 1
+            continue
+        candidate = intake.classify(path, root, overrides)
+        if candidate.reason:
+            attention.append((candidate.reason, candidate.relative_path, candidate.detail or ""))
+        else:
+            ready.append((candidate.code, candidate.extension, candidate.relative_path))
 
-    if not args.apply:
-        result = intake.sweep(None, root=root, dry_run=True)
-        _report(result, root, args.settle_seconds)
-        print("\nThis was a dry run. Nothing was written. Re-run with --apply to record it.")
-        return 0
+    print(f"\nincoming:      {root}")
+    print(f"de-identified: {intake.deidentified_root()}")
+    print(f"\nready:           {len(ready)}")
+    print(f"needs attention: {len(attention)}")
+    print(f"still copying:   {copying}\n")
 
-    from app.db import hive_cursor
-
-    with hive_cursor() as cursor:
-        result = intake.sweep(cursor, root=root, dry_run=False)
-
-    _report(result, root, args.settle_seconds)
-    print(f"\nbatch {result.batch_id}")
-    print(f"recorded {result.recorded} file(s); {result.already_seen} seen before")
+    if ready:
+        print("Ready:")
+        _table(ready[:40], ("code", "type", "file"))
+        if len(ready) > 40:
+            print(f"  ... and {len(ready) - 40} more")
+    if attention:
+        print("\nNeeds attention:")
+        _table(attention[:40], ("reason", "file", "detail"))
+        if len(attention) > 40:
+            print(f"  ... and {len(attention) - 40} more")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

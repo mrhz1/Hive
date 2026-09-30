@@ -152,6 +152,29 @@ def create_patient(cursor, payload: PatientCreate) -> Patient:
     return get_patient_or_404(cursor, patient_id)
 
 
+def create_empty_patient(cursor, patient_id: str) -> None:
+    values = [patient_id] + [None] * (len(COLUMNS) - 1)
+    placeholders = ", ".join(_placeholder(c) for c in COLUMNS)
+    execute(
+        cursor,
+        f"INSERT INTO `patient` ({_COLS}) VALUES ({placeholders})",
+        tuple(values),
+    )
+    log.info("patient_created", patient_id=patient_id, source="intake")
+
+
+def existing_ids(cursor, ids: List[str]) -> set:
+    found = set()
+    ids = list(dict.fromkeys(ids))
+    for start in range(0, len(ids), 500):
+        chunk = ids[start : start + 500]
+        slots = ", ".join(["%s"] * len(chunk))
+        execute(cursor, f"SELECT `id` FROM `patient` WHERE `id` IN ({slots})", tuple(chunk))
+        for row in cursor.fetchall():
+            found.add(row[0])
+    return found
+
+
 def update_patient(cursor, patient_id: str, payload: PatientUpdate) -> Patient:
     existing = get_patient_or_404(cursor, patient_id)
 

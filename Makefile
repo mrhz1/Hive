@@ -5,7 +5,7 @@ export
 
 .PHONY: up down logs init check verify test run \
         ocr-install ocr-models ocr-check-models ocr-preflight ocr-verify \
-        deid dashboard intake intake-apply intake-deid intake-run intake-watch
+        deid dashboard intake-preview intake-start
 
 up:
 	docker compose up -d
@@ -51,24 +51,13 @@ ocr-preflight:
 ocr-verify:
 	$(MAKE) -C OCR run verify
 
-# intake dry run
-intake:
-	$(PYTHON) scripts/intake_sweep.py
+# show what an intake run would do (moves nothing)
+intake-preview:
+	$(PYTHON) scripts/intake_preview.py
 
-# intake sweep, saved to Hive
-intake-apply:
-	$(PYTHON) scripts/intake_sweep.py --apply
-
-# sweep + redact once a push has finished (once, or every minute)
-intake-run:
+# de-identify everything in the intake folder
+intake-start:
 	$(PYTHON) scripts/intake_run.py
-
-intake-watch:
-	$(PYTHON) scripts/intake_run.py --watch
-
-# redact all queued intake files
-intake-deid:
-	$(PYTHON) scripts/intake_deid.py
 
 # run the de-id queue like the Cloudera Job
 deid:

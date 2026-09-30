@@ -67,14 +67,12 @@ export const queryKeys = {
 
   intake: {
     all: ['intake'] as const,
-    counts: () => [...queryKeys.intake.all, 'counts'] as const,
-    files: (status?: string, patientCode?: string) =>
-      [...queryKeys.intake.all, 'files', status ?? null, patientCode ?? null] as const,
+    status: () => [...queryKeys.intake.all, 'status'] as const,
+    runs: () => [...queryKeys.intake.all, 'runs'] as const,
+    files: (kind: string, limit: number) =>
+      [...queryKeys.intake.all, 'files', kind, limit] as const,
     codes: () => [...queryKeys.intake.all, 'codes'] as const,
-    progress: () => [...queryKeys.intake.all, 'progress'] as const,
-    batchProgress: () => [...queryKeys.intake.all, 'batch-progress'] as const,
-    page: (status: string, limit: number) =>
-      [...queryKeys.intake.all, 'page', status, limit] as const,
+    codeFiles: (code: string) => [...queryKeys.intake.all, 'code-files', code] as const,
   },
 
   deidentifiedFiles: {

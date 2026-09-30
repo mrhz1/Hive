@@ -23,11 +23,11 @@ import {
 import { rejectedFileListSchema } from '@/schemas/rejection'
 import {
   availableCodeListSchema,
-  intakeBatchProgressListSchema,
-  intakeCountsSchema,
-  intakeProgressSchema,
-  intakeFileListSchema,
-  intakeFileSchema,
+  intakeRunListSchema,
+  intakeStatusSchema,
+  problemFileListSchema,
+  redactedFileListSchema,
+  type ProblemList,
 } from '@/schemas/intake'
 import {
   deidentifiedFileListSchema,
@@ -467,26 +467,34 @@ export const deidentifiedFilesApi = {
 }
 
 export const intakeApi = {
-  counts: () => request(intakeCountsSchema, () => api.get('/intake/counts')),
-
-  files: (status?: string, patientCode?: string) => {
-    const params: Record<string, string> = {}
-    if (status) params.status = status
-    if (patientCode) params.patient_code = patientCode
-    return request(intakeFileListSchema, () => api.get('/intake/files', { params }))
+  start: async () => {
+    try {
+      const response = await api.post('/intake/start')
+      return response.data as { started: boolean }
+    } catch (error) {
+      throw toApiError(error)
+    }
   },
 
-  codes: () => request(availableCodeListSchema, () => api.get('/intake/codes')),
+  status: () => request(intakeStatusSchema, () => api.get('/intake/status')),
 
-  progress: () => request(intakeProgressSchema, () => api.get('/intake/progress')),
+  runs: () => request(intakeRunListSchema, () => api.get('/intake/runs')),
 
-  batchProgress: () =>
-    request(intakeBatchProgressListSchema, () => api.get('/intake/progress/batches')),
+  files: async (kind: ProblemList, limit: number) => {
+    try {
+      const response = await api.get('/intake/files', { params: { kind, limit } })
+      const rows = problemFileListSchema.parse(response.data)
+      const total = Number(response.headers['x-total-count'] ?? rows.length)
+      return { rows, total }
+    } catch (error) {
+      throw toApiError(error)
+    }
+  },
 
-  exportCsv: async (status: string): Promise<Blob> => {
+  exportCsv: async (kind: ProblemList): Promise<Blob> => {
     try {
       const response = await api.get('/intake/files/export', {
-        params: { status },
+        params: { kind },
         responseType: 'blob',
       })
       return response.data as Blob
@@ -495,33 +503,35 @@ export const intakeApi = {
     }
   },
 
-  page: async (status: string, limit: number, offset: number) => {
+  retry: async (path: string) => {
     try {
-      const response = await api.get('/intake/files', {
-        params: { status, limit, offset },
-      })
-      const rows = intakeFileListSchema.parse(response.data)
-      const total = Number(response.headers['x-total-count'] ?? rows.length)
-      return { rows, total }
+      await api.post('/intake/files/retry', { path })
     } catch (error) {
       throw toApiError(error)
     }
   },
 
-  attach: (applicationId: string, intakeFileIds: string[]) =>
+  resolve: async (path: string, code: string) => {
+    try {
+      await api.post('/intake/files/resolve', { path, code })
+    } catch (error) {
+      throw toApiError(error)
+    }
+  },
+
+  codes: () => request(availableCodeListSchema, () => api.get('/intake/codes')),
+
+  codeFiles: (code: string) =>
+    request(redactedFileListSchema, () =>
+      api.get(`/intake/codes/${encodeURIComponent(code)}/files`)
+    ),
+
+  attach: (applicationId: string, fileIds: string[]) =>
     request(applicationFileListSchema, () =>
       api.post(`/applications/${applicationId}/intake-files`, {
-        intake_file_ids: intakeFileIds,
+        intake_file_ids: fileIds,
       })
     ),
-
-  resolve: (fileId: string, code: string) =>
-    request(intakeFileSchema, () =>
-      api.post(`/intake/files/${fileId}/resolve`, { code })
-    ),
-
-  retry: (fileId: string) =>
-    request(intakeFileSchema, () => api.post(`/intake/files/${fileId}/retry`)),
 }
 
 export type { ApplicationFile, AuditLog, Patient, Role, User }
