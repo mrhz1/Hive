@@ -41,7 +41,13 @@ from app.schemas import (
     User,
     WordPreview,
 )
-from app.security import assert_permission, require_permission
+from app.security import (
+    assert_permission,
+    get_current_user,
+    metadata_permission,
+    require_permission,
+    view_permission,
+)
 from app.uploads import known_patient_id as _known_patient_id
 from app.uploads import record_metadata as _record_metadata
 from app.xlsx import workbook_bytes
@@ -393,6 +399,7 @@ def get_application_file_metadata(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
+    assert_permission(actor, metadata_permission(deidentified))
     document = crud.get_file_or_404(cursor, file_id)
     record = _get_file_metadata(cursor, document, deidentified)
 
@@ -410,6 +417,8 @@ def export_application_file_metadata(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
+    assert_permission(actor, metadata_permission(deidentified))
+    assert_permission(actor, "files:download")
     document = crud.get_file_or_404(cursor, file_id)
     record = _get_file_metadata(cursor, document, deidentified)
 
@@ -456,6 +465,7 @@ def read_application_file(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
+    assert_permission(actor, view_permission(deidentified))
     if download:
         assert_permission(actor, "files:download")
 
@@ -561,6 +571,7 @@ def preview_application_file_image(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
+    assert_permission(actor, view_permission(deidentified))
     record = crud.get_file_or_404(cursor, file_id)
     path, extension = _preview_path(record, deidentified)
 
@@ -580,6 +591,7 @@ def preview_application_file_text(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:view")),
 ):
+    assert_permission(actor, view_permission(deidentified))
     record = crud.get_file_or_404(cursor, file_id)
     path, extension = _preview_path(record, deidentified)
 
@@ -745,54 +757,6 @@ def deidentify_all_application_files(
     )
 
 
-@router.post(
-    "/applications/{application_id}/files/approve-all",
-    response_model=BulkResult,
-)
-def approve_all_application_files(
-    application_id: str,
-    cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:update")),
-):
-    applications_crud.get_application_or_404(cursor, application_id)
-    records = crud.list_files(cursor, application_id)
-
-    reasons: dict = {}
-    approved = 0
-
-    for record in records:
-        if record.review_status == "approved":
-            reasons["already approved"] = reasons.get("already approved", 0) + 1
-            continue
-        if record.review_status == "rejected":
-            reasons["rejected, left alone"] = (
-                reasons.get("rejected, left alone", 0) + 1
-            )
-            continue
-        if not record.is_deidentified:
-            reasons["not de-identified yet"] = (
-                reasons.get("not de-identified yet", 0) + 1
-            )
-            continue
-
-        crud.update_file(
-            cursor,
-            record.id,
-            PatientApplicationFileUpdate(review_status="approved"),
-        )
-        approved += 1
-
-    log.info(
-        "files_approved_in_bulk", application_id=application_id, approved=approved
-    )
-    return BulkResult(
-        total=len(records),
-        changed=approved,
-        skipped=len(records) - approved,
-        reasons=reasons,
-    )
-
-
 @router.put("/files/{file_id}", response_model=PatientApplicationFile)
 def update_application_file(
     file_id: str,
@@ -808,8 +772,13 @@ def review_application_file(
     file_id: str,
     payload: FileReview,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:update")),
+    actor: User = Depends(get_current_user),
 ):
+    if payload.review_status == "rejected":
+        assert_permission(actor, "files:reject")
+    else:
+        assert_permission(actor, "application:update")
+
     record = crud.get_file_or_404(cursor, file_id)
 
     if not record.is_deidentified:
@@ -836,7 +805,7 @@ def review_application_file(
 def delete_application_file(
     file_id: str,
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:update")),
+    _actor: User = Depends(require_permission("files:delete")),
 ):
     record = crud.delete_file(cursor, file_id)
     metadata_crud.delete_metadata_for_files(cursor, [file_id])

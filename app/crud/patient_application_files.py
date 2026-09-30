@@ -73,7 +73,7 @@ def create_file(
             description,
             file_path,
             None,
-            "pending",
+            "approved",
             None,
         ),
     )

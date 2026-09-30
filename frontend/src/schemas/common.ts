@@ -7,7 +7,17 @@ export type Model = (typeof MODELS)[number]
 export type Action = (typeof ACTIONS)[number]
 
 export const FILES_ACTIONS = ['read', 'upload', 'download', 'delete'] as const
-export type FilesAction = (typeof FILES_ACTIONS)[number]
+
+export const FILE_REVIEW_ACTIONS = [
+  'view_original',
+  'view_deidentified',
+  'metadata',
+  'deid_metadata',
+  'reject',
+] as const
+
+export type FilesAction =
+  (typeof FILES_ACTIONS)[number] | (typeof FILE_REVIEW_ACTIONS)[number]
 
 export type Permission = `${Model}:${Action}` | `files:${FilesAction}`
 
@@ -16,15 +26,29 @@ export const ALL_PERMISSIONS: Permission[] = [
     ACTIONS.map((action) => `${model}:${action}` as Permission)
   ),
   ...FILES_ACTIONS.map((action) => `files:${action}` as Permission),
+  ...FILE_REVIEW_ACTIONS.map((action) => `files:${action}` as Permission),
 ]
 
 export const PERMISSION_GROUPS: ReadonlyArray<{
   models: readonly string[]
   actions: readonly string[]
+  rowLabel?: string
 }> = [
   { models: MODELS, actions: ACTIONS },
   { models: ['files'], actions: FILES_ACTIONS },
+  { models: ['files'], actions: FILE_REVIEW_ACTIONS, rowLabel: 'documents' },
 ]
+
+const ACTION_LABELS: Record<string, string> = {
+  view_original: 'view original',
+  view_deidentified: 'view de-identified',
+  metadata: 'metadata',
+  deid_metadata: 'de-identified metadata',
+}
+
+export function actionLabel(action: string): string {
+  return ACTION_LABELS[action] ?? action
+}
 
 export const permissionSchema = z.custom<Permission>(
   (value) => typeof value === 'string' && ALL_PERMISSIONS.includes(value as Permission),

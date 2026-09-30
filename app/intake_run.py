@@ -13,6 +13,8 @@ from app.logging_setup import get_logger
 log = get_logger(__name__)
 
 LOCK_FILE = "run.lock"
+START_REQUEST_FILE = "start_requested.json"
+START_TIMEOUT_SECONDS = float(os.environ.get("INTAKE_START_TIMEOUT_SECONDS", "900"))
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -52,11 +54,35 @@ def is_running():
     return False
 
 
+def request_start(**details):
+    intake.write_json(
+        intake.state_dir() / START_REQUEST_FILE, dict(details, requested_at=time.time())
+    )
+
+
+def clear_start_request():
+    (intake.state_dir() / START_REQUEST_FILE).unlink(missing_ok=True)
+
+
+def pending_start():
+    """The start someone asked for that no run has picked up yet, if any.
+
+    Between clicking Start and a worker taking the lock there is nothing
+    running to show -- a Cloudera job can take a minute or two to boot.
+    """
+    request = intake.read_json(intake.state_dir() / START_REQUEST_FILE)
+    requested_at = request.get("requested_at") if request else None
+    if not requested_at or time.time() - requested_at > START_TIMEOUT_SECONDS:
+        return None
+    return request
+
+
 def run(limit=None, pool_size=None, shards=None, of=1, root=None):
     root = root or intake.intake_root()
     lock = acquire_lock(lock_name(shards, of))
     if lock is None:
         return {"outcome": "busy", "detail": "another run is still working"}
+    clear_start_request()
 
     started = time.time()
     try:

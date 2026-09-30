@@ -4,7 +4,7 @@ import { FormLayout, FullWidth } from '@/components/FormLayout'
 import { TextField } from '@/components/ui/Field'
 import { applyServerErrors, useApiForm } from '@/hooks/useApiForm'
 import { roleHooks } from '@/hooks/useResources'
-import { PERMISSION_GROUPS, type Permission } from '@/schemas/common'
+import { PERMISSION_GROUPS, actionLabel, type Permission } from '@/schemas/common'
 import { roleFormSchema, type Role, type RoleFormValues } from '@/schemas/role'
 
 const FIELD_NAMES = ['name', 'permissions'] as const
@@ -51,7 +51,7 @@ function PermissionMatrix({
 
       {PERMISSION_GROUPS.map((group) => (
         <div
-          key={group.models.join()}
+          key={`${group.models.join()}:${group.actions.join()}`}
           className="overflow-x-auto rounded-xl border border-[rgb(var(--border))]"
         >
           <table className="w-full min-w-[28rem] border-collapse text-sm">
@@ -69,7 +69,7 @@ function PermissionMatrix({
                     scope="col"
                     className="px-4 py-3 text-center text-xs font-semibold tracking-wider uppercase"
                   >
-                    {action}
+                    {actionLabel(action)}
                   </th>
                 ))}
               </tr>
@@ -86,7 +86,7 @@ function PermissionMatrix({
                       onClick={() => toggleRow(model, group.actions)}
                       className="capitalize underline-offset-2 hover:text-teal-600 hover:underline dark:hover:text-teal-400"
                     >
-                      {model}
+                      {group.rowLabel ?? model}
                     </button>
                   </th>
                   {group.actions.map((action) => {

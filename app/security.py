@@ -16,7 +16,26 @@ PERMISSION_ACTIONS = ("view", "create", "update", "delete")
 MODEL_ACTIONS = {
     model: PERMISSION_ACTIONS for model in PERMISSION_MODELS if model != "files"
 }
-MODEL_ACTIONS["files"] = ("read", "upload", "download", "delete")
+MODEL_ACTIONS["files"] = (
+    "read",
+    "upload",
+    "download",
+    "delete",
+    "reject",
+    "view_original",
+    "view_deidentified",
+    "metadata",
+    "deid_metadata",
+)
+
+# Seeing a document is read-only; taking it away (download), rejecting or
+# deleting it are granted separately.
+FILE_VIEW_PERMISSIONS = (
+    "files:view_original",
+    "files:view_deidentified",
+    "files:metadata",
+    "files:deid_metadata",
+)
 
 KNOWN_PERMISSIONS = set()
 for model, actions in MODEL_ACTIONS.items():
@@ -78,6 +97,14 @@ def assert_permission(user: User, permission: str) -> User:
             f"Permission '{permission}' is required for this operation"
         )
     return user
+
+
+def view_permission(deidentified: bool) -> str:
+    return "files:view_deidentified" if deidentified else "files:view_original"
+
+
+def metadata_permission(deidentified: bool) -> str:
+    return "files:deid_metadata" if deidentified else "files:metadata"
 
 
 def require_permission(permission: str):

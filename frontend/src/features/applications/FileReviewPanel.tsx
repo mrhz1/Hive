@@ -1,29 +1,18 @@
-import {
-  Check,
-  CheckCheck,
-  Eye,
-  FileJson,
-  FileSearch,
-  ShieldCheck,
-  Trash2,
-  X,
-} from 'lucide-react'
+import { Eye, FileJson, FileSearch, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ReasonDialog } from '@/components/ReasonDialog'
-import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/Field'
 import { Badge, Card } from '@/components/ui/Misc'
 import { Spinner } from '@/components/ui/Spinner'
 import { DropdownMenu, type MenuAction } from '@/components/ui/DropdownMenu'
-import { DeidentifiedAttach } from '@/features/applications/DeidentifiedAttach'
 import { FileMetadataModal } from '@/features/applications/FileMetadataModal'
 import { FileViewerModal } from '@/features/patients/FileViewerModal'
+import { usePermissions } from '@/hooks/useCurrentUser'
 import {
   useApplicationFiles,
-  useApproveAllFiles,
   useBackgroundUpload,
   useDeleteApplicationFile,
   useReviewApplicationFile,
@@ -31,7 +20,6 @@ import {
 import { ApiError } from '@/lib/api/client'
 import { applicationFilesApi } from '@/lib/api/resources'
 import {
-  approvableCount,
   deidTone,
   fileTally,
   fileSearchText,
@@ -39,7 +27,6 @@ import {
   hasExtractableMetadata,
   previewKind,
   reviewTone,
-  undecidedCount,
   type ApplicationFile,
   type UploadJob,
 } from '@/schemas/applicationFile'
@@ -64,6 +51,7 @@ export function FileReviewPanel({
 
   readOnly?: boolean
 }) {
+  const { can } = usePermissions()
   const filesQuery = useApplicationFiles(applicationId)
   const review = useReviewApplicationFile(applicationId)
   const remove = useDeleteApplicationFile(applicationId)
@@ -106,16 +94,12 @@ export function FileReviewPanel({
   const [deleting, setDeleting] = useState<ApplicationFile | null>(null)
   const [search, setSearch] = useState('')
 
-  const approveAll = useApproveAllFiles(applicationId)
-
   const files = filesQuery.data ?? []
   const searchText = search.trim().toLowerCase()
   const visible = searchText
     ? files.filter((file) => fileSearchText(file).includes(searchText))
     : files
 
-  const undecided = undecidedCount(files)
-  const approvable = approvableCount(files)
   const tally = fileTally(files)
 
   async function showFile(file: ApplicationFile, deidentified = false) {
@@ -150,43 +134,32 @@ export function FileReviewPanel({
   }
 
   function actionsFor(file: ApplicationFile): MenuAction[] {
-    const reviewing = review.isPending && review.variables?.fileId === file.id
+    const hasCopy = Boolean(file.de_identified_file_path)
+    const noCopy = 'No redacted copy has been produced yet'
+    const actions: MenuAction[] = []
 
-    const viewDeidentified: MenuAction = {
-      id: 'deidentified',
-      label: 'View de-identified',
-      icon: <ShieldCheck className="size-4" aria-hidden="true" />,
-      isLoading: readOnly && openingId === file.id,
-      disabled: !file.de_identified_file_path,
-      title: file.de_identified_file_path
-        ? undefined
-        : 'No redacted copy has been produced yet',
-      onSelect: () => void showFile(file, true),
-    }
-
-    const deidentifiedMetadata: MenuAction = {
-      id: 'deid-metadata',
-      label: 'De-identified metadata',
-      icon: <FileSearch className="size-4" aria-hidden="true" />,
-      disabled: !file.de_identified_file_path,
-      title: file.de_identified_file_path
-        ? 'What the redacted copy still carries'
-        : 'No redacted copy has been produced yet',
-      onSelect: () => setShowingMetadata({ file, deidentified: true }),
-    }
-
-    if (readOnly) return [viewDeidentified, deidentifiedMetadata]
-
-    return [
-      {
+    if (!readOnly && can('files:view_original')) {
+      actions.push({
         id: 'original',
         label: 'View original',
         icon: <Eye className="size-4" aria-hidden="true" />,
         isLoading: openingId === file.id,
         onSelect: () => void showFile(file),
-      },
-      viewDeidentified,
-      {
+      })
+    }
+    if (can('files:view_deidentified')) {
+      actions.push({
+        id: 'deidentified',
+        label: 'View de-identified',
+        icon: <ShieldCheck className="size-4" aria-hidden="true" />,
+        isLoading: readOnly && openingId === file.id,
+        disabled: !hasCopy,
+        title: hasCopy ? undefined : noCopy,
+        onSelect: () => void showFile(file, true),
+      })
+    }
+    if (!readOnly && can('files:metadata')) {
+      actions.push({
         id: 'metadata',
         label: 'Show metadata',
         icon: <FileJson className="size-4" aria-hidden="true" />,
@@ -195,41 +168,48 @@ export function FileReviewPanel({
           ? undefined
           : 'Metadata is only read from PDF, DICOM and Word files',
         onSelect: () => setShowingMetadata({ file, deidentified: false }),
-      },
-      deidentifiedMetadata,
-      {
-        id: 'approve',
-        separatorBefore: true,
-        label: 'Approve',
-        icon: <Check className="size-4" aria-hidden="true" />,
-        disabled: !file.is_deidentified || file.review_status === 'approved',
-        title: !file.is_deidentified
-          ? NOT_REVIEWABLE
-          : file.review_status === 'approved'
-            ? 'Already approved'
-            : undefined,
-        isLoading: reviewing && review.variables?.reviewStatus === 'approved',
-        onSelect: () => review.mutate({ fileId: file.id, reviewStatus: 'approved' }),
-      },
-      {
+      })
+    }
+    if (can('files:deid_metadata')) {
+      actions.push({
+        id: 'deid-metadata',
+        label: 'De-identified metadata',
+        icon: <FileSearch className="size-4" aria-hidden="true" />,
+        disabled: !hasCopy,
+        title: hasCopy ? 'What the redacted copy still carries' : noCopy,
+        onSelect: () => setShowingMetadata({ file, deidentified: true }),
+      })
+    }
+    if (readOnly) return actions
+
+    if (can('files:reject')) {
+      actions.push({
         id: 'reject',
+        separatorBefore: actions.length > 0,
         label: 'Reject',
         icon: <X className="size-4" aria-hidden="true" />,
         tone: 'danger',
-        disabled: !file.is_deidentified,
-        title: !file.is_deidentified ? NOT_REVIEWABLE : undefined,
+        disabled: !file.is_deidentified || file.review_status === 'rejected',
+        title: !file.is_deidentified
+          ? NOT_REVIEWABLE
+          : file.review_status === 'rejected'
+            ? 'Already rejected'
+            : undefined,
         onSelect: () => setRejecting(file),
-      },
-      {
+      })
+    }
+    if (can('files:delete')) {
+      actions.push({
         id: 'delete',
-        separatorBefore: true,
+        separatorBefore: actions.length > 0,
         label: 'Delete file',
         icon: <Trash2 className="size-4" aria-hidden="true" />,
         tone: 'danger',
         isLoading: remove.isPending && remove.variables === file.id,
         onSelect: () => setDeleting(file),
-      },
-    ]
+      })
+    }
+    return actions
   }
 
   const columns: Array<Column<ApplicationFile>> = [
@@ -262,7 +242,7 @@ export function FileReviewPanel({
           {review.isPending && review.variables?.fileId === file.id ? (
             <span className="inline-flex items-center gap-2 text-xs font-semibold text-[rgb(var(--foreground-muted))]">
               <Spinner size="sm" label="" />
-              {review.variables.reviewStatus === 'approved' ? 'Approving…' : 'Rejecting…'}
+              Rejecting…
             </span>
           ) : (
             <>
@@ -305,15 +285,9 @@ export function FileReviewPanel({
           This application has been submitted. Its documents are shown as they were sent
           -- the de-identified copy and what it carries.
         </Card>
-      ) : (
-        <>
-          <DeidentifiedAttach applicationId={applicationId} />
-
-          {upload.job ? (
-            <UploadProgress job={upload.job} onDismiss={upload.dismiss} />
-          ) : null}
-        </>
-      )}
+      ) : upload.job ? (
+        <UploadProgress job={upload.job} onDismiss={upload.dismiss} />
+      ) : null}
 
       <FileTallyBar tally={tally} />
 
@@ -327,27 +301,6 @@ export function FileReviewPanel({
             aria-label="Search documents"
           />
         </div>
-
-        {readOnly ? null : (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              disabled={approvable === 0}
-              title={
-                approvable > 0
-                  ? `Approve the ${approvable} document${approvable === 1 ? '' : 's'} still waiting`
-                  : undecided === 0
-                    ? 'Every document has been decided'
-                    : 'None of these has a de-identified copy to review'
-              }
-              isLoading={approveAll.isPending}
-              leadingIcon={<CheckCheck className="size-4" aria-hidden="true" />}
-              onClick={() => approveAll.mutate()}
-            >
-              Approve all
-            </Button>
-          </div>
-        )}
       </div>
 
       <DataTable
@@ -365,12 +318,15 @@ export function FileReviewPanel({
               ? 'No documents were attached to this application.'
               : "No documents yet. Pick this application's source folder in step 1 to add them."
         }
-        rowActions={(file) => (
-          <DropdownMenu
-            actions={actionsFor(file)}
-            label={`Actions for ${file.original_file_name}`}
-          />
-        )}
+        rowActions={(file) => {
+          const actions = actionsFor(file)
+          return actions.length > 0 ? (
+            <DropdownMenu
+              actions={actions}
+              label={`Actions for ${file.original_file_name}`}
+            />
+          ) : null
+        }}
       />
 
       {showingMetadata ? (
@@ -423,7 +379,7 @@ export function FileReviewPanel({
           fileId={viewing.file.id}
           blobUrl={viewing.url}
           isDeidentified={viewing.isDeidentified}
-          canViewOriginal={!readOnly}
+          canViewOriginal={!readOnly && can('files:view_original')}
           onClose={closeViewer}
         />
       ) : null}

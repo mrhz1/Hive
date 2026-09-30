@@ -328,8 +328,8 @@ export function ApplicationWizard({
             {!locked && undecided > 0 ? (
               <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
                 {undecided} document{undecided === 1 ? '' : 's'} still{' '}
-                {undecided === 1 ? 'needs' : 'need'} approving or rejecting in step 2
-                before this can be submitted.
+                {undecided === 1 ? 'is' : 'are'} not approved yet, so this cannot be
+                submitted.
               </Card>
             ) : null}
 
@@ -338,7 +338,8 @@ export function ApplicationWizard({
               <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
                 {rejected} document{rejected === 1 ? '' : 's'} in step 2{' '}
                 {rejected === 1 ? 'has' : 'have'} been rejected, so this application
-                cannot be submitted. Reject it, or clear the rejection in step 2 first.
+                cannot be submitted. Replace the de-identified copy from Rejections,
+                delete the document in step 2, or reject the application.
               </Card>
             ) : null}
 

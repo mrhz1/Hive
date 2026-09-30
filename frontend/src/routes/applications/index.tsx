@@ -62,6 +62,16 @@ function ApplicationsList() {
   const columns: Array<Column<PatientApplication>> = useMemo(
     () => [
       {
+        id: 'patient_code',
+        header: 'Patient code',
+        cell: (a) => (
+          <span className="font-mono text-xs font-semibold tabular-nums">
+            {a.patient_id}
+          </span>
+        ),
+        sortValue: (a) => a.patient_id,
+      },
+      {
         id: 'patient',
         header: 'Patient',
         cell: (a) => labelFor(a),
@@ -112,6 +122,7 @@ function ApplicationsList() {
   if (searchText) {
     filtered = (data ?? []).filter((application) => {
       const text = [
+        application.patient_id,
         labelFor(application),
         application.status,
         application.description,
@@ -145,7 +156,7 @@ function ApplicationsList() {
           label="Search"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search by patient, status or description..."
+          placeholder="Search by patient code, name, status or description..."
           aria-label="Search applications"
         />
       </div>

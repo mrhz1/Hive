@@ -10,12 +10,13 @@ from typing import List, Optional
 
 from app import storage
 from app.crud import patient_application_files as files_crud
+from app.crud import patient_applications as applications_crud
 from app.crud import patients as patients_crud
 from app.deid import DEIDENTIFIABLE_LABEL, is_deidentifiable
 from app.filetype import read_header, resolve_extension
 from app.ids import clean_patient_code, is_patient_code
 from app.logging_setup import get_logger
-from app.schemas import PatientApplicationFileUpdate
+from app.schemas import PatientApplicationCreate, PatientApplicationFileUpdate
 
 log = get_logger(__name__)
 
@@ -295,7 +296,33 @@ def move_file(source, target):
                 target = other
                 break
     os.replace(source, target)
+    if Path(source).resolve().is_relative_to(intake_root().resolve()):
+        storage.prune_empty_dirs(Path(source).parent)
     return target
+
+
+def prune_empty_folders(root=None):
+    root = (root or intake_root()).resolve()
+    if not root.is_dir():
+        return 0
+    removed = set()
+    for dirpath, dirnames, filenames in os.walk(root, topdown=False):
+        folder = Path(dirpath)
+        if folder == root or any(part.startswith(".") for part in folder.relative_to(root).parts):
+            continue
+        if filenames:
+            continue
+        emptied_by_us = dirnames and all(folder / d in removed for d in dirnames)
+        if not emptied_by_us and not is_settled(folder):
+            continue
+        try:
+            folder.rmdir()
+        except OSError:
+            continue
+        removed.add(folder)
+    if removed:
+        log.info("intake_empty_folders_removed", folders=len(removed))
+    return len(removed)
 
 
 def set_aside(candidate, root, reason, detail=None):
@@ -351,6 +378,36 @@ def list_problem_files(kind):
             }
         )
     return files
+
+
+NO_CODE = "-"
+
+
+def file_codes(file):
+    codes = {c for c in (file.get("path_code"), file.get("name_code")) if c}
+    return codes or {NO_CODE}
+
+
+def filter_by_code(files, code):
+    if not code:
+        return files
+    return [f for f in files if code in file_codes(f)]
+
+
+def codes_in(files):
+    """Each code in a problem list and how many of its files are there.
+
+    A file whose path and name disagree counts under both codes, and files
+    with no code at all are grouped under NO_CODE.
+    """
+    counts = {}
+    for f in files:
+        for code in file_codes(f):
+            counts[code] = counts.get(code, 0) + 1
+    return [
+        {"code": code, "files": counts[code]}
+        for code in sorted(counts, key=lambda c: (c == NO_CODE, c))
+    ]
 
 
 def safe_child(root, relative):
@@ -541,6 +598,43 @@ def attach_to_application(cursor, application, file_ids):
 
     log.info("intake_files_attached", application_id=application.id, code=code, attached=len(attached))
     return attached
+
+
+INTAKE_ACTOR = "intake"
+
+
+def attach_to_draft(cursor, code):
+    """Put every de-identified file waiting under a code on its draft application.
+
+    The patient's newest draft is used, or a new draft is made for it. A
+    submitted or rejected application is never added to.
+    Returns (application, created, attached count), or (None, False, 0) when
+    nothing is waiting.
+    """
+    files = files_for_code(cursor, code)
+    if not files:
+        return None, False, 0
+
+    drafts = applications_crud.list_applications(cursor, code, status="draft")
+    created = not drafts
+    if drafts:
+        application = drafts[0]
+    else:
+        folder = original_root() / common_folder([f["relative_path"] for f in files])
+        application = applications_crud.create_application(
+            cursor,
+            PatientApplicationCreate(
+                patient_id=code,
+                status="draft",
+                original_file_path=str(folder),
+                description="Created by intake",
+            ),
+            actor_id=INTAKE_ACTOR,
+        )
+        log.info("intake_application_created", code=code, application_id=application.id)
+
+    attached = attach_to_application(cursor, application, [f["id"] for f in files])
+    return application, created, len(attached)
 
 
 def list_reports(limit=20):

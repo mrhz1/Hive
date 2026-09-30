@@ -69,8 +69,9 @@ export const queryKeys = {
     all: ['intake'] as const,
     status: () => [...queryKeys.intake.all, 'status'] as const,
     runs: () => [...queryKeys.intake.all, 'runs'] as const,
-    files: (kind: string, limit: number) =>
-      [...queryKeys.intake.all, 'files', kind, limit] as const,
+    files: (kind: string, limit: number, code = '') =>
+      [...queryKeys.intake.all, 'files', kind, limit, code] as const,
+    fileCodes: (kind: string) => [...queryKeys.intake.all, 'file-codes', kind] as const,
     codes: () => [...queryKeys.intake.all, 'codes'] as const,
     codeFiles: (code: string) => [...queryKeys.intake.all, 'code-files', code] as const,
   },

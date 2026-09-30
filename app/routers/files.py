@@ -35,7 +35,7 @@ from app.schemas import (
     User,
     WordPreview,
 )
-from app.security import require_permission
+from app.security import assert_permission, require_permission
 from app.storage import (
     deid_dir_for,
     delete_file as remove_from_disk,
@@ -110,8 +110,10 @@ def read_deidentified_file(
     file_id: str,
     download: bool = False,
     cursor=Depends(get_cursor),
-    actor: User = Depends(require_permission("files:download")),
+    actor: User = Depends(require_permission("files:view_deidentified")),
 ):
+    if download:
+        assert_permission(actor, "files:download")
     record = crud.get_file_or_404(cursor, file_id)
     if not record.de_identified_file_path:
         raise ValidationError("This file has not been de-identified yet")
@@ -163,7 +165,7 @@ def preview_deidentified_image(
     file_id: str,
     frame: int = 0,
     cursor=Depends(get_cursor),
-    actor: User = Depends(require_permission("files:download")),
+    actor: User = Depends(require_permission("files:view_deidentified")),
 ):
     record, path, extension = _redacted_path(cursor, file_id)
     if extension not in ("dcm", "dicom"):
@@ -185,7 +187,7 @@ def preview_deidentified_image(
 def preview_deidentified_text(
     file_id: str,
     cursor=Depends(get_cursor),
-    actor: User = Depends(require_permission("files:download")),
+    actor: User = Depends(require_permission("files:view_deidentified")),
 ):
     record, path, extension = _redacted_path(cursor, file_id)
     if extension not in ("doc", "docx"):
@@ -263,7 +265,7 @@ async def upload_deidentified_file(
                 is_deidentified=True,
                 deidentified_file_name=stored.name,
                 de_identified_file_path=str(stored),
-                review_status="pending",
+                review_status="approved",
                 review_note=None,
             ),
         )

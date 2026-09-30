@@ -62,4 +62,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             duration_ms=duration_ms,
         )
         response.headers["X-Request-ID"] = request_id
+        # Patient documents are replaced in place under the same URL, and none
+        # of this should sit in a browser cache anyway.
+        response.headers.setdefault("Cache-Control", "no-store")
         return response

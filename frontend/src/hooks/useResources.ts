@@ -383,15 +383,6 @@ export function useDeidentifyAllFiles(applicationId: string) {
   )
 }
 
-export function useApproveAllFiles(applicationId: string) {
-  return useBulkFileAction(
-    applicationId,
-    applicationFilesApi.approveAll,
-    'approve',
-    'Could not approve the documents'
-  )
-}
-
 export function useFileMetadata(fileId: string | undefined, deidentified = false) {
   return useQuery({
     queryKey: queryKeys.applicationFiles.metadata(fileId ?? '', deidentified),
@@ -399,28 +390,6 @@ export function useFileMetadata(fileId: string | undefined, deidentified = false
     enabled: Boolean(fileId),
     staleTime: Infinity,
     retry: false,
-  })
-}
-
-export function useUploadDeidentifiedApplicationFile(applicationId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ file, description }: { file: File; description?: string }) =>
-      applicationFilesApi.uploadDeidentified(applicationId, file, description),
-    onSuccess: (created) => {
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.applicationFiles.list(applicationId),
-      })
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.deidentifiedFiles.all,
-      })
-      toast.success('De-identified file attached', {
-        description: `Stored as ${created.deidentified_file_name}`,
-      })
-    },
-    onError: (error) => {
-      toast.error(errorMessage(error, 'Could not attach the file'))
-    },
   })
 }
 
@@ -555,7 +524,8 @@ export function useIntakeStatus() {
   return useQuery({
     queryKey: queryKeys.intake.status(),
     queryFn: () => intakeApi.status(),
-    refetchInterval: (query) => (query.state.data?.running ? 5_000 : 15_000),
+    refetchInterval: (query) =>
+      query.state.data?.running || query.state.data?.starting ? 5_000 : 15_000,
   })
 }
 
@@ -573,7 +543,9 @@ export function useStartIntake() {
     mutationFn: () => intakeApi.start(),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
-      toast.success('De-identification started')
+      toast.success('De-identification requested', {
+        description: 'It shows as running here once a worker picks it up.',
+      })
     },
     onError: (error) => {
       toast.error(errorMessage(error, 'Could not start de-identification'))
@@ -581,11 +553,19 @@ export function useStartIntake() {
   })
 }
 
-export function useIntakeFiles(kind: ProblemList, limit: number) {
+export function useIntakeFiles(kind: ProblemList, limit: number, code = '') {
   return useQuery({
-    queryKey: queryKeys.intake.files(kind, limit),
-    queryFn: () => intakeApi.files(kind, limit),
+    queryKey: queryKeys.intake.files(kind, limit, code),
+    queryFn: () => intakeApi.files(kind, limit, code || undefined),
     refetchInterval: 15_000,
+  })
+}
+
+export function useIntakeFileCodes(kind: ProblemList) {
+  return useQuery({
+    queryKey: queryKeys.intake.fileCodes(kind),
+    queryFn: () => intakeApi.fileCodes(kind),
+    refetchInterval: 30_000,
   })
 }
 

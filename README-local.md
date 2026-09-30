@@ -8,7 +8,7 @@ using impyla like on Cloudera AI.
 ```
 make up      # start Hive (first run takes 1-2 min, needs ~4GB RAM for Docker)
 make check   # wait until Hive is ready
-make init    # create tables and seed data (users: admin, viewer)
+make init    # create empty tables with the admin and viewer logins
 make verify  # check INSERT/UPDATE/DELETE work
 make run     # start the API on port 8100
 make test    # run the tests
