@@ -17,18 +17,41 @@ API_PROXY_TARGET = os.environ.get("API_PROXY_TARGET", "").rstrip("/")
 PROXY_TIMEOUT_SECONDS = float(os.environ.get("API_PROXY_TIMEOUT_SECONDS", "120"))
 
 
+# Where Linux distributions keep the system's trusted CAs -- what curl uses.
+_SYSTEM_CA_FILES = (
+    "/etc/ssl/certs/ca-certificates.crt",
+    "/etc/pki/tls/certs/ca-bundle.crt",
+    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+    "/etc/ssl/ca-bundle.pem",
+    "/etc/ssl/cert.pem",
+)
+_CA_FILE_VARS = ("API_PROXY_CA_BUNDLE", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE")
+
+PROXY_CA_FILES = []
+
+
 def _proxy_tls():
     """Trust what the machine trusts, like curl does.
 
-    httpx on its own only trusts certifi's public CAs, so an API behind a
-    company or workspace CA fails with CERTIFICATE_VERIFY_FAILED even though
-    curl reaches it fine. API_PROXY_CA_BUNDLE points at a specific CA file
-    when the system store does not have it either.
+    httpx on its own only trusts certifi's public CAs, and a venv's Python may
+    look for the system store somewhere else, so an API behind a company or
+    workspace CA fails with CERTIFICATE_VERIFY_FAILED even though curl
+    reaches it. Every CA file that exists is loaded; API_PROXY_CA_BUNDLE adds
+    a specific one.
     """
-    bundle = os.environ.get("API_PROXY_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
-    if bundle:
-        return ssl.create_default_context(cafile=bundle)
-    return ssl.create_default_context()
+    context = ssl.create_default_context()
+    candidates = [os.environ.get(v) for v in _CA_FILE_VARS] + list(_SYSTEM_CA_FILES)
+    for path in dict.fromkeys(c for c in candidates if c):
+        if not os.path.isfile(path):
+            continue
+        try:
+            context.load_verify_locations(cafile=path)
+            PROXY_CA_FILES.append(path)
+        except (ssl.SSLError, OSError) as exc:
+            print(f"could not load CA file {path}: {exc}", file=sys.stderr)
+    if os.path.isdir("/etc/ssl/certs"):
+        context.load_verify_locations(capath="/etc/ssl/certs")
+    return context
 
 
 PROXY_TLS = _proxy_tls()
@@ -145,6 +168,10 @@ def main() -> int:
     print(f"serving {DIST} on {host}:{port}", file=sys.stderr)
     if API_PROXY_TARGET:
         print(f"proxying /api -> {API_PROXY_TARGET}", file=sys.stderr)
+        print(
+            f"trusting CA files: {PROXY_CA_FILES or 'none found, system default only'}",
+            file=sys.stderr,
+        )
     else:
         print(
             "API_PROXY_TARGET is not set: /api is NOT forwarded to the API. "
