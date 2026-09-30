@@ -45,10 +45,21 @@ def progress():
     now = time.time()
     heartbeats = intake_worker.read_heartbeats()
 
+    reports = intake.list_reports(1)
+    last_finished = float(reports[0].get("finished_at") or 0) if reports else 0.0
+
     workers = []
     for hb in heartbeats:
         last_seen = float(hb.get("last_seen") or 0)
         alive = intake_worker.is_alive(hb)
+        # A worker that stopped cleanly marks itself idle; one that died did not.
+        clean = hb.get("status") == "idle"
+        if alive:
+            status = hb.get("status")
+        elif clean:
+            status = "finished"
+        else:
+            status = "stopped"
         workers.append(
             {
                 "name": hb.get("name"),
@@ -56,7 +67,8 @@ def progress():
                 "shards": hb.get("shards") or [],
                 "of": hb.get("of") or 1,
                 "workers": hb.get("workers") or 1,
-                "status": hb.get("status") if alive else "stopped",
+                "status": status,
+                "crashed_after_last_run": not alive and not clean and last_seen > last_finished,
                 "alive": alive,
                 "last_seen": last_seen,
                 "seconds_since_seen": max(0.0, now - last_seen),
@@ -71,8 +83,11 @@ def progress():
     running = intake_run.is_running()
     stalled = False
     for w in workers:
-        if w["status"] == "stopped" and not running and w["current"]:
+        # A crash older than the last finished run was already recovered from.
+        if w["crashed_after_last_run"] and not running and w["current"]:
             stalled = True
+    for w in workers:
+        del w["crashed_after_last_run"]
 
     status = intake.read_json(intake.state_dir() / "status.json")
     remaining = status.get("remaining")

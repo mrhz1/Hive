@@ -204,6 +204,29 @@ class Heartbeat:
         self.write()
 
 
+def forget_dead_workers():
+    """Drop the heartbeats of workers that are gone.
+
+    On Cloudera each Job run is a new container with a new host name, so a
+    run that was killed leaves a heartbeat nothing will ever overwrite --
+    still "working", still holding its files -- and the Intake page would
+    report the de-identification as stopped for good.
+    """
+    folder = intake.state_dir() / "workers"
+    if not folder.is_dir():
+        return 0
+    removed = 0
+    for path in folder.glob("*.json"):
+        data = intake.read_json(path)
+        if data and is_alive(data):
+            continue
+        path.unlink(missing_ok=True)
+        removed += 1
+    if removed:
+        log.info("intake_dead_workers_forgotten", count=removed)
+    return removed
+
+
 def read_heartbeats():
     heartbeats = []
     folder = intake.state_dir() / "workers"
@@ -577,6 +600,8 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
     totals = {"done": 0, "failed": 0, "set_aside": 0, "skipped_unsettled": 0}
     totals_lock = threading.Lock()
     work = queue.Queue(maxsize=pool)
+    if is_main:
+        forget_dead_workers()
     heartbeat = Heartbeat(shards, of, pool).start()
     creator = patient_creator()
     creator.forget()
