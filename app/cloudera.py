@@ -83,10 +83,10 @@ def _api_url() -> str:
     )
 
 
-def _config() -> Dict[str, str]:
+def _config(job_env: str = "CML_DEID_JOB_ID") -> Dict[str, str]:
     project_id = os.environ.get("CML_PROJECT_ID") or os.environ.get("CDSW_PROJECT_ID")
     api_key = os.environ.get("CML_API_KEY") or os.environ.get("CDSW_APIV2_KEY")
-    job_id = os.environ.get("CML_DEID_JOB_ID")
+    job_id = os.environ.get(job_env)
 
     missing = []
     if not project_id:
@@ -94,7 +94,7 @@ def _config() -> Dict[str, str]:
     if not api_key:
         missing.append("CML_API_KEY / CDSW_APIV2_KEY")
     if not job_id:
-        missing.append("CML_DEID_JOB_ID")
+        missing.append(job_env)
     if missing:
         raise ClouderaError(
             "Cloudera job dispatch is not configured; missing: " + ", ".join(missing)
@@ -116,8 +116,14 @@ def is_configured() -> bool:
         return False
 
 
-def start_deid_job_run(environment: Optional[Dict[str, str]] = None) -> str:
-    config = _config()
+def start_intake_job_run() -> str:
+    return start_deid_job_run(job_env="CML_INTAKE_JOB_ID")
+
+
+def start_deid_job_run(
+    environment: Optional[Dict[str, str]] = None, job_env: str = "CML_DEID_JOB_ID"
+) -> str:
+    config = _config(job_env)
     url = (
         f"{config['url']}/projects/{config['project_id']}"
         f"/jobs/{config['job_id']}/runs"

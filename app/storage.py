@@ -49,6 +49,10 @@ def submitted_root() -> Path:
     return _configured_dir("SUBMITTED_DIR", "storage/submitted")
 
 
+def data_root() -> Path:
+    return _configured_dir("DATA_DIR", "storage/data")
+
+
 def submitted_dir_for(patient_id: str) -> Path:
     return submitted_root() / safe_path_segment(patient_id)
 
@@ -63,6 +67,7 @@ def _allowed_roots():
             DEID_WORD_DIR,
             intake_root(),
             submitted_root(),
+            data_root(),
         )
     ]
 

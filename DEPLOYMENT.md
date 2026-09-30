@@ -36,11 +36,13 @@ Variables (see `.env.example` for the full list):
 | `HIVE_AUTH` | `GSSAPI` |
 | `HIVE_USER` | your workload user |
 | `FILE_STORAGE_DIR` | `/home/cdsw/storage/patient_files` (absolute) |
-| `INTAKE_DIR` | intake folder on the shared volume |
+| `INTAKE_DIR` | incoming folder on the shared volume |
+| `DATA_DIR` | data folder (original, de-identified, failed...), same disk as `INTAKE_DIR` |
 | `DEID_BACKEND` | `cml_job` |
 | `DEID_OCR_PYTHON` | `/home/cdsw/OCR/.venv-ocr/bin/python` |
 | `DEID_NLP_PYTHON` | `/home/cdsw/OCR/.venv-nlp/bin/python` |
 | `CML_DEID_JOB_ID` | set after step 4 |
+| `CML_INTAKE_JOB_ID` | set after step 4b |
 
 Don't set `VITE_DEV_USERNAME` in production. The platform sends the
 `REMOTE-USER` header.
@@ -144,12 +146,15 @@ Jobs → New Job:
 
 | Field | Value |
 |---|---|
+| Name | `intake` |
 | Script | `scripts/intake_run.py` |
-| Schedule | every minute (`* * * * *`) |
-| Environment | `INTAKE_DIR`, `SUBMITTED_DIR`, `DEID_WORKERS`, `DEID_WORKER_CPU_THREADS`, `INTAKE_SETTLE_SECONDS` |
+| Schedule | Manual (started by the Start button on the Intake page) |
+| Resources | as many vCPU / GiB as the workers need (8 GiB per worker) |
+| Environment | `INTAKE_DIR`, `DATA_DIR`, `DEID_WORKERS`, `DEID_WORKER_CPU_THREADS`, plus the Hive variables |
 
-See the Intake section in `README-local.md` for how it works and how to size
-the workers.
+Copy the job id from the URL into `CML_INTAKE_JOB_ID` on the API
+Application. See the Intake section in `README-local.md` for how it works
+and how to size the workers.
 
 ## 5. API Application
 
@@ -198,9 +203,17 @@ python scripts/migrate_columns.py --list
 python scripts/migrate_columns.py --apply
 ```
 
-New tables (`access_logs`, `intake_files`, `intake_batches`) have to be
-created by hand from `sql/schema.sql`. After that, remove UPDATE and DELETE
-grants on `audit_logs` and `access_logs` for the app user.
+New tables (`access_logs`) have to be created by hand from
+`sql/schema.sql`. After that, remove UPDATE and DELETE grants on
+`audit_logs` and `access_logs` for the app user.
+
+The intake no longer uses Hive tables. On a database that has the old
+ones, drop them:
+
+```sql
+DROP TABLE IF EXISTS intake_files;
+DROP TABLE IF EXISTS intake_batches;
+```
 
 New columns must go at the end of the table and at the end of the
 `COLUMNS` tuple in `app/crud/*`, because Hive INSERT is positional.

@@ -201,3 +201,20 @@ def set_paths(
         (file_path, de_identified_file_path, file_id),
     )
     return get_file_or_404(cursor, file_id)
+
+
+def find_deidentified_paths(cursor, paths: List[str]) -> set:
+    found = set()
+    paths = list(dict.fromkeys(paths))
+    for start in range(0, len(paths), 500):
+        chunk = paths[start : start + 500]
+        slots = ", ".join(["%s"] * len(chunk))
+        execute(
+            cursor,
+            f"SELECT `de_identified_file_path` FROM `patient_application_files` "
+            f"WHERE `de_identified_file_path` IN ({slots})",
+            tuple(chunk),
+        )
+        for row in cursor.fetchall():
+            found.add(row[0])
+    return found

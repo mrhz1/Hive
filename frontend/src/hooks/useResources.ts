@@ -18,6 +18,7 @@ import {
 import { queryKeys } from '@/lib/queryKeys'
 import type { AccessLogFilters } from '@/schemas/accessLog'
 import type { AuditLogFilters } from '@/schemas/log'
+import type { ProblemList } from '@/schemas/intake'
 import type { FileMetadataFilters } from '@/schemas/fileMetadata'
 import {
   bulkSummary,
@@ -550,22 +551,66 @@ export function useDeleteDeidentifiedFile() {
   })
 }
 
-export function useIntakeCounts() {
+export function useIntakeStatus() {
   return useQuery({
-    queryKey: queryKeys.intake.counts(),
-    queryFn: () => intakeApi.counts(),
+    queryKey: queryKeys.intake.status(),
+    queryFn: () => intakeApi.status(),
+    refetchInterval: (query) => (query.state.data?.running ? 5_000 : 15_000),
+  })
+}
+
+export function useIntakeRuns() {
+  return useQuery({
+    queryKey: queryKeys.intake.runs(),
+    queryFn: () => intakeApi.runs(),
+    refetchInterval: 30_000,
+  })
+}
+
+export function useStartIntake() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => intakeApi.start(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
+      toast.success('De-identification started')
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not start de-identification'))
+    },
+  })
+}
+
+export function useIntakeFiles(kind: ProblemList, limit: number) {
+  return useQuery({
+    queryKey: queryKeys.intake.files(kind, limit),
+    queryFn: () => intakeApi.files(kind, limit),
     refetchInterval: 15_000,
+  })
+}
+
+export function useRetryIntakeFile() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (path: string) => intakeApi.retry(path),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
+      toast.success('Moved back to the incoming folder, it will be done in the next run')
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not retry this file'))
+    },
   })
 }
 
 export function useResolveIntakeConflict() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (variables: { fileId: string; code: string }) =>
-      intakeApi.resolve(variables.fileId, variables.code),
+    mutationFn: (variables: { path: string; code: string }) =>
+      intakeApi.resolve(variables.path, variables.code),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
-      toast.success(`Filed under ${variables.code} and queued`)
+      toast.success(`Will be filed under ${variables.code} in the next run`)
     },
     onError: (error) => {
       toast.error(errorMessage(error, 'Could not resolve the conflict'))
@@ -581,19 +626,18 @@ export function useIntakeCodes(enabled = true) {
   })
 }
 
-export function useAvailableIntakeFiles(patientCode: string | undefined) {
+export function useCodeFiles(code: string | undefined) {
   return useQuery({
-    queryKey: queryKeys.intake.files('done', patientCode),
-    queryFn: () => intakeApi.files('done', patientCode),
-    enabled: Boolean(patientCode),
+    queryKey: queryKeys.intake.codeFiles(code ?? ''),
+    queryFn: () => intakeApi.codeFiles(code ?? ''),
+    enabled: Boolean(code),
   })
 }
 
 export function useAttachIntakeFiles(applicationId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (intakeFileIds: string[]) =>
-      intakeApi.attach(applicationId, intakeFileIds),
+    mutationFn: (fileIds: string[]) => intakeApi.attach(applicationId, fileIds),
     onSuccess: (attached) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
       void queryClient.invalidateQueries({
@@ -606,43 +650,5 @@ export function useAttachIntakeFiles(applicationId: string) {
     onError: (error) => {
       toast.error(errorMessage(error, 'Could not attach those files'))
     },
-  })
-}
-
-export function useRetryIntakeFile() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (fileId: string) => intakeApi.retry(fileId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
-      toast.success('Queued again, the next run will pick it up')
-    },
-    onError: (error) => {
-      toast.error(errorMessage(error, 'Could not retry this file'))
-    },
-  })
-}
-
-export function useIntakeProgress() {
-  return useQuery({
-    queryKey: queryKeys.intake.progress(),
-    queryFn: () => intakeApi.progress(),
-    refetchInterval: 10_000,
-  })
-}
-
-export function useIntakeBatchProgress() {
-  return useQuery({
-    queryKey: queryKeys.intake.batchProgress(),
-    queryFn: () => intakeApi.batchProgress(),
-    refetchInterval: 30_000,
-  })
-}
-
-export function useIntakePage(status: string, limit: number) {
-  return useQuery({
-    queryKey: queryKeys.intake.page(status, limit),
-    queryFn: () => intakeApi.page(status, limit, 0),
-    refetchInterval: 15_000,
   })
 }

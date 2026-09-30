@@ -841,7 +841,7 @@ def delete_application_file(
     record = crud.delete_file(cursor, file_id)
     metadata_crud.delete_metadata_for_files(cursor, [file_id])
 
-    if intake.release_claim(cursor, file_id):
+    if intake.is_data_file(record.file_path):
         return None
 
     remove_deid_artifacts(record.file_path, record.deidentified_file_name or "")

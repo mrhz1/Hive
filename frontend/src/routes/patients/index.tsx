@@ -79,6 +79,7 @@ function PatientsList() {
   if (searchText) {
     filtered = (data ?? []).filter((patient) => {
       const text = [
+        String(patient.id),
         patient.fstname,
         patient.lstname,
         patient.ptemail,
@@ -114,7 +115,7 @@ function PatientsList() {
           label="Search"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search by name, email, phone or institution..."
+          placeholder="Search by id, name, email, phone or institution..."
           aria-label="Search patients"
         />
       </div>

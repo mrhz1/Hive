@@ -1,54 +1,67 @@
 import hashlib
+import json
 import os
 import re
+import threading
 import time
-import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
 from app import storage
-from app.crud import intake_files as crud
 from app.crud import patient_application_files as files_crud
 from app.crud import patients as patients_crud
 from app.deid import DEIDENTIFIABLE_LABEL, is_deidentifiable
 from app.filetype import read_header, resolve_extension
 from app.ids import clean_patient_code, is_patient_code
 from app.logging_setup import get_logger
-from app.schemas import IntakeFileUpdate, PatientApplicationFileUpdate
-from app.uploads import record_metadata
+from app.schemas import PatientApplicationFileUpdate
 
 log = get_logger(__name__)
 
-BATCH_MARKER = os.environ.get("INTAKE_BATCH_MARKER", "batch.done")
 DEFAULT_SETTLE_SECONDS = 20.0
-SKIP_DIRS = ["_reports", ".intake"]
-WALK_SLACK_SECONDS = 2.0
-MAX_SAMPLES = 2000
-GROUP_SIZE = 500
-
-QUEUED = "queued"
-SKIPPED = "skipped"
-CONFLICT = "conflict"
-SUPERSEDED = "superseded"
 
 UNSUPPORTED_FORMAT = "unsupported format"
 NO_PATIENT_CODE = "no patient code"
 CODE_CONFLICT = "path and file name disagree"
+DUPLICATE = "duplicate"
+REDACTION_FAILED = "redaction failed"
+
+REASON_SUFFIX = ".reason.json"
+SIDECAR_SUFFIX = ".json"
+PARTIAL_SUFFIX = ".partial"
 
 CODE_AT_START = re.compile(r"^([A-Za-z0-9]+)")
+
+_overrides_lock = threading.Lock()
 
 
 def intake_root():
     return storage.intake_root()
 
 
-def deidentified_dir_name():
-    return os.environ.get("INTAKE_DEID_DIRNAME", "de_identified")
+def data_root():
+    return storage.data_root()
 
 
-def deidentified_root(root=None):
-    return (root or intake_root()) / deidentified_dir_name()
+def original_root():
+    return data_root() / "original"
+
+
+def deidentified_root():
+    return data_root() / "de_identified"
+
+
+def failed_root():
+    return data_root() / "failed"
+
+
+def attention_root():
+    return data_root() / "needs_attention"
+
+
+def state_dir():
+    return data_root() / ".intake"
 
 
 def settle_seconds():
@@ -59,6 +72,15 @@ def settle_seconds():
         return float(value)
     except ValueError:
         return DEFAULT_SETTLE_SECONDS
+
+
+def is_data_file(path):
+    if not path:
+        return False
+    try:
+        return Path(path).resolve().is_relative_to(data_root().resolve())
+    except OSError:
+        return False
 
 
 @dataclass
@@ -83,14 +105,10 @@ class Candidate:
     relative_path: str
     extension: str
     size: int
-    status: str
     detection: Detection
+    code: Optional[str] = None
     reason: Optional[str] = None
     detail: Optional[str] = None
-
-    @property
-    def code(self):
-        return self.detection.code
 
     @property
     def name(self):
@@ -147,73 +165,76 @@ def is_settled(path, limit=None):
     return time.time() - last_touched(stat) >= limit
 
 
-def batch_is_marked_done(folder):
-    return (folder / BATCH_MARKER).is_file()
-
-
-def walk_folders(root=None, since=None):
+def walk(root=None):
     root = root or intake_root()
     if not root.is_dir():
         return
-
-    submitted = storage.submitted_root().resolve()
-    skip_at_top = [deidentified_dir_name()] + SKIP_DIRS
-
     for dirpath, dirnames, filenames in os.walk(root):
-        folder = Path(dirpath)
-
-        keep = []
-        for name in sorted(dirnames):
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        for name in sorted(filenames):
             if name.startswith("."):
                 continue
-            if folder == root and name in skip_at_top:
-                continue
-            try:
-                if (folder / name).resolve().is_relative_to(submitted):
-                    continue
-            except OSError:
-                continue
-            keep.append(name)
-        dirnames[:] = keep
-
-        try:
-            folder_time = last_touched(folder.stat())
-        except OSError:
-            continue
-        if since is not None and folder_time <= since - WALK_SLACK_SECONDS:
-            continue
-
-        yield folder, folder_time, sorted(filenames)
-
-
-def walk(root=None, since=None):
-    for folder, _, names in walk_folders(root, since):
-        for name in names:
-            if name == BATCH_MARKER or name.startswith("."):
-                continue
-            path = folder / name
+            path = Path(dirpath) / name
             if path.is_file():
                 yield path
 
 
-def checksum(path, chunk_size=1024 * 1024):
-    sha = hashlib.sha256()
+def is_extra_file(name):
+    return name.endswith(REASON_SUFFIX) or name.endswith(SIDECAR_SUFFIX) or name.endswith(PARTIAL_SUFFIX)
+
+
+def count_files(root):
+    count = 0
+    if not root.is_dir():
+        return 0
+    for _, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for name in filenames:
+            if not name.startswith(".") and not is_extra_file(name):
+                count += 1
+    return count
+
+
+def load_overrides():
+    path = state_dir() / "code_overrides.json"
     try:
-        with open(path, "rb") as f:
-            while True:
-                chunk = f.read(chunk_size)
-                if not chunk:
-                    break
-                sha.update(chunk)
-    except OSError as e:
-        log.warning("intake_checksum_failed", path=str(path), error=str(e))
-        return ""
-    return sha.hexdigest()
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
 
 
-def classify(path, root=None):
+def set_override(relative_path, code):
+    with _overrides_lock:
+        overrides = load_overrides()
+        overrides[relative_path] = code
+        write_json(state_dir() / "code_overrides.json", overrides)
+
+
+def remove_override(relative_path):
+    with _overrides_lock:
+        overrides = load_overrides()
+        if relative_path in overrides:
+            del overrides[relative_path]
+            write_json(state_dir() / "code_overrides.json", overrides)
+
+
+def write_json(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(data, indent=1, default=str))
+    tmp.replace(path)
+
+
+def read_json(path):
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def classify(path, root=None, overrides=None):
     root = root or intake_root()
-    relative = str(path.relative_to(root))
+    relative = path.relative_to(root).as_posix()
     extension = resolve_extension(path.name, read_header(path))
     try:
         size = path.stat().st_size
@@ -222,279 +243,165 @@ def classify(path, root=None):
 
     detection = detect(relative)
     candidate = Candidate(
-        path=path,
-        relative_path=relative,
-        extension=extension,
-        size=size,
-        status=QUEUED,
-        detection=detection,
+        path=path, relative_path=relative, extension=extension, size=size, detection=detection
     )
 
     if not is_deidentifiable(extension):
-        candidate.status = SKIPPED
         candidate.reason = UNSUPPORTED_FORMAT
         candidate.detail = f"'{extension or 'no extension'}' (handled: {DEIDENTIFIABLE_LABEL})"
+    elif overrides and relative in overrides:
+        candidate.code = overrides[relative]
     elif detection.conflicted:
-        candidate.status = CONFLICT
         candidate.reason = CODE_CONFLICT
         candidate.detail = (
             f"the path says {detection.path_code}, the file name says {detection.name_code}"
         )
     elif not detection.code:
-        candidate.status = SKIPPED
         candidate.reason = NO_PATIENT_CODE
         candidate.detail = "no code in the path or the file name"
+    else:
+        candidate.code = detection.code
 
     return candidate
 
 
-def survey(root=None):
-    root = root or intake_root()
-    return [classify(path, root) for path in walk(root)]
+def checksum(path, chunk_size=1024 * 1024):
+    sha = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            sha.update(chunk)
+    return sha.hexdigest()
 
 
-def mirrored_dir(relative_path, root=None):
-    return deidentified_root(root) / Path(relative_path).parent
-
-
-@dataclass
-class SweepResult:
-    batch_id: Optional[str] = None
-    candidates: List[Candidate] = field(default_factory=list)
-    recorded: int = 0
-    already_seen: int = 0
-    superseded: int = 0
-    retried: int = 0
-    counts: dict = field(default_factory=dict)
-
-    def add(self, candidate):
-        self.counts[candidate.status] = self.counts.get(candidate.status, 0) + 1
-        if len(self.candidates) < MAX_SAMPLES:
-            self.candidates.append(candidate)
-
-    def count(self, status):
-        if self.counts:
-            return self.counts.get(status, 0)
-        return len(self.with_status(status))
-
-    def with_status(self, status):
-        return [c for c in self.candidates if c.status == status]
-
-    @property
-    def total(self):
-        if self.counts:
-            return sum(self.counts.values())
-        return len(self.candidates)
-
-    @property
-    def queued(self):
-        return self.with_status(QUEUED)
-
-    @property
-    def skipped(self):
-        return self.with_status(SKIPPED)
-
-    @property
-    def conflicts(self):
-        return self.with_status(CONFLICT)
-
-
-def sweep(cursor, root=None, dry_run=True, touched_since=None, full=True):
-    root = root or intake_root()
-    result = SweepResult()
-    since = None if full else touched_since
-
-    batch = None
-    group = []
-    for path in walk(root, since=since):
-        candidate = classify(path, root)
-        result.add(candidate)
-        if dry_run:
-            continue
-        group.append(candidate)
-        if len(group) >= GROUP_SIZE:
-            batch = save_group(cursor, root, group, touched_since, result, batch)
-            group = []
-    if group and not dry_run:
-        batch = save_group(cursor, root, group, touched_since, result, batch)
-
-    if dry_run:
-        log.info(
-            "intake_sweep_dry_run",
-            root=str(root),
-            found=result.total,
-            queued=result.count(QUEUED),
-            skipped=result.count(SKIPPED),
-            conflicts=result.count(CONFLICT),
-        )
-        return result
-
-    if batch is not None:
-        crud.finish_batch(cursor, batch.id, "swept")
-
-    log.info(
-        "intake_sweep_recorded",
-        batch_id=result.batch_id,
-        root=str(root),
-        full=full,
-        recorded=result.recorded,
-        already_seen=result.already_seen,
-        superseded=result.superseded,
-        retried=result.retried,
-        walked_redactable=result.count(QUEUED),
-        walked_skipped=result.count(SKIPPED),
-        walked_conflicts=result.count(CONFLICT),
-    )
-    return result
-
-
-def changed_since(path, since):
-    if since is None:
-        return False
+def is_duplicate(candidate):
+    existing = original_root() / candidate.relative_path
     try:
-        return last_touched(path.stat()) > since
+        if not existing.is_file() or existing.stat().st_size != candidate.size:
+            return False
+        return checksum(existing) == checksum(candidate.path)
     except OSError:
         return False
 
 
-def status_update(row_id, status, detail):
-    return {
-        "id": row_id,
-        "status": status,
-        "output_path": None,
-        "output_name": None,
-        "detail": detail,
-    }
+def move_file(source, target):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        for n in range(2, 10_000):
+            other = target.with_name(f"{target.stem}_{n}{target.suffix}")
+            if not other.exists():
+                target = other
+                break
+    os.replace(source, target)
+    return target
 
 
-def save_group(cursor, root, group, touched_since, result, batch):
-    rows_by_path = crud.find_by_paths(cursor, [str(c.path) for c in group])
+def set_aside(candidate, root, reason, detail=None):
+    target = move_file(candidate.path, root / candidate.relative_path)
+    write_json(
+        Path(str(target) + REASON_SUFFIX),
+        {
+            "reason": reason,
+            "detail": detail,
+            "relative_path": candidate.relative_path,
+            "path_code": candidate.detection.path_code,
+            "name_code": candidate.detection.name_code,
+            "extension": candidate.extension,
+            "size": candidate.size,
+            "moved_at": time.time(),
+        },
+    )
+    log.info("intake_file_set_aside", path=candidate.relative_path, reason=reason)
+    return target
 
-    new_files = []
-    for candidate in group:
-        rows = rows_by_path.get(str(candidate.path), [])
-        same_size = any(r.file_size == candidate.size for r in rows)
-        if rows and same_size and not changed_since(candidate.path, touched_since):
-            result.already_seen += 1
-        else:
-            new_files.append(candidate)
-    if not new_files:
-        return batch
 
-    checksums = {}
-    for candidate in new_files:
-        checksums[str(candidate.path)] = checksum(candidate.path)
-    rows_by_checksum = crud.find_by_checksums(cursor, [c for c in checksums.values() if c])
+def problem_root(kind):
+    if kind == "failed":
+        return failed_root()
+    if kind == "attention":
+        return attention_root()
+    raise ValueError(f"Unknown list '{kind}'")
 
-    new_rows = []
-    updates = []
-    for candidate in new_files:
-        path = str(candidate.path)
-        digest = checksums[path]
-        same_bytes = rows_by_checksum.get(digest, []) if digest else []
 
-        same_file = [r for r in same_bytes if r.source_path == path]
-        if same_file:
-            failed = [r for r in same_file if r.status == "failed"]
-            if failed and changed_since(candidate.path, touched_since):
-                for row in failed:
-                    updates.append(status_update(row.id, QUEUED, "retried: the file was pushed again"))
-                    result.retried += 1
-            else:
-                result.already_seen += 1
+def list_problem_files(kind):
+    root = problem_root(kind)
+    files = []
+    for path in walk(root):
+        if is_extra_file(path.name):
             continue
-
-        old_rows = [r for r in same_bytes if r.status in (SKIPPED, CONFLICT)]
-        for r in rows_by_path.get(path, []):
-            if r.status in (SKIPPED, CONFLICT, "failed") and r not in old_rows:
-                old_rows.append(r)
-
-        row_id = str(uuid.uuid4())
-        new_rows.append(
+        info = read_json(str(path) + REASON_SUFFIX)
+        try:
+            size = path.stat().st_size
+        except OSError:
+            size = 0
+        files.append(
             {
-                "id": row_id,
-                "source_path": path,
-                "relative_path": candidate.relative_path,
-                "file_name": candidate.name,
-                "file_extension": candidate.extension,
-                "file_size": candidate.size,
-                "status": candidate.status,
-                "checksum": digest,
-                "patient_code": candidate.code,
-                "path_code": candidate.detection.path_code,
-                "name_code": candidate.detection.name_code,
-                "reason": candidate.reason,
-                "detail": candidate.detail,
+                "path": path.relative_to(root).as_posix(),
+                "file_name": path.name,
+                "full_path": str(path),
+                "reason": info.get("reason"),
+                "detail": info.get("detail"),
+                "path_code": info.get("path_code"),
+                "name_code": info.get("name_code"),
+                "file_extension": info.get("extension") or path.suffix.lstrip(".").lower(),
+                "file_size": size,
+                "moved_at": info.get("moved_at"),
             }
         )
-        result.recorded += 1
-
-        if candidate.status == QUEUED:
-            for old in old_rows:
-                detail = (
-                    f"the same document was accepted as {candidate.relative_path} ({candidate.code})"
-                )
-                updates.append(status_update(old.id, SUPERSEDED, detail))
-                result.superseded += 1
-
-        if digest:
-            rows_by_checksum.setdefault(digest, []).append(
-                SeenRow(id=row_id, source_path=path, status=candidate.status)
-            )
-
-    if new_rows:
-        if batch is None:
-            batch = crud.create_batch(cursor, str(root))
-            result.batch_id = batch.id
-        for row in new_rows:
-            row["batch_id"] = batch.id
-        crud.create_files(cursor, new_rows)
-    if updates:
-        crud.apply_results(cursor, updates)
-    return batch
+    return files
 
 
-@dataclass
-class SeenRow:
-    id: str
-    source_path: str
-    status: str
+def safe_child(root, relative):
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root.resolve()) or path == root.resolve():
+        raise ValueError("Invalid file path")
+    return path
 
 
-def retry(cursor, file_id):
-    record = crud.get_file_or_404(cursor, file_id)
-    if record.status != "failed":
-        raise ValueError(f"'{record.file_name}' has not failed (it is {record.status})")
-    if not Path(record.source_path).is_file():
-        raise ValueError(
-            f"'{record.file_name}' is no longer at {record.source_path}; push it again instead"
-        )
-    return crud.update_file(cursor, file_id, IntakeFileUpdate(status=QUEUED, detail="retried by hand"))
+def send_back(kind, relative):
+    root = problem_root(kind)
+    path = safe_child(root, relative)
+    if not path.is_file():
+        raise ValueError(f"'{relative}' is not in the {kind} list")
+    info = read_json(str(path) + REASON_SUFFIX)
+    original_relative = info.get("relative_path") or relative
+    target = move_file(path, intake_root() / original_relative)
+    Path(str(path) + REASON_SUFFIX).unlink(missing_ok=True)
+    log.info("intake_file_sent_back", path=original_relative, source=kind)
+    return target.relative_to(intake_root()).as_posix()
 
 
-def resolve_conflict(cursor, file_id, code):
-    record = crud.get_file_or_404(cursor, file_id)
+def retry_failed(relative):
+    return send_back("failed", relative)
+
+
+def resolve_conflict(relative, code):
+    root = attention_root()
+    path = safe_child(root, relative)
+    info = read_json(str(path) + REASON_SUFFIX)
+    if info.get("reason") != CODE_CONFLICT:
+        raise ValueError(f"'{relative}' is not in conflict")
+
     code = clean_patient_code(code)
-
-    if record.status != CONFLICT:
-        raise ValueError(f"'{record.file_name}' is not in conflict")
-
-    options = sorted({c for c in [record.path_code, record.name_code] if c})
+    options = sorted({c for c in [info.get("path_code"), info.get("name_code")] if c})
     if code not in options:
-        raise ValueError(
-            f"{code} is not one of the codes on this file ({', '.join(options) or 'none'})"
-        )
+        raise ValueError(f"{code} is not one of the codes on this file ({', '.join(options)})")
 
-    return crud.update_file(
-        cursor,
-        file_id,
-        IntakeFileUpdate(
-            patient_code=code,
-            status=QUEUED,
-            reason=None,
-            detail=f"conflict resolved to {code}",
-        ),
-    )
+    new_relative = send_back("attention", relative)
+    set_override(new_relative, code)
+    return new_relative
+
+
+def redacted_files(code):
+    folder = deidentified_root() / code
+    files = []
+    for path in walk(folder):
+        if is_extra_file(path.name):
+            continue
+        files.append(path)
+    return files
 
 
 def common_folder(paths):
@@ -508,63 +415,116 @@ def common_folder(paths):
 
 
 def available_codes(cursor):
-    paths_by_code = {}
-    for record in crud.list_files(cursor, status="done"):
-        if record.patient_code:
-            paths_by_code.setdefault(record.patient_code, []).append(record.source_path)
+    root = deidentified_root()
+    if not root.is_dir():
+        return []
+
+    files_by_code = {}
+    for folder in sorted(root.iterdir()):
+        if folder.is_dir() and not folder.name.startswith("."):
+            files = redacted_files(folder.name)
+            if files:
+                files_by_code[folder.name] = files
+
+    all_paths = [str(p) for files in files_by_code.values() for p in files]
+    attached = files_crud.find_deidentified_paths(cursor, all_paths)
+    existing = patients_crud.existing_ids(cursor, list(files_by_code))
 
     codes = []
-    for code in sorted(paths_by_code):
-        paths = paths_by_code[code]
+    for code, files in files_by_code.items():
+        free = [p for p in files if str(p) not in attached]
+        if not free:
+            continue
+        relative_dirs = [p.relative_to(root / code) for p in free]
         codes.append(
             {
                 "code": code,
-                "files": len(paths),
-                "folder": common_folder(paths),
-                "patient_exists": patients_crud.get_patient(cursor, code) is not None,
+                "files": len(free),
+                "folder": str(original_root() / common_folder(relative_dirs)),
+                "patient_exists": code in existing,
             }
         )
     return codes
+
+
+def files_for_code(cursor, code):
+    code = clean_patient_code(code)
+    root = deidentified_root()
+    files = redacted_files(code)
+    attached = files_crud.find_deidentified_paths(cursor, [str(p) for p in files])
+
+    result = []
+    for path in files:
+        if str(path) in attached:
+            continue
+        info = read_json(str(path) + SIDECAR_SUFFIX)
+        try:
+            size = path.stat().st_size
+        except OSError:
+            size = 0
+        result.append(
+            {
+                "id": path.relative_to(root).as_posix(),
+                "patient_code": code,
+                "output_name": path.name,
+                "file_name": info.get("original_name") or path.name,
+                "relative_path": info.get("relative_path") or path.relative_to(root / code).as_posix(),
+                "file_extension": path.suffix.lstrip(".").lower(),
+                "file_size": size,
+                "method": info.get("method"),
+            }
+        )
+    return result
 
 
 class AttachError(ValueError):
     pass
 
 
-def attach_to_application(cursor, application, intake_file_ids):
+def attach_to_application(cursor, application, file_ids):
+    from app.storage import guess_mime_type
+    from app.uploads import record_metadata
+
     code = application.patient_id
-    if not intake_file_ids:
+    if not file_ids:
         raise AttachError("Choose at least one file to attach")
 
-    records = []
-    for file_id in dict.fromkeys(intake_file_ids):
-        record = crud.get_file(cursor, file_id)
-        if record is None:
-            raise AttachError(f"Intake file '{file_id}' not found")
-        if record.status == "claimed":
-            raise AttachError(f"'{record.file_name}' is already attached to another application")
-        if record.status != "done":
-            raise AttachError(
-                f"'{record.file_name}' has not been de-identified (it is {record.status})"
-            )
-        if record.patient_code != code:
-            raise AttachError(f"'{record.file_name}' belongs to {record.patient_code}, not {code}")
-        if not record.output_path or not Path(record.output_path).is_file():
-            raise AttachError(f"The redacted copy of '{record.file_name}' is missing from disk")
-        records.append(record)
+    root = deidentified_root()
+    chosen = []
+    for file_id in dict.fromkeys(file_ids):
+        try:
+            path = safe_child(root, file_id)
+        except ValueError:
+            raise AttachError(f"'{file_id}' is not a de-identified file")
+        if Path(file_id).parts[0] != code:
+            raise AttachError(f"'{path.name}' belongs to {Path(file_id).parts[0]}, not {code}")
+        if not path.is_file():
+            raise AttachError(f"'{path.name}' is missing from disk")
+        info = read_json(str(path) + SIDECAR_SUFFIX)
+        original = info.get("original_path")
+        if not original or not Path(original).is_file():
+            raise AttachError(f"The original of '{path.name}' is missing from disk")
+        chosen.append((path, info))
+
+    attached_already = files_crud.find_deidentified_paths(cursor, [str(p) for p, _ in chosen])
+    for path, _ in chosen:
+        if str(path) in attached_already:
+            raise AttachError(f"'{path.name}' is already attached to an application")
 
     attached = []
-    for record in records:
+    for path, info in chosen:
+        original = Path(info["original_path"])
+        extension = path.suffix.lstrip(".").lower()
         new_file = files_crud.create_file(
             cursor,
             application_id=application.id,
-            original_file_name=record.file_name,
-            sanitized_file_name=record.output_name or record.file_name,
-            file_extension=record.file_extension,
-            mime_type=storage.guess_mime_type(record.file_name, None),
-            file_size=record.file_size,
-            file_path=record.source_path,
-            description=f"from intake: {record.relative_path}",
+            original_file_name=original.name,
+            sanitized_file_name=path.name,
+            file_extension=extension,
+            mime_type=guess_mime_type(original.name, None),
+            file_size=original.stat().st_size,
+            file_path=str(original),
+            description=f"from intake: {info.get('relative_path', original.name)}",
         )
         new_file = files_crud.update_file(
             cursor,
@@ -572,31 +532,24 @@ def attach_to_application(cursor, application, intake_file_ids):
             PatientApplicationFileUpdate(
                 deid_status="done",
                 is_deidentified=True,
-                deidentified_file_name=record.output_name,
-                de_identified_file_path=record.output_path,
+                deidentified_file_name=path.name,
+                de_identified_file_path=str(path),
             ),
         )
-        record_metadata(cursor, new_file.id, Path(record.source_path), record.file_extension)
-        crud.update_file(
-            cursor, record.id, IntakeFileUpdate(status="claimed", claimed_by_file_id=new_file.id)
-        )
+        record_metadata(cursor, new_file.id, original, extension)
         attached.append(new_file)
 
     log.info("intake_files_attached", application_id=application.id, code=code, attached=len(attached))
     return attached
 
 
-def release_claim(cursor, application_file_id):
-    released = False
-    for record in crud.list_files(cursor, status="claimed"):
-        if record.claimed_by_file_id == application_file_id:
-            crud.update_file(cursor, record.id, IntakeFileUpdate(status="done", claimed_by_file_id=None))
-            log.info("intake_claim_released", intake_file_id=record.id)
-            released = True
-    return released
-
-
-def mark_submitted(cursor, application_file_id):
-    for record in crud.list_files(cursor, status="claimed"):
-        if record.claimed_by_file_id == application_file_id:
-            crud.update_file(cursor, record.id, IntakeFileUpdate(status="submitted"))
+def list_reports(limit=20):
+    folder = state_dir() / "reports"
+    if not folder.is_dir():
+        return []
+    reports = []
+    for path in sorted(folder.glob("*.json"), reverse=True)[:limit]:
+        data = read_json(path)
+        if data:
+            reports.append(data)
+    return reports

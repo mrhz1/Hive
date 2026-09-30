@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Badge, Card } from '@/components/ui/Misc'
 import { Spinner } from '@/components/ui/Spinner'
-import { useAttachIntakeFiles, useAvailableIntakeFiles } from '@/hooks/useResources'
+import { useAttachIntakeFiles, useCodeFiles } from '@/hooks/useResources'
 import { formatFileSize } from '@/schemas/applicationFile'
 import { groupByFolder } from '@/schemas/intake'
 
@@ -13,7 +13,7 @@ type Props = {
 }
 
 export function IntakeFilePicker({ applicationId, code }: Props) {
-  const available = useAvailableIntakeFiles(code)
+  const available = useCodeFiles(code)
   const attach = useAttachIntakeFiles(applicationId)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 

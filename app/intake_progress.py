@@ -1,23 +1,11 @@
-import os
 import time
-from pathlib import Path
-from typing import List, Optional
 
-from app import intake, intake_worker
-from app.crud import intake_files as crud
+from app import intake, intake_run, intake_worker
 
-CACHE_SECONDS = float(os.environ.get("INTAKE_PROGRESS_CACHE_SECONDS", "10"))
 RATE_WINDOW_MINUTES = 15
+CACHE_SECONDS = 30
 
-ACTIVE_STATUSES = ["queued", "processing", "done", "failed", "claimed", "submitted"]
-FINISHED_STATUSES = ["done", "failed", "claimed", "submitted"]
-PENDING_STATUSES = ["queued", "processing"]
-
-_cache = {}
-
-
-def clear_cache():
-    _cache.clear()
+_counts_cache = {}
 
 
 def files_per_minute(heartbeats, now):
@@ -37,21 +25,30 @@ def files_per_minute(heartbeats, now):
     return total / max(1, (current_minute - first_minute) // 60)
 
 
-def progress(cursor, root: Optional[Path] = None) -> dict:
-    root = root or intake.intake_root()
+def problem_counts(now):
+    cached = _counts_cache.get("counts")
+    if cached and now - cached[0] < CACHE_SECONDS:
+        return cached[1]
+    counts = {
+        "failed": intake.count_files(intake.failed_root()),
+        "needs_attention": intake.count_files(intake.attention_root()),
+    }
+    _counts_cache["counts"] = (now, counts)
+    return counts
+
+
+def clear_cache():
+    _counts_cache.clear()
+
+
+def progress():
     now = time.time()
+    heartbeats = intake_worker.read_heartbeats()
 
-    cached = _cache.get("counts")
-    if not cached or now - cached[0] >= CACHE_SECONDS:
-        cached = (now, crud.status_counts(cursor))
-        _cache["counts"] = cached
-    counts = cached[1]
-
-    heartbeats = intake_worker.read_heartbeats(root)
     workers = []
     for hb in heartbeats:
         last_seen = float(hb.get("last_seen") or 0)
-        alive = now - last_seen <= intake_worker.HEARTBEAT_STALE_SECONDS
+        alive = intake_worker.is_alive(hb)
         workers.append(
             {
                 "name": hb.get("name"),
@@ -71,95 +68,31 @@ def progress(cursor, root: Optional[Path] = None) -> dict:
         )
     workers.sort(key=lambda w: (not w["alive"], w["name"] or ""))
 
-    total = 0
-    finished = 0
-    remaining = 0
-    for status, n in counts.items():
-        if status in ACTIVE_STATUSES:
-            total += n
-        if status in FINISHED_STATUSES:
-            finished += n
-        if status in PENDING_STATUSES:
-            remaining += n
+    running = intake_run.is_running()
+    stalled = False
+    for w in workers:
+        if w["status"] == "stopped" and not running and w["current"]:
+            stalled = True
 
+    status = intake.read_json(intake.state_dir() / "status.json")
+    remaining = status.get("remaining")
     rate = files_per_minute(heartbeats, now)
     eta = None
-    if remaining and rate > 0:
+    if remaining and rate > 0 and running:
         eta = round(remaining / rate * 60)
 
-    stalled = remaining > 0 and not any(w["alive"] for w in workers)
-    stalled_reason = None
-    if stalled:
-        last_seen = max([w["last_seen"] for w in workers], default=None)
-        if last_seen:
-            minutes = int((now - last_seen) // 60)
-            stalled_reason = (
-                f"{remaining:,} file(s) are waiting and no worker has reported "
-                f"for {minutes} minute(s). Restart the watcher or the Job, it "
-                f"continues from where it stopped."
-            )
-        else:
-            stalled_reason = (
-                f"{remaining:,} file(s) are waiting and no worker has reported "
-                f"yet. Start the watcher (make intake-watch) or the Job."
-            )
-
+    counts = problem_counts(now)
     return {
-        "counts": counts,
-        "total": total,
-        "finished": finished,
-        "done": counts.get("done", 0) + counts.get("claimed", 0) + counts.get("submitted", 0),
-        "failed": counts.get("failed", 0),
+        "running": running,
         "remaining": remaining,
-        "processing": counts.get("processing", 0),
-        "needs_a_person": counts.get("skipped", 0) + counts.get("conflict", 0),
-        "percent": round(finished / total * 100, 2) if total else 0.0,
+        "remaining_counted_at": status.get("counted_at"),
+        "done": sum(w["done"] for w in workers),
+        "failed": counts["failed"],
+        "needs_attention": counts["needs_attention"],
         "per_hour": round(rate * 60, 1),
         "eta_seconds": eta,
         "workers": workers,
         "stalled": stalled,
-        "stalled_reason": stalled_reason,
+        "stalled_reason": "A worker stopped in the middle of a run. Click Start to continue." if stalled else None,
         "as_of": now,
     }
-
-
-def batches(cursor, limit: int = 20) -> List[dict]:
-    now = time.time()
-    cached = _cache.get("batches")
-    if not cached or now - cached[0] >= CACHE_SECONDS:
-        cached = (now, crud.batch_counts(cursor))
-        _cache["batches"] = cached
-    counts_by_batch = cached[1]
-
-    rows = []
-    for batch in crud.list_batches(cursor)[:limit]:
-        counts = counts_by_batch.get(batch.id)
-        if not counts:
-            continue
-
-        total = 0
-        finished = 0
-        remaining = 0
-        for status, n in counts.items():
-            if status in ACTIVE_STATUSES:
-                total += n
-            if status in FINISHED_STATUSES:
-                finished += n
-            if status in PENDING_STATUSES:
-                remaining += n
-
-        rows.append(
-            {
-                "id": batch.id,
-                "root": batch.root,
-                "started_at": batch.started_at,
-                "counts": counts,
-                "total": total,
-                "finished": finished,
-                "remaining": remaining,
-                "failed": counts.get("failed", 0),
-                "needs_a_person": counts.get("skipped", 0) + counts.get("conflict", 0),
-                "percent": round(finished / total * 100, 2) if total else 100.0,
-            }
-        )
-    return rows
