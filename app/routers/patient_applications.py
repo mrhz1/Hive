@@ -27,7 +27,9 @@ log = get_logger(__name__)
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
-NON_REJECTABLE = ("submitted", "deleted")
+# Submitted and deleted applications are final and cannot be rejected; a
+# draft, an approved one (reviewed again) or a rejected one (new reason) can.
+REJECTABLE = ("draft", "approved", "rejected")
 
 CLOSED_TO_FILES = ("submitted", "deleted")
 
@@ -215,7 +217,7 @@ def reject_application(
 ):
     before = crud.get_application_or_404(cursor, application_id)
 
-    if before.status in NON_REJECTABLE:
+    if before.status not in REJECTABLE:
         raise ValidationError(
             f"An application that is '{before.status}' cannot be rejected"
         )

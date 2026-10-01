@@ -133,14 +133,7 @@ function ApplicationsList() {
     <div className="space-y-6">
       <PageHeader
         title="Applications"
-        description="Patient submissions and where each one stands in review."
-        actions={
-          <Can permission="application:create">
-            <Button onClick={() => void navigate({ to: '/applications/new' })}>
-              Create application
-            </Button>
-          </Can>
-        }
+        description="Patient submissions and where each one stands in review. The De-Identifier creates them: each patient code gets a draft with its de-identified documents."
       />
 
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4">

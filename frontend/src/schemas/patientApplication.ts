@@ -52,10 +52,12 @@ export function applicationTone(
   return 'neutral'
 }
 
-const NON_REJECTABLE = ['submitted', 'deleted']
+// Mirrors REJECTABLE in app/routers/patient_applications.py: submitted and
+// deleted applications are final.
+const REJECTABLE = ['draft', 'approved', 'rejected']
 
 export function canReject(status: string): boolean {
-  return !NON_REJECTABLE.includes(status)
+  return REJECTABLE.includes(status)
 }
 
 export function isReadOnly(status: string | undefined): boolean {
