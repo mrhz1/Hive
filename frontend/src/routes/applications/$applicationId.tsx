@@ -27,7 +27,12 @@ function ApplicationDetail() {
   if (!application) return <NotFoundPage />
 
   return (
+    // The cached copy shows first and the fresh one follows; the wizard keeps
+    // its own copy, so start it again when the status changes (e.g. a draft
+    // seen earlier has since been submitted) rather than offering Reject on a
+    // submitted application.
     <ApplicationWizard
+      key={`${application.id}:${application.status}`}
       application={application}
       {...(patientQuery.data ? { initialPatient: patientQuery.data } : {})}
     />

@@ -14,7 +14,6 @@ import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as AccessLogsIndexRouteImport } from './routes/access-logs/index'
 import { Route as ApplicationsIndexRouteImport } from './routes/applications/index'
 import { Route as ApplicationsApplicationIdRouteImport } from './routes/applications/$applicationId'
-import { Route as ApplicationsNewRouteImport } from './routes/applications/new'
 import { Route as DeIdentifierIndexRouteImport } from './routes/de-identifier/index'
 import { Route as FilesIndexRouteImport } from './routes/files/index'
 import { Route as IntakeIndexRouteImport } from './routes/intake/index'
@@ -58,11 +57,6 @@ const ApplicationsApplicationIdRoute =
     path: '/applications/$applicationId',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApplicationsNewRoute = ApplicationsNewRouteImport.update({
-  id: '/applications/new',
-  path: '/applications/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const DeIdentifierIndexRoute = DeIdentifierIndexRouteImport.update({
   id: '/de-identifier/',
   path: '/de-identifier/',
@@ -148,7 +142,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
   '/applications/$applicationId': typeof ApplicationsApplicationIdRoute
-  '/applications/new': typeof ApplicationsNewRoute
   '/logs/$logId': typeof LogsLogIdRoute
   '/patients/new': typeof PatientsNewRoute
   '/roles/new': typeof RolesNewRoute
@@ -172,7 +165,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
   '/applications/$applicationId': typeof ApplicationsApplicationIdRoute
-  '/applications/new': typeof ApplicationsNewRoute
   '/logs/$logId': typeof LogsLogIdRoute
   '/patients/new': typeof PatientsNewRoute
   '/roles/new': typeof RolesNewRoute
@@ -197,7 +189,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
   '/applications/$applicationId': typeof ApplicationsApplicationIdRoute
-  '/applications/new': typeof ApplicationsNewRoute
   '/logs/$logId': typeof LogsLogIdRoute
   '/patients/new': typeof PatientsNewRoute
   '/roles/new': typeof RolesNewRoute
@@ -223,7 +214,6 @@ export interface FileRouteTypes {
     | '/'
     | '/profile'
     | '/applications/$applicationId'
-    | '/applications/new'
     | '/logs/$logId'
     | '/patients/new'
     | '/roles/new'
@@ -247,7 +237,6 @@ export interface FileRouteTypes {
     | '/'
     | '/profile'
     | '/applications/$applicationId'
-    | '/applications/new'
     | '/logs/$logId'
     | '/patients/new'
     | '/roles/new'
@@ -271,7 +260,6 @@ export interface FileRouteTypes {
     | '/'
     | '/profile'
     | '/applications/$applicationId'
-    | '/applications/new'
     | '/logs/$logId'
     | '/patients/new'
     | '/roles/new'
@@ -296,7 +284,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProfileRoute: typeof ProfileRoute
   ApplicationsApplicationIdRoute: typeof ApplicationsApplicationIdRoute
-  ApplicationsNewRoute: typeof ApplicationsNewRoute
   LogsLogIdRoute: typeof LogsLogIdRoute
   PatientsNewRoute: typeof PatientsNewRoute
   RolesNewRoute: typeof RolesNewRoute
@@ -352,13 +339,6 @@ declare module '@tanstack/react-router' {
       path: '/applications/$applicationId'
       fullPath: '/applications/$applicationId'
       preLoaderRoute: typeof ApplicationsApplicationIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/applications/new': {
-      id: '/applications/new'
-      path: '/applications/new'
-      fullPath: '/applications/new'
-      preLoaderRoute: typeof ApplicationsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/de-identifier/': {
@@ -480,7 +460,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProfileRoute: ProfileRoute,
   ApplicationsApplicationIdRoute: ApplicationsApplicationIdRoute,
-  ApplicationsNewRoute: ApplicationsNewRoute,
   LogsLogIdRoute: LogsLogIdRoute,
   PatientsNewRoute: PatientsNewRoute,
   RolesNewRoute: RolesNewRoute,
