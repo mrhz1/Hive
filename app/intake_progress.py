@@ -1,6 +1,7 @@
 import time
 
 from app import intake, intake_run, intake_worker
+from app.ids import DEFAULT_PATIENT_CODE_PATTERN, code_formats, patient_code_pattern
 
 RATE_WINDOW_MINUTES = 15
 CACHE_SECONDS = 30
@@ -113,4 +114,9 @@ def progress():
         "stalled": stalled,
         "stalled_reason": "A worker stopped in the middle of a run. Click Start to continue." if stalled else None,
         "as_of": now,
+        "code_formats": [
+            {"prefix": prefix, "digits": digits} for prefix, digits in code_formats()
+        ],
+        "code_pattern": patient_code_pattern(),
+        "code_pattern_is_default": patient_code_pattern() == DEFAULT_PATIENT_CODE_PATTERN,
     }

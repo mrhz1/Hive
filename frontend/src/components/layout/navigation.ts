@@ -33,8 +33,8 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'patient:view',
   },
   {
-    label: 'Intake',
-    to: '/intake',
+    label: 'De-Identifier',
+    to: '/de-identifier',
     icon: Inbox,
     permission: 'application:view',
   },

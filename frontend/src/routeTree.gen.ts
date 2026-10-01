@@ -15,6 +15,7 @@ import { Route as AccessLogsIndexRouteImport } from './routes/access-logs/index'
 import { Route as ApplicationsIndexRouteImport } from './routes/applications/index'
 import { Route as ApplicationsApplicationIdRouteImport } from './routes/applications/$applicationId'
 import { Route as ApplicationsNewRouteImport } from './routes/applications/new'
+import { Route as DeIdentifierIndexRouteImport } from './routes/de-identifier/index'
 import { Route as FilesIndexRouteImport } from './routes/files/index'
 import { Route as IntakeIndexRouteImport } from './routes/intake/index'
 import { Route as LogsIndexRouteImport } from './routes/logs/index'
@@ -60,6 +61,11 @@ const ApplicationsApplicationIdRoute =
 const ApplicationsNewRoute = ApplicationsNewRouteImport.update({
   id: '/applications/new',
   path: '/applications/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeIdentifierIndexRoute = DeIdentifierIndexRouteImport.update({
+  id: '/de-identifier/',
+  path: '/de-identifier/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FilesIndexRoute = FilesIndexRouteImport.update({
@@ -149,6 +155,7 @@ export interface FileRoutesByFullPath {
   '/users/new': typeof UsersNewRoute
   '/access-logs/': typeof AccessLogsIndexRoute
   '/applications/': typeof ApplicationsIndexRoute
+  '/de-identifier/': typeof DeIdentifierIndexRoute
   '/files/': typeof FilesIndexRoute
   '/intake/': typeof IntakeIndexRoute
   '/logs/': typeof LogsIndexRoute
@@ -172,6 +179,7 @@ export interface FileRoutesByTo {
   '/users/new': typeof UsersNewRoute
   '/access-logs': typeof AccessLogsIndexRoute
   '/applications': typeof ApplicationsIndexRoute
+  '/de-identifier': typeof DeIdentifierIndexRoute
   '/files': typeof FilesIndexRoute
   '/intake': typeof IntakeIndexRoute
   '/logs': typeof LogsIndexRoute
@@ -196,6 +204,7 @@ export interface FileRoutesById {
   '/users/new': typeof UsersNewRoute
   '/access-logs/': typeof AccessLogsIndexRoute
   '/applications/': typeof ApplicationsIndexRoute
+  '/de-identifier/': typeof DeIdentifierIndexRoute
   '/files/': typeof FilesIndexRoute
   '/intake/': typeof IntakeIndexRoute
   '/logs/': typeof LogsIndexRoute
@@ -221,6 +230,7 @@ export interface FileRouteTypes {
     | '/users/new'
     | '/access-logs/'
     | '/applications/'
+    | '/de-identifier/'
     | '/files/'
     | '/intake/'
     | '/logs/'
@@ -244,6 +254,7 @@ export interface FileRouteTypes {
     | '/users/new'
     | '/access-logs'
     | '/applications'
+    | '/de-identifier'
     | '/files'
     | '/intake'
     | '/logs'
@@ -267,6 +278,7 @@ export interface FileRouteTypes {
     | '/users/new'
     | '/access-logs/'
     | '/applications/'
+    | '/de-identifier/'
     | '/files/'
     | '/intake/'
     | '/logs/'
@@ -291,6 +303,7 @@ export interface RootRouteChildren {
   UsersNewRoute: typeof UsersNewRoute
   AccessLogsIndexRoute: typeof AccessLogsIndexRoute
   ApplicationsIndexRoute: typeof ApplicationsIndexRoute
+  DeIdentifierIndexRoute: typeof DeIdentifierIndexRoute
   FilesIndexRoute: typeof FilesIndexRoute
   IntakeIndexRoute: typeof IntakeIndexRoute
   LogsIndexRoute: typeof LogsIndexRoute
@@ -346,6 +359,13 @@ declare module '@tanstack/react-router' {
       path: '/applications/new'
       fullPath: '/applications/new'
       preLoaderRoute: typeof ApplicationsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/de-identifier/': {
+      id: '/de-identifier/'
+      path: '/de-identifier'
+      fullPath: '/de-identifier/'
+      preLoaderRoute: typeof DeIdentifierIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/files/': {
@@ -467,6 +487,7 @@ const rootRouteChildren: RootRouteChildren = {
   UsersNewRoute: UsersNewRoute,
   AccessLogsIndexRoute: AccessLogsIndexRoute,
   ApplicationsIndexRoute: ApplicationsIndexRoute,
+  DeIdentifierIndexRoute: DeIdentifierIndexRoute,
   FilesIndexRoute: FilesIndexRoute,
   IntakeIndexRoute: IntakeIndexRoute,
   LogsIndexRoute: LogsIndexRoute,

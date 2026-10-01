@@ -4,6 +4,8 @@ from typing import Any, List, Mapping, Optional
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.ids import (
+    code_formats,
+    describe_code_formats,
     is_patient_code,
     clean_patient_code,
     patient_code_pattern,
@@ -115,6 +117,8 @@ PATIENT_CODE_REQUIRED = (
 
 
 def patient_code_invalid(value: str) -> str:
+    if code_formats():
+        return f"'{value}' is not an allowed patient code. Allowed: {describe_code_formats()}"
     return (
         f"'{value}' is not a patient code. Expected two to four letters "
         f"followed by three or four digits (AA0001, AVDD1200); the pattern "

@@ -14,7 +14,7 @@ from app.crud import patient_applications as applications_crud
 from app.crud import patients as patients_crud
 from app.deid import DEIDENTIFIABLE_LABEL, is_deidentifiable
 from app.filetype import read_header, resolve_extension
-from app.ids import clean_patient_code, is_patient_code
+from app.ids import clean_patient_code, code_formats, describe_code_formats, is_patient_code
 from app.logging_setup import get_logger
 from app.schemas import PatientApplicationCreate, PatientApplicationFileUpdate
 
@@ -260,6 +260,11 @@ def classify(path, root=None, overrides=None):
     elif not detection.code:
         candidate.reason = NO_PATIENT_CODE
         candidate.detail = "no code in the path or the file name"
+        if code_formats():
+            candidate.detail = (
+                "no allowed code in the path or the file name "
+                f"(allowed: {describe_code_formats()})"
+            )
     else:
         candidate.code = detection.code
 
