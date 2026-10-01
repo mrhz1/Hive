@@ -132,8 +132,9 @@ python scripts/intake_run.py --limit 10
 
 #### What happens to a file
 
-1. Files changed in the last `INTAKE_SETTLE_SECONDS` are left for the next
-   run (still being copied).
+1. Files changed in the last `INTAKE_SETTLE_SECONDS` are still being copied,
+   so the run waits for them (up to `INTAKE_SETTLE_WAIT_SECONDS`, 5 minutes)
+   and then does them. Any not settled by then are left for the next run.
 2. The patient code is read from the path or file name. Files without a
    code, with an unsupported format, with two different codes, or that are
    an exact copy of a file already in `original/` go to `needs_attention/`
