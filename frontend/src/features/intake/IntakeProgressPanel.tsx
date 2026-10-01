@@ -174,7 +174,7 @@ export function IntakeProgressPanel() {
               {status.running ? 'running' : status.starting ? 'starting' : 'idle'}
             </Badge>
           </div>
-          <Can permission="application:update">
+          <Can permission="deidentifier:run">
             <Button
               size="sm"
               disabled={status.running || status.starting}

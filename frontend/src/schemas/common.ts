@@ -18,6 +18,8 @@ export const FILE_REVIEW_ACTIONS = [
 
 export const REJECTION_ACTIONS = ['view'] as const
 
+export const DEIDENTIFIER_ACTIONS = ['view', 'run'] as const
+
 export type FilesAction =
   (typeof FILES_ACTIONS)[number] | (typeof FILE_REVIEW_ACTIONS)[number]
 
@@ -25,6 +27,7 @@ export type Permission =
   | `${Model}:${Action}`
   | `files:${FilesAction}`
   | `rejection:${(typeof REJECTION_ACTIONS)[number]}`
+  | `deidentifier:${(typeof DEIDENTIFIER_ACTIONS)[number]}`
 
 export const ALL_PERMISSIONS: Permission[] = [
   ...MODELS.flatMap((model) =>
@@ -33,6 +36,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   ...FILES_ACTIONS.map((action) => `files:${action}` as Permission),
   ...FILE_REVIEW_ACTIONS.map((action) => `files:${action}` as Permission),
   ...REJECTION_ACTIONS.map((action) => `rejection:${action}` as Permission),
+  ...DEIDENTIFIER_ACTIONS.map((action) => `deidentifier:${action}` as Permission),
 ]
 
 export const PERMISSION_GROUPS: ReadonlyArray<{
@@ -44,6 +48,11 @@ export const PERMISSION_GROUPS: ReadonlyArray<{
   { models: ['files'], actions: FILES_ACTIONS },
   { models: ['files'], actions: FILE_REVIEW_ACTIONS, rowLabel: 'documents' },
   { models: ['rejection'], actions: REJECTION_ACTIONS, rowLabel: 'rejections' },
+  {
+    models: ['deidentifier'],
+    actions: DEIDENTIFIER_ACTIONS,
+    rowLabel: 'de-identifier',
+  },
 ]
 
 const ACTION_LABELS: Record<string, string> = {

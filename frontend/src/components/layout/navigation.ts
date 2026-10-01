@@ -36,7 +36,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'De-Identifier',
     to: '/de-identifier',
     icon: Inbox,
-    permission: 'application:view',
+    permission: 'deidentifier:view',
   },
   {
     label: 'Applications',

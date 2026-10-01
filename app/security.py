@@ -18,6 +18,8 @@ MODEL_ACTIONS = {
 }
 # Only the roles that handle rejections see them.
 MODEL_ACTIONS["rejection"] = ("view",)
+# The De-Identifier page: seeing its status and lists, and running it.
+MODEL_ACTIONS["deidentifier"] = ("view", "run")
 MODEL_ACTIONS["files"] = (
     "read",
     "upload",

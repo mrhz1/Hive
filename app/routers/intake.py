@@ -58,7 +58,7 @@ def _check_list(kind):
 
 @router.post("/start")
 def start_intake(
-    actor: User = Depends(require_permission("application:update")),
+    actor: User = Depends(require_permission("deidentifier:run")),
 ):
     if intake_run.is_running():
         raise ConflictError("De-identification is already running")
@@ -79,7 +79,7 @@ def start_intake(
 
 @router.get("/status")
 def intake_status(
-    _actor: User = Depends(require_permission("application:view")),
+    _actor: User = Depends(require_permission("deidentifier:view")),
 ):
     return intake_progress.progress()
 
@@ -87,7 +87,7 @@ def intake_status(
 @router.get("/runs")
 def intake_runs(
     limit: int = 20,
-    _actor: User = Depends(require_permission("application:view")),
+    _actor: User = Depends(require_permission("deidentifier:view")),
 ):
     return intake.list_reports(min(max(1, limit), 200))
 
@@ -99,7 +99,7 @@ def list_files(
     limit: int = 500,
     offset: int = 0,
     code: Optional[str] = None,
-    _actor: User = Depends(require_permission("application:view")),
+    _actor: User = Depends(require_permission("deidentifier:view")),
 ):
     _check_list(kind)
     files = intake.filter_by_code(intake.list_problem_files(kind), code)
@@ -113,7 +113,7 @@ def list_files(
 @router.get("/files/codes")
 def list_file_codes(
     kind: str,
-    _actor: User = Depends(require_permission("application:view")),
+    _actor: User = Depends(require_permission("deidentifier:view")),
 ):
     _check_list(kind)
     return intake.codes_in(intake.list_problem_files(kind))
@@ -123,7 +123,7 @@ def list_file_codes(
 def export_files(
     kind: str,
     code: Optional[str] = None,
-    _actor: User = Depends(require_permission("application:view")),
+    _actor: User = Depends(require_permission("deidentifier:view")),
 ):
     _check_list(kind)
     buffer = io.StringIO()
@@ -147,7 +147,7 @@ def retry_all_files(
     payload: RetryAll,
     background: BackgroundTasks,
     request: Request,
-    actor: User = Depends(require_permission("application:update")),
+    actor: User = Depends(require_permission("deidentifier:run")),
 ):
     """Move every failed file (or every one for a code) back to incoming."""
     moved = intake.retry_all_failed(payload.code or None)
@@ -168,7 +168,7 @@ def retry_all_files(
 @router.post("/files/retry")
 def retry_file(
     payload: FilePath,
-    actor: User = Depends(require_permission("application:update")),
+    actor: User = Depends(require_permission("deidentifier:run")),
 ):
     try:
         new_path = intake.retry_failed(payload.path)
@@ -184,7 +184,7 @@ def resolve_conflict(
     payload: ConflictChoice,
     background: BackgroundTasks,
     request: Request,
-    actor: User = Depends(require_permission("application:update")),
+    actor: User = Depends(require_permission("deidentifier:run")),
 ):
     try:
         new_path = intake.resolve_conflict(payload.path, payload.code)
