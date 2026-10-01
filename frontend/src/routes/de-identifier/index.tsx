@@ -212,7 +212,7 @@ function IntakePage() {
   function rowActions(file: ProblemFile) {
     if (view === 'failed') {
       return (
-        <Can permission="application:update">
+        <Can permission="deidentifier:run">
           <Button
             size="sm"
             variant="outline"
@@ -234,7 +234,7 @@ function IntakePage() {
     if (file.name_code) choices.push({ code: file.name_code, source: 'name' })
 
     return (
-      <Can permission="application:update">
+      <Can permission="deidentifier:run">
         {choices.map((choice) => (
           <Button
             key={choice.code}
@@ -263,7 +263,7 @@ function IntakePage() {
   const loaded = allRows.length
 
   return (
-    <RequirePermission permission="application:view">
+    <RequirePermission permission="deidentifier:view">
       <div className="space-y-6">
         <PageHeader
           title="De-Identifier"
@@ -341,7 +341,7 @@ function IntakePage() {
                 aria-label="Search intake files"
               />
               {view === 'failed' ? (
-                <Can permission="application:update">
+                <Can permission="deidentifier:run">
                   <Button
                     size="sm"
                     disabled={total === 0}

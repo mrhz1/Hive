@@ -198,6 +198,9 @@ Users need to sign out and back in after that.
 | `files:metadata` | show the original's metadata |
 | `files:deid_metadata` | show the de-identified copy's metadata |
 | `files:reject` | reject a document in step 2 of an application |
+| `rejection:view` | the Rejections page (not given to the default viewer role) |
+| `deidentifier:view` | the De-Identifier page: status, workers, runs, Failed and Excluded lists (not given to the default viewer role) |
+| `deidentifier:run` | Start de-identification, Retry, Retry all, pick the code for a conflict |
 
 ### New columns on an existing database
 
