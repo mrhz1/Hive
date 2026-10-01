@@ -75,6 +75,24 @@ def settle_seconds():
         return DEFAULT_SETTLE_SECONDS
 
 
+def settle_wait_seconds():
+    """How long one run waits for files still being copied before leaving them."""
+    try:
+        return float(os.environ.get("INTAKE_SETTLE_WAIT_SECONDS", "300"))
+    except ValueError:
+        return 300.0
+
+
+def seconds_until_settled(path, limit=None):
+    if limit is None:
+        limit = settle_seconds()
+    try:
+        age = time.time() - last_touched(path.stat())
+    except OSError:
+        return 0.0
+    return max(0.0, limit - age)
+
+
 def is_data_file(path):
     if not path:
         return False

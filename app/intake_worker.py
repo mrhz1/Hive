@@ -647,17 +647,27 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
         threads.append(t)
 
     overrides = intake.load_overrides()
-    batch = []
-    queued = 0
-    try:
+    queued_paths = set()
+    state = {"batch": [], "queued": 0}
+
+    def flush():
+        if state["batch"]:
+            for run in split_into_runs(state["batch"], pool):
+                work.put(run)
+            state["batch"] = []
+
+    def scan():
+        """Queue every settled file not queued yet; return how long the
+        unsettled ones still need, one entry per file."""
+        waiting = []
         for path in intake.walk(root):
-            if limit is not None and queued >= limit:
+            if limit is not None and state["queued"] >= limit:
                 break
             relative = path.relative_to(root).as_posix()
-            if shard_of(relative, of) not in shards:
+            if relative in queued_paths or shard_of(relative, of) not in shards:
                 continue
             if not intake.is_settled(path):
-                totals["skipped_unsettled"] += 1
+                waiting.append(intake.seconds_until_settled(path))
                 continue
 
             candidate = intake.classify(path, root, overrides)
@@ -672,15 +682,29 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
 
             if relative in overrides:
                 intake.remove_override(relative)
-            batch.append(Task(path, relative, candidate.code, candidate.extension))
-            queued += 1
-            if len(batch) >= chunk_dicom() * pool:
-                for run in split_into_runs(batch, pool):
-                    work.put(run)
-                batch = []
-        if batch:
-            for run in split_into_runs(batch, pool):
-                work.put(run)
+            queued_paths.add(relative)
+            state["batch"].append(Task(path, relative, candidate.code, candidate.extension))
+            state["queued"] += 1
+            if len(state["batch"]) >= chunk_dicom() * pool:
+                flush()
+        flush()
+        return waiting
+
+    try:
+        # Files copied in just before Start are still "fresh" and skipped so a
+        # half-written file is never read. Rather than ending with 0 done and
+        # needing another click, wait for them -- but only as long as they
+        # need, and never past INTAKE_SETTLE_WAIT_SECONDS.
+        deadline = time.time() + intake.settle_wait_seconds()
+        waiting = scan()
+        while waiting and (limit is None or state["queued"] < limit):
+            pause = min(waiting) + 0.5
+            if time.time() + pause > deadline:
+                break
+            log.info("intake_waiting_for_copies", files=len(waiting), seconds=round(pause, 1))
+            time.sleep(pause)
+            waiting = scan()
+        totals["skipped_unsettled"] = len(waiting)
     finally:
         work.join()
         for _ in threads:

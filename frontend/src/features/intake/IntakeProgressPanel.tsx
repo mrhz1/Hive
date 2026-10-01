@@ -93,6 +93,8 @@ function runSummary(run: IntakeRun): string {
   let summary = `${formatNumber(run.done)} done`
   if (run.failed) summary += ` · ${formatNumber(run.failed)} failed`
   if (run.set_aside) summary += ` · ${formatNumber(run.set_aside)} excluded`
+  if (run.skipped_unsettled)
+    summary += ` · ${formatNumber(run.skipped_unsettled)} still being copied, run again`
   return summary
 }
 
