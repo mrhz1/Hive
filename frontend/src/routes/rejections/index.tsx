@@ -1,19 +1,11 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import {
-  Check,
-  Download,
-  Eye,
-  FileStack,
-  ShieldCheck,
-  Trash2,
-  Upload,
-} from 'lucide-react'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { Check, Download, Eye, FileStack, Trash2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ReasonDialog } from '@/components/ReasonDialog'
-import { Can, RequirePermission } from '@/components/PermissionGate'
-import { Button } from '@/components/ui/Button'
+import { RequirePermission } from '@/components/PermissionGate'
+import { DropdownMenu, type MenuAction } from '@/components/ui/DropdownMenu'
 import { TextField } from '@/components/ui/Field'
 import { Badge, Card, PageHeader } from '@/components/ui/Misc'
 import { ReplaceDeidentifiedDialog } from '@/features/files/ReplaceDeidentifiedDialog'
@@ -77,6 +69,7 @@ type ViewerState = {
 function RejectionsPage() {
   useDocumentTitle('Rejections')
   const { can } = usePermissions()
+  const navigate = useNavigate()
   const canSeeOriginal = can('files:view_original')
   const canSeeDeidentified = can('files:view_deidentified')
 
@@ -143,6 +136,115 @@ function RejectionsPage() {
     } finally {
       setDownloadingId(null)
     }
+  }
+
+  function applicationActions(application: PatientApplication): MenuAction[] {
+    const actions: MenuAction[] = [
+      {
+        id: 'open',
+        label: 'Open application',
+        icon: <FileStack className="size-4" aria-hidden="true" />,
+        onSelect: () =>
+          void navigate({
+            to: '/applications/$applicationId',
+            params: { applicationId: application.id },
+          }),
+      },
+    ]
+    if (can('application:delete')) {
+      actions.push({
+        id: 'delete',
+        separatorBefore: true,
+        label: 'Delete application',
+        icon: <Trash2 className="size-4" aria-hidden="true" />,
+        tone: 'danger',
+        onSelect: () => setDeletingApplication(application),
+      })
+    }
+    return actions
+  }
+
+  function fileActions(file: RejectedFile): MenuAction[] {
+    const actions: MenuAction[] = []
+    const canDownload = can('files:download')
+
+    if (canSeeOriginal || canSeeDeidentified) {
+      actions.push({
+        id: 'view',
+        label: 'View',
+        icon: <Eye className="size-4" aria-hidden="true" />,
+        isLoading: openingId === file.id,
+        disabled:
+          !(file.has_original && canSeeOriginal) &&
+          !(file.has_deidentified && canSeeDeidentified),
+        onSelect: () => void open(file),
+      })
+    }
+    if (canSeeOriginal && canDownload) {
+      actions.push({
+        id: 'download-original',
+        label: 'Download original',
+        icon: <Download className="size-4" aria-hidden="true" />,
+        disabled: !file.has_original,
+        title: file.has_original
+          ? 'The identified original'
+          : 'No identified copy is on disk',
+        isLoading: downloadingId === `${file.id}:false`,
+        onSelect: () => void download(file, false),
+      })
+    }
+    if (canSeeDeidentified && canDownload) {
+      actions.push({
+        id: 'download-deidentified',
+        label: 'Download de-identified',
+        icon: <Download className="size-4" aria-hidden="true" />,
+        disabled: !file.has_deidentified,
+        title: file.has_deidentified
+          ? 'The redacted copy that was rejected'
+          : 'No redacted copy has been produced',
+        isLoading: downloadingId === `${file.id}:true`,
+        onSelect: () => void download(file, true),
+      })
+    }
+
+    const fixes: MenuAction[] = []
+    if (can('files:upload')) {
+      fixes.push({
+        id: 'replace',
+        label: 'Replace de-identified copy',
+        icon: <Upload className="size-4" aria-hidden="true" />,
+        onSelect: () => setReplacing(file),
+      })
+    }
+    if (can('application:update')) {
+      fixes.push({
+        id: 'approve',
+        label: 'Approve',
+        icon: <Check className="size-4" aria-hidden="true" />,
+        disabled: !file.has_deidentified,
+        title: file.has_deidentified
+          ? 'Clear the rejection without replacing the copy'
+          : 'There is no redacted copy to approve',
+        isLoading: review.isPending && review.variables?.fileId === file.id,
+        onSelect: () => review.mutate({ fileId: file.id, reviewStatus: 'approved' }),
+      })
+    }
+    if (fixes.length > 0) {
+      fixes[0] = { ...fixes[0]!, separatorBefore: actions.length > 0 }
+      actions.push(...fixes)
+    }
+
+    if (can('files:delete')) {
+      actions.push({
+        id: 'delete',
+        separatorBefore: actions.length > 0,
+        label: 'Delete file',
+        icon: <Trash2 className="size-4" aria-hidden="true" />,
+        tone: 'danger',
+        onSelect: () => setDeletingFile(file),
+      })
+    }
+    return actions
   }
 
   const fileColumns: Array<Column<RejectedFile>> = [
@@ -273,33 +375,15 @@ function RejectionsPage() {
             error={applicationsQuery.error}
             loadingLabel="Loading rejected applications"
             emptyMessage="No rejected applications."
-            rowActions={(application) => (
-              <>
-                <Link
-                  to="/applications/$applicationId"
-                  params={{ applicationId: application.id }}
-                >
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    leadingIcon={<FileStack className="size-3.5" aria-hidden="true" />}
-                  >
-                    Open
-                  </Button>
-                </Link>
-                <Can permission="application:delete">
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    aria-label={`Delete the application for ${application.patient_id}`}
-                    leadingIcon={<Trash2 className="size-3.5" aria-hidden="true" />}
-                    onClick={() => setDeletingApplication(application)}
-                  >
-                    Delete
-                  </Button>
-                </Can>
-              </>
-            )}
+            rowActions={(application) => {
+              const actions = applicationActions(application)
+              return actions.length > 0 ? (
+                <DropdownMenu
+                  actions={actions}
+                  label={`Actions for the application of ${application.patient_id}`}
+                />
+              ) : null
+            }}
           />
         </Card>
 
@@ -331,108 +415,15 @@ function RejectionsPage() {
             error={filesQuery.error}
             loadingLabel="Loading rejected documents"
             emptyMessage="Nothing has been rejected."
-            rowActions={(file) => (
-              <>
-                {canSeeOriginal || canSeeDeidentified ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    aria-label={`View ${file.original_file_name}`}
-                    isLoading={openingId === file.id}
-                    disabled={
-                      !(file.has_original && canSeeOriginal) &&
-                      !(file.has_deidentified && canSeeDeidentified)
-                    }
-                    leadingIcon={<Eye className="size-3.5" aria-hidden="true" />}
-                    onClick={() => void open(file)}
-                  >
-                    View
-                  </Button>
-                ) : null}
-
-                {canSeeOriginal && can('files:download') ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    aria-label={`Download the original of ${file.original_file_name}`}
-                    disabled={!file.has_original}
-                    title={
-                      file.has_original
-                        ? 'The identified original'
-                        : 'No identified copy is on disk'
-                    }
-                    isLoading={downloadingId === `${file.id}:false`}
-                    leadingIcon={<Download className="size-3.5" aria-hidden="true" />}
-                    onClick={() => void download(file, false)}
-                  >
-                    Original
-                  </Button>
-                ) : null}
-
-                {canSeeDeidentified && can('files:download') ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    aria-label={`Download the de-identified copy of ${file.original_file_name}`}
-                    disabled={!file.has_deidentified}
-                    title={
-                      file.has_deidentified
-                        ? 'The redacted copy that was rejected'
-                        : 'No redacted copy has been produced'
-                    }
-                    isLoading={downloadingId === `${file.id}:true`}
-                    leadingIcon={<ShieldCheck className="size-3.5" aria-hidden="true" />}
-                    onClick={() => void download(file, true)}
-                  >
-                    De-identified
-                  </Button>
-                ) : null}
-
-                <Can permission="files:upload">
-                  <Button
-                    size="sm"
-                    aria-label={`Replace the de-identified copy of ${file.original_file_name}`}
-                    leadingIcon={<Upload className="size-3.5" aria-hidden="true" />}
-                    onClick={() => setReplacing(file)}
-                  >
-                    Replace
-                  </Button>
-                </Can>
-
-                <Can permission="application:update">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    aria-label={`Approve ${file.original_file_name}`}
-                    disabled={!file.has_deidentified}
-                    title={
-                      file.has_deidentified
-                        ? 'Clear the rejection without replacing the copy'
-                        : 'There is no redacted copy to approve'
-                    }
-                    isLoading={review.isPending && review.variables?.fileId === file.id}
-                    leadingIcon={<Check className="size-3.5" aria-hidden="true" />}
-                    onClick={() =>
-                      review.mutate({ fileId: file.id, reviewStatus: 'approved' })
-                    }
-                  >
-                    Approve
-                  </Button>
-                </Can>
-
-                <Can permission="files:delete">
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    aria-label={`Delete ${file.original_file_name}`}
-                    leadingIcon={<Trash2 className="size-3.5" aria-hidden="true" />}
-                    onClick={() => setDeletingFile(file)}
-                  >
-                    Delete
-                  </Button>
-                </Can>
-              </>
-            )}
+            rowActions={(file) => {
+              const actions = fileActions(file)
+              return actions.length > 0 ? (
+                <DropdownMenu
+                  actions={actions}
+                  label={`Actions for ${file.original_file_name}`}
+                />
+              ) : null
+            }}
           />
         </Card>
 
