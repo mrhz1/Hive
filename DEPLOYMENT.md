@@ -37,7 +37,8 @@ Variables (see `.env.example` for the full list):
 | `HIVE_USER` | your workload user |
 | `FILE_STORAGE_DIR` | `/home/cdsw/storage/patient_files` (absolute) |
 | `INTAKE_DIR` | incoming folder on the shared volume |
-| `DATA_DIR` | data folder (original, de-identified, failed...), same disk as `INTAKE_DIR` |
+| `DATA_DIR` | pending data folder (original, de-identified, failed...) until submitted, same disk as `INTAKE_DIR`, e.g. `/home/cdsw/Backend/storage/pending_data` |
+| `SUBMITTED_DATA_DIR` | where submitting moves an application's files, same layout, e.g. `/home/cdsw/Backend/storage/submitted_data` |
 | `DEID_BACKEND` | `cml_job` |
 | `DEID_OCR_PYTHON` | `/home/cdsw/OCR/.venv-ocr/bin/python` |
 | `DEID_NLP_PYTHON` | `/home/cdsw/OCR/.venv-nlp/bin/python` |
@@ -150,7 +151,7 @@ Jobs → New Job:
 | Script | `scripts/intake_run.py` |
 | Schedule | Manual (started by the Start button on the Intake page) |
 | Resources | as many vCPU / GiB as the workers need (8 GiB per worker) |
-| Environment | `INTAKE_DIR`, `DATA_DIR`, `DEID_WORKERS`, `DEID_WORKER_CPU_THREADS`, plus the Hive variables |
+| Environment | `INTAKE_DIR`, `DATA_DIR`, `SUBMITTED_DATA_DIR`, `DEID_WORKERS`, `DEID_WORKER_CPU_THREADS`, plus the Hive variables |
 
 Copy the job id from the URL into `CML_INTAKE_JOB_ID` on the API
 Application. See the Intake section in `README-local.md` for how it works

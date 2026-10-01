@@ -209,13 +209,21 @@ export const applicationsApi = {
       api.post(`/applications/${id}/reject`, { reason })
     ),
 
-  remove: async (id: string, reason: string) => {
+  remove: async (id: string, reason: string): Promise<PurgeSummary> => {
     try {
-      await api.delete(`/applications/${id}`, { params: { reason } })
+      const response = await api.delete(`/applications/${id}`, { params: { reason } })
+      return response.data as PurgeSummary
     } catch (error) {
       throw toApiError(error)
     }
   },
+}
+
+export type PurgeSummary = {
+  files_deleted: number
+  excluded_deleted: number
+  failed_deleted: number
+  excluded_and_failed_kept: boolean
 }
 
 export const rolesApi = {
@@ -292,14 +300,6 @@ export const applicationFilesApi = {
       })
     ),
 
-  remove: async (fileId: string) => {
-    try {
-      await api.delete(`/files/${fileId}`)
-    } catch (error) {
-      throw toApiError(error)
-    }
-  },
-
   deidentify: (fileId: string) =>
     request(applicationFileSchema, () => api.post(`/files/${fileId}/deidentify`)),
 
@@ -307,6 +307,9 @@ export const applicationFilesApi = {
     request(bulkResultSchema, () =>
       api.post(`/applications/${applicationId}/files/deidentify-all`)
     ),
+
+  purge: (fileId: string, reason: string) =>
+    request(applicationFileSchema, () => api.post(`/files/${fileId}/purge`, { reason })),
 
   review: (fileId: string, reviewStatus: 'approved' | 'rejected', note?: string) =>
     request(applicationFileSchema, () =>
@@ -489,6 +492,15 @@ export const intakeApi = {
         responseType: 'blob',
       })
       return response.data as Blob
+    } catch (error) {
+      throw toApiError(error)
+    }
+  },
+
+  retryAll: async (code?: string): Promise<{ moved: number }> => {
+    try {
+      const response = await api.post('/intake/files/retry-all', { code: code ?? null })
+      return response.data as { moved: number }
     } catch (error) {
       throw toApiError(error)
     }

@@ -107,15 +107,24 @@ clicks **Start de-identification** on the Intake page (or runs
 `DATA_DIR`:
 
 ```
-INTAKE_DIR/A/B/C/AA1234/image.dcm                         (incoming, the queue)
+INTAKE_DIR/A/B/C/AA1234/image.dcm                         (incoming: not de-identified yet)
 
 DATA_DIR/original/A/B/C/AA1234/image.dcm                  original, same path
-DATA_DIR/de_identified/AA1234/A/B/C/AA1234_<date>_<serial>.dcm
-DATA_DIR/de_identified/AA1234/A/B/C/AA1234_<date>_<serial>.dcm.json   sidecar
+DATA_DIR/de_identified/AA1234/AA1234_<date>_<serial>.dcm  redacted copy, under the code
+DATA_DIR/de_identified/AA1234/AA1234_<date>_<serial>.dcm.json   sidecar
 DATA_DIR/failed/...                                       redaction failed
 DATA_DIR/needs_attention/...                              no code, unsupported, conflict, duplicate
 DATA_DIR/.intake/                                         locks, heartbeats, run reports
+
+SUBMITTED_DATA_DIR/original/...                           the same layout, once the
+SUBMITTED_DATA_DIR/de_identified/...                      application is submitted
 ```
+
+`DATA_DIR` (default `storage/pending_data`) holds what is de-identified but
+not submitted yet; submitting an application moves its files to
+`SUBMITTED_DATA_DIR` (default `storage/submitted_data`) at the same relative
+paths. So on disk: `INTAKE_DIR` = waiting, `DATA_DIR` = de-identified and
+pending (or failed/excluded), `SUBMITTED_DATA_DIR` = submitted.
 
 Whatever is still in the incoming folder hasn't been done yet, so a run
 can be stopped and started again at any time. `INTAKE_DIR` and `DATA_DIR`
@@ -241,10 +250,11 @@ with `file_path` = the original in `original/` and
 `de_identified_file_path` = the copy. Nothing is copied or moved, and a
 file can only be on one application.
 
-Removing a file from an application (or deleting the application) never
-deletes files under `DATA_DIR`. Submitting stamps the patient code on
-redacted PDFs but doesn't move `DATA_DIR` files; they're already in their
-final place. Files uploaded through the application page still go to
+Removing a file from a draft never deletes files under `DATA_DIR`; deleting
+a rejected application from Rejections does. Submitting stamps the patient
+code on redacted PDFs and moves the application's files from `DATA_DIR` to
+`SUBMITTED_DATA_DIR`, same relative paths (a name already taken there gets a
+`_2` suffix). Files uploaded through the old application upload still go to
 `SUBMITTED_DIR` as before.
 
 ### Patient codes

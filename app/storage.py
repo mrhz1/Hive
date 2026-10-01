@@ -50,7 +50,13 @@ def submitted_root() -> Path:
 
 
 def data_root() -> Path:
-    return _configured_dir("DATA_DIR", "storage/data")
+    """De-identified and set-aside files of applications not submitted yet."""
+    return _configured_dir("DATA_DIR", "storage/pending_data")
+
+
+def submitted_data_root() -> Path:
+    """The same layout as data_root(), for files of submitted applications."""
+    return _configured_dir("SUBMITTED_DATA_DIR", "storage/submitted_data")
 
 
 def submitted_dir_for(patient_id: str) -> Path:
@@ -68,6 +74,7 @@ def _allowed_roots():
             intake_root(),
             submitted_root(),
             data_root(),
+            submitted_data_root(),
         )
     ]
 

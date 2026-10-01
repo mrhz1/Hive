@@ -14,6 +14,7 @@ import {
   useIntakeFiles,
   useIntakeStatus,
   useResolveIntakeConflict,
+  useRetryAllIntakeFiles,
   useRetryIntakeFile,
 } from '@/hooks/useResources'
 import { intakeApi } from '@/lib/api/resources'
@@ -96,6 +97,7 @@ function IntakePage() {
   const codes = useIntakeFileCodes(view)
   const resolve = useResolveIntakeConflict()
   const retry = useRetryIntakeFile()
+  const retryAll = useRetryAllIntakeFiles()
 
   const current = VIEWS.find((v) => v.id === view) ?? VIEWS[0]!
 
@@ -338,6 +340,34 @@ function IntakePage() {
                 placeholder="Path, code or reason..."
                 aria-label="Search intake files"
               />
+              {view === 'failed' ? (
+                <Can permission="application:update">
+                  <Button
+                    size="sm"
+                    disabled={total === 0}
+                    isLoading={retryAll.isPending}
+                    leadingIcon={<RotateCcw className="size-3.5" aria-hidden="true" />}
+                    title={
+                      code
+                        ? `Move every failed file for ${code === NO_CODE ? 'no code' : code} back to the incoming folder`
+                        : 'Move every failed file back to the incoming folder, not just the ones shown'
+                    }
+                    onClick={() => {
+                      const scope = code
+                        ? ` for ${code === NO_CODE ? 'no code' : code}`
+                        : ''
+                      if (
+                        window.confirm(
+                          `Move all ${total.toLocaleString()} failed file${total === 1 ? '' : 's'}${scope} back to the incoming folder? They will be done in the next run.`
+                        )
+                      )
+                        retryAll.mutate(code || undefined)
+                    }}
+                  >
+                    Retry all{total ? ` (${total.toLocaleString()})` : ''}
+                  </Button>
+                </Can>
+              ) : null}
               <Button
                 variant="outline"
                 size="sm"

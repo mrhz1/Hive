@@ -48,6 +48,61 @@ def _delete_sidecars(directory: Path, stem: str, keep: Path) -> None:
             remove_from_disk(str(path))
 
 
+def _file_data_record(record, patient_id: str, staged: Path, original) -> bool:
+    """Move a De-Identifier file from pending_data to submitted_data.
+
+    Both copies keep their place in the folder layout, so on disk
+    submitted_data holds exactly what was submitted and pending_data what is
+    still being worked on. The sidecar follows the de-identified copy and is
+    pointed at the moved original.
+    """
+    if not intake.is_pending_data_file(staged):
+        log.info("submission_filed", file_id=record.id, patient_id=patient_id, deidentified=str(staged), moved=False)
+        return True
+
+    sidecar = Path(str(staged) + intake.SIDECAR_SUFFIX)
+    try:
+        final = intake.move_to_submitted(staged)
+    except Exception as e:
+        log.error("submission_move_failed", file_id=record.id, path=str(staged), error=str(e))
+        return False
+
+    kept = original
+    if original is not None and intake.is_pending_data_file(original) and original.is_file():
+        try:
+            kept = intake.move_to_submitted(original)
+        except Exception as e:
+            log.error("submission_original_move_failed", file_id=record.id, path=str(original), error=str(e))
+
+    if sidecar.is_file():
+        info = intake.read_json(sidecar)
+        if kept is not None:
+            info["original_path"] = str(kept)
+        info["submitted"] = True
+        intake.write_json(Path(str(final) + intake.SIDECAR_SUFFIX), info)
+        sidecar.unlink(missing_ok=True)
+    # The copy's folder only empties once its sidecar has moved too.
+    prune_empty_dirs(staged.parent)
+
+    try:
+        with hive_cursor() as cursor:
+            files_crud.set_paths(
+                cursor, record.id, str(kept) if kept else record.file_path, str(final)
+            )
+    except Exception as e:
+        log.error("submission_path_write_failed", file_id=record.id, error=str(e))
+
+    log.info(
+        "submission_filed",
+        file_id=record.id,
+        patient_id=patient_id,
+        deidentified=str(final),
+        original=str(kept) if kept else None,
+        moved=True,
+    )
+    return True
+
+
 def process_one(record, patient_id: str) -> bool:
     if not record.de_identified_file_path:
         return False
@@ -83,8 +138,7 @@ def process_one(record, patient_id: str) -> bool:
             log.error("submission_stamp_failed", file_id=record.id, error=str(e))
 
     if intake.is_data_file(staged):
-        log.info("submission_filed", file_id=record.id, patient_id=patient_id, deidentified=str(staged), moved=False)
-        return True
+        return _file_data_record(record, patient_id, staged, original)
 
     folder = submitted_dir_for(patient_id)
     staged_dir, staged_stem = staged.parent, staged.stem

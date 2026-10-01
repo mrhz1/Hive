@@ -112,11 +112,25 @@ export function useDeleteApplication() {
   return useMutation({
     mutationFn: (variables: { id: string; reason: string }) =>
       applicationsApi.remove(variables.id, variables.reason),
-    onSuccess: () => {
+    onSuccess: (summary) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.applications.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.applicationFiles.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
-      toast.success('Documents removed; the application is marked deleted')
+      const parts = [
+        `${summary.files_deleted} document${summary.files_deleted === 1 ? '' : 's'} deleted`,
+      ]
+      if (summary.excluded_deleted || summary.failed_deleted)
+        parts.push(
+          `${summary.excluded_deleted} excluded and ${summary.failed_deleted} failed De-Identifier files removed`
+        )
+      if (summary.excluded_and_failed_kept)
+        parts.push(
+          'excluded and failed files kept: the patient has another open application'
+        )
+      toast.success('Application deleted; the record is kept', {
+        description: parts.join(' · '),
+      })
     },
     onError: (error) => {
       toast.error(errorMessage(error, 'Could not delete the application'))
@@ -393,18 +407,18 @@ export function useFileMetadata(fileId: string | undefined, deidentified = false
   })
 }
 
-export function useDeleteApplicationFile(applicationId: string) {
+export function usePurgeFile() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (fileId: string) => applicationFilesApi.remove(fileId),
+    mutationFn: (variables: { fileId: string; reason: string }) =>
+      applicationFilesApi.purge(variables.fileId, variables.reason),
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.applicationFiles.list(applicationId),
-      })
-      toast.success('File deleted')
+      void queryClient.invalidateQueries({ queryKey: queryKeys.applicationFiles.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success('File deleted; the record is kept')
     },
     onError: (error) => {
-      toast.error(errorMessage(error, 'Could not delete file'))
+      toast.error(errorMessage(error, 'Could not delete the file'))
     },
   })
 }
@@ -566,6 +580,23 @@ export function useIntakeFileCodes(kind: ProblemList) {
     queryKey: queryKeys.intake.fileCodes(kind),
     queryFn: () => intakeApi.fileCodes(kind),
     refetchInterval: 30_000,
+  })
+}
+
+export function useRetryAllIntakeFiles() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (code?: string) => intakeApi.retryAll(code),
+    onSuccess: ({ moved }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
+      toast.success(
+        `Moved ${moved} file${moved === 1 ? '' : 's'} back to the incoming folder`,
+        { description: 'They will be done in the next run.' }
+      )
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not retry the files'))
+    },
   })
 }
 

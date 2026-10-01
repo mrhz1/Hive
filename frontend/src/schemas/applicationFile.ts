@@ -38,8 +38,13 @@ export type ReviewStatus = (typeof REVIEW_STATUSES)[number]
 
 export function reviewTone(status: string): 'success' | 'danger' | 'neutral' {
   if (status === 'approved') return 'success'
-  if (status === 'rejected') return 'danger'
+  if (status === 'rejected' || status === 'deleted') return 'danger'
   return 'neutral'
+}
+
+/** A file whose documents were deleted from Rejections; only its record is left. */
+export function isDeletedFile(file: { review_status: string }): boolean {
+  return file.review_status === 'deleted'
 }
 
 export function fileSearchText(file: {
@@ -62,7 +67,10 @@ export function fileSearchText(file: {
 
 export function undecidedCount(files: Array<{ review_status: string }>): number {
   return files.filter(
-    (file) => file.review_status !== 'approved' && file.review_status !== 'rejected'
+    (file) =>
+      file.review_status !== 'approved' &&
+      file.review_status !== 'rejected' &&
+      file.review_status !== 'deleted'
   ).length
 }
 
@@ -120,7 +128,7 @@ export function fileTally(files: ApplicationFile[]): FileTally {
 
     if (file.review_status === 'approved') tally.approved += 1
     else if (file.review_status === 'rejected') tally.rejected += 1
-    else tally.undecided += 1
+    else if (file.review_status !== 'deleted') tally.undecided += 1
   }
 
   return tally

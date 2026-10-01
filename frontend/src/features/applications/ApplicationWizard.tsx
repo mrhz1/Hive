@@ -212,7 +212,13 @@ export function ApplicationWizard({
 
       {current === 1 ? (
         <div className="space-y-4">
-          {locked ? (
+          {record?.status === 'deleted' ? (
+            <Card className="border-rose-500/40 p-4 text-sm">
+              <strong>This application was deleted.</strong> Its documents were removed
+              {record.status_reason ? ` (${record.status_reason})` : ''}. Only this record
+              is kept; it cannot be opened or changed.
+            </Card>
+          ) : locked ? (
             <Card className="p-4 text-sm text-[rgb(var(--foreground-muted))]">
               This application has been submitted. Everything below is shown as it was
               sent and cannot be changed.
@@ -270,7 +276,11 @@ export function ApplicationWizard({
             {!locked && patient ? (
               <IntakeFilePicker applicationId={record.id} code={patient.id} />
             ) : null}
-            <FileReviewPanel applicationId={record.id} readOnly={locked} />
+            <FileReviewPanel
+              applicationId={record.id}
+              readOnly={locked}
+              deleted={record.status === 'deleted'}
+            />
             <div className="flex flex-wrap justify-between gap-3">
               <Button variant="outline" onClick={() => goTo(1)}>
                 Back to patient

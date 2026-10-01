@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import threading
 import time
 from dataclasses import dataclass, field
@@ -43,6 +44,10 @@ def intake_root():
 
 def data_root():
     return storage.data_root()
+
+
+def submitted_data_root():
+    return storage.submitted_data_root()
 
 
 def original_root():
@@ -93,13 +98,42 @@ def seconds_until_settled(path, limit=None):
     return max(0.0, limit - age)
 
 
-def is_data_file(path):
+def _is_under(path, root):
     if not path:
         return False
     try:
-        return Path(path).resolve().is_relative_to(data_root().resolve())
+        return Path(path).resolve().is_relative_to(root.resolve())
     except OSError:
         return False
+
+
+def is_data_file(path):
+    """A De-Identifier file, pending or submitted -- never one of the old uploads."""
+    return _is_under(path, data_root()) or _is_under(path, submitted_data_root())
+
+
+def is_pending_data_file(path):
+    return _is_under(path, data_root())
+
+
+def move_to_submitted(path):
+    """Move a pending data file to the same place under submitted_data.
+
+    A name already taken there gets a _2, _3... suffix rather than being
+    overwritten. Copies across disks if the two folders are on different ones.
+    """
+    path = Path(path)
+    target = submitted_data_root() / path.resolve().relative_to(data_root().resolve())
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        for n in range(2, 10_000):
+            other = target.with_name(f"{target.stem}_{n}{target.suffix}")
+            if not other.exists():
+                target = other
+                break
+    shutil.move(str(path), str(target))
+    storage.prune_empty_dirs(path.parent)
+    return target
 
 
 @dataclass
@@ -316,13 +350,17 @@ def checksum(path, chunk_size=1024 * 1024):
 
 
 def is_duplicate(candidate):
-    existing = original_root() / candidate.relative_path
-    try:
-        if not existing.is_file() or existing.stat().st_size != candidate.size:
-            return False
-        return checksum(existing) == checksum(candidate.path)
-    except OSError:
-        return False
+    """The same bytes already de-identified at this path, pending or submitted."""
+    for root in (original_root(), submitted_data_root() / "original"):
+        existing = root / candidate.relative_path
+        try:
+            if not existing.is_file() or existing.stat().st_size != candidate.size:
+                continue
+            if checksum(existing) == checksum(candidate.path):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def move_file(source, target):
@@ -464,12 +502,35 @@ def send_back(kind, relative):
     original_relative = info.get("relative_path") or relative
     target = move_file(path, intake_root() / original_relative)
     Path(str(path) + REASON_SUFFIX).unlink(missing_ok=True)
+    # Only now is the folder empty: the reason file had to go first.
+    storage.prune_empty_dirs(path.parent)
     log.info("intake_file_sent_back", path=original_relative, source=kind)
     return target.relative_to(intake_root()).as_posix()
 
 
 def retry_failed(relative):
     return send_back("failed", relative)
+
+
+def retry_all_failed(code=None):
+    """Send every failed file (or every one for a code) back to incoming."""
+    moved = 0
+    for item in filter_by_code(list_problem_files("failed"), code):
+        try:
+            send_back("failed", item["path"])
+            moved += 1
+        except (ValueError, OSError) as e:
+            log.warning("intake_retry_failed", path=item["path"], error=str(e))
+    log.info("intake_retry_all", code=code, moved=moved)
+    return moved
+
+
+def prune_data_folders():
+    """Remove empty folders left anywhere in DATA_DIR (not the folders themselves)."""
+    removed = 0
+    for root in (original_root(), deidentified_root(), failed_root(), attention_root()):
+        removed += prune_empty_folders(root)
+    return removed
 
 
 def resolve_conflict(relative, code):
