@@ -1,8 +1,17 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Check, Download, Eye, FileStack, ShieldCheck, Upload } from 'lucide-react'
+import {
+  Check,
+  Download,
+  Eye,
+  FileStack,
+  ShieldCheck,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
+import { ReasonDialog } from '@/components/ReasonDialog'
 import { Can, RequirePermission } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/Field'
@@ -13,6 +22,8 @@ import { usePermissions } from '@/hooks/useCurrentUser'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
   useApplications,
+  useDeleteApplication,
+  usePurgeFile,
   useRejectedFiles,
   useReviewRejectedFile,
 } from '@/hooks/useResources'
@@ -72,6 +83,11 @@ function RejectionsPage() {
   const filesQuery = useRejectedFiles()
   const applicationsQuery = useApplications(undefined, true, 'rejected')
   const review = useReviewRejectedFile()
+  const deleteApplication = useDeleteApplication()
+  const purgeFile = usePurgeFile()
+  const [deletingApplication, setDeletingApplication] =
+    useState<PatientApplication | null>(null)
+  const [deletingFile, setDeletingFile] = useState<RejectedFile | null>(null)
 
   const [search, setSearch] = useState('')
   const [openingId, setOpeningId] = useState<string | null>(null)
@@ -258,18 +274,31 @@ function RejectionsPage() {
             loadingLabel="Loading rejected applications"
             emptyMessage="No rejected applications."
             rowActions={(application) => (
-              <Link
-                to="/applications/$applicationId"
-                params={{ applicationId: application.id }}
-              >
-                <Button
-                  size="sm"
-                  variant="outline"
-                  leadingIcon={<FileStack className="size-3.5" aria-hidden="true" />}
+              <>
+                <Link
+                  to="/applications/$applicationId"
+                  params={{ applicationId: application.id }}
                 >
-                  Open
-                </Button>
-              </Link>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    leadingIcon={<FileStack className="size-3.5" aria-hidden="true" />}
+                  >
+                    Open
+                  </Button>
+                </Link>
+                <Can permission="application:delete">
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    aria-label={`Delete the application for ${application.patient_id}`}
+                    leadingIcon={<Trash2 className="size-3.5" aria-hidden="true" />}
+                    onClick={() => setDeletingApplication(application)}
+                  >
+                    Delete
+                  </Button>
+                </Can>
+              </>
             )}
           />
         </Card>
@@ -390,10 +419,65 @@ function RejectionsPage() {
                     Approve
                   </Button>
                 </Can>
+
+                <Can permission="files:delete">
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    aria-label={`Delete ${file.original_file_name}`}
+                    leadingIcon={<Trash2 className="size-3.5" aria-hidden="true" />}
+                    onClick={() => setDeletingFile(file)}
+                  >
+                    Delete
+                  </Button>
+                </Can>
               </>
             )}
           />
         </Card>
+
+        {deletingApplication ? (
+          <ReasonDialog
+            title={`Delete the rejected application for ${deletingApplication.patient_id}?`}
+            description={
+              'Every document of this application is removed from disk for good: the originals and the de-identified copies. ' +
+              "The patient's excluded and failed De-Identifier files are removed too, unless the patient has another application still open. " +
+              'The application stays as a record with your reason and can no longer be opened or changed. ' +
+              "The patient's other applications are not affected."
+            }
+            confirmLabel="Delete application"
+            placeholder="e.g. patient withdrew consent"
+            isBusy={deleteApplication.isPending}
+            onCancel={() => setDeletingApplication(null)}
+            onConfirm={(reason) => {
+              void deleteApplication
+                .mutateAsync({ id: deletingApplication.id, reason })
+                .then(() => setDeletingApplication(null))
+                .catch(() => undefined)
+            }}
+          />
+        ) : null}
+
+        {deletingFile ? (
+          <ReasonDialog
+            title={`Delete ${deletingFile.original_file_name}?`}
+            description={
+              'The original and the de-identified copy are removed from disk for good. ' +
+              'The file stays listed on its application as a record with your reason, and can no longer be opened. ' +
+              'The rest of the application is not affected.'
+            }
+            confirmLabel="Delete file"
+            placeholder="e.g. wrong patient's scan"
+            isBusy={purgeFile.isPending}
+            onCancel={() => setDeletingFile(null)}
+            onConfirm={(reason) => {
+              void purgeFile
+                .mutateAsync({ fileId: deletingFile.id, reason })
+                .then(() => setDeletingFile(null))
+                .catch(() => undefined)
+            }}
+          />
+        ) : null}
 
         {replacing && (
           <ReplaceDeidentifiedDialog

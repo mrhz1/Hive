@@ -59,15 +59,14 @@ export function canReject(status: string): boolean {
 }
 
 export function isReadOnly(status: string | undefined): boolean {
-  return status === 'submitted'
+  return status === 'submitted' || status === 'deleted'
 }
 
 export function isDeleted(status: string): boolean {
   return status === 'deleted'
 }
 
-const UNDELETABLE = ['submitted', 'rejected', 'deleted']
-
+/** Only a rejected application's documents can be deleted, from Rejections. */
 export function canDelete(status: string): boolean {
-  return !UNDELETABLE.includes(status)
+  return status === 'rejected'
 }

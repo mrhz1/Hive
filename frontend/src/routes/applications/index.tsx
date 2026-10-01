@@ -8,16 +8,10 @@ import { TextField } from '@/components/ui/Field'
 import { Badge, PageHeader } from '@/components/ui/Misc'
 import { usePermissions } from '@/hooks/useCurrentUser'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
-import {
-  patientHooks,
-  useApplications,
-  useRejectApplication,
-  useDeleteApplication,
-} from '@/hooks/useResources'
+import { patientHooks, useApplications, useRejectApplication } from '@/hooks/useResources'
 import { patientName, type Patient } from '@/schemas/patient'
 import {
   applicationTone,
-  canDelete,
   canReject,
   type PatientApplication,
 } from '@/schemas/patientApplication'
@@ -39,10 +33,8 @@ function ApplicationsList() {
 
   const { data, isLoading, isFetching, error } = useApplications()
   const patients = patientHooks.useList({ enabled: can('patient:view') })
-  const remove = useDeleteApplication()
   const reject = useRejectApplication()
 
-  const [deleting, setDeleting] = useState<PatientApplication | null>(null)
   const [rejecting, setRejecting] = useState<PatientApplication | null>(null)
 
   const patientsById = useMemo(() => {
@@ -135,7 +127,7 @@ function ApplicationsList() {
     })
   }
 
-  const canModify = can('application:update') || can('application:delete')
+  const canModify = can('application:update')
 
   return (
     <div className="space-y-6">
@@ -199,18 +191,6 @@ function ApplicationsList() {
                   </Button>
                 </Can>
               ) : null}
-              {canDelete(application.status) ? (
-                <Can permission="application:delete">
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    aria-label={`Delete application for ${labelFor(application)}`}
-                    onClick={() => setDeleting(application)}
-                  >
-                    Delete
-                  </Button>
-                </Can>
-              ) : null}
             </>
           ) : null
         }
@@ -228,26 +208,6 @@ function ApplicationsList() {
             void reject
               .mutateAsync({ id: rejecting.id, reason })
               .then(() => setRejecting(null))
-              .catch(() => undefined)
-          }}
-        />
-      ) : null}
-
-      {deleting ? (
-        <ReasonDialog
-          title={`Delete the documents for ${labelFor(deleting)}?`}
-          description={
-            'The documents are removed for good. The application itself is ' +
-            'kept and marked deleted, with the reason you give here.'
-          }
-          confirmLabel="Delete documents"
-          placeholder="e.g. duplicate submission"
-          isBusy={remove.isPending}
-          onCancel={() => setDeleting(null)}
-          onConfirm={(reason) => {
-            void remove
-              .mutateAsync({ id: deleting.id, reason })
-              .then(() => setDeleting(null))
               .catch(() => undefined)
           }}
         />

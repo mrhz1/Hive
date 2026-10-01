@@ -284,13 +284,13 @@ class DeidBatchSummary(BaseModel):
 class PatientApplicationFileUpdate(BaseModel):
     description: Optional[str] = None
     deid_status: Optional[str] = Field(
-        default=None, pattern="^(pending|queued|processing|done|failed)$"
+        default=None, pattern="^(pending|queued|processing|done|failed|deleted)$"
     )
     is_deidentified: Optional[bool] = None
     deidentified_file_name: Optional[str] = None
     de_identified_file_path: Optional[str] = None
     review_status: Optional[str] = Field(
-        default=None, pattern="^(pending|approved|rejected)$"
+        default=None, pattern="^(pending|approved|rejected|deleted)$"
     )
     review_note: Optional[str] = None
 

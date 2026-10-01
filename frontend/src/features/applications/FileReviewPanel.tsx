@@ -1,7 +1,6 @@
-import { Eye, FileJson, FileSearch, ShieldCheck, Trash2, X } from 'lucide-react'
+import { Eye, FileJson, FileSearch, ShieldCheck, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ReasonDialog } from '@/components/ReasonDialog'
 import { TextField } from '@/components/ui/Field'
@@ -14,7 +13,6 @@ import { usePermissions } from '@/hooks/useCurrentUser'
 import {
   useApplicationFiles,
   useBackgroundUpload,
-  useDeleteApplicationFile,
   useReviewApplicationFile,
 } from '@/hooks/useResources'
 import { ApiError } from '@/lib/api/client'
@@ -25,6 +23,7 @@ import {
   fileSearchText,
   formatFileSize,
   hasExtractableMetadata,
+  isDeletedFile,
   previewKind,
   reviewTone,
   type ApplicationFile,
@@ -41,6 +40,7 @@ export function FileReviewPanel({
   initialFiles,
   onInitialFilesTaken,
   readOnly = false,
+  deleted = false,
 }: {
   applicationId: string
 
@@ -50,11 +50,13 @@ export function FileReviewPanel({
   onInitialFilesTaken?: () => void
 
   readOnly?: boolean
+
+  /** The application's documents were deleted; only the records remain. */
+  deleted?: boolean
 }) {
   const { can } = usePermissions()
   const filesQuery = useApplicationFiles(applicationId)
   const review = useReviewApplicationFile(applicationId)
-  const remove = useDeleteApplicationFile(applicationId)
 
   const onJobFinished = useCallback(
     (job: UploadJob) => {
@@ -91,7 +93,6 @@ export function FileReviewPanel({
     deidentified: boolean
   } | null>(null)
   const [rejecting, setRejecting] = useState<ApplicationFile | null>(null)
-  const [deleting, setDeleting] = useState<ApplicationFile | null>(null)
   const [search, setSearch] = useState('')
 
   const files = filesQuery.data ?? []
@@ -134,6 +135,8 @@ export function FileReviewPanel({
   }
 
   function actionsFor(file: ApplicationFile): MenuAction[] {
+    // Its documents were deleted from Rejections: nothing left to open or change.
+    if (isDeletedFile(file)) return []
     const hasCopy = Boolean(file.de_identified_file_path)
     const noCopy = 'No redacted copy has been produced yet'
     const actions: MenuAction[] = []
@@ -196,17 +199,6 @@ export function FileReviewPanel({
             ? 'Already rejected'
             : undefined,
         onSelect: () => setRejecting(file),
-      })
-    }
-    if (can('files:delete')) {
-      actions.push({
-        id: 'delete',
-        separatorBefore: actions.length > 0,
-        label: 'Delete file',
-        icon: <Trash2 className="size-4" aria-hidden="true" />,
-        tone: 'danger',
-        isLoading: remove.isPending && remove.variables === file.id,
-        onSelect: () => setDeleting(file),
       })
     }
     return actions
@@ -280,7 +272,12 @@ export function FileReviewPanel({
 
   return (
     <div className="space-y-6">
-      {readOnly ? (
+      {deleted ? (
+        <Card className="border-[rgb(var(--border))] p-4 text-sm text-[rgb(var(--foreground-muted))]">
+          These documents were deleted. The list below is the record of what was attached;
+          none of them can be opened.
+        </Card>
+      ) : readOnly ? (
         <Card className="border-[rgb(var(--border))] p-4 text-sm text-[rgb(var(--foreground-muted))]">
           This application has been submitted. Its documents are shown as they were sent
           -- the de-identified copy and what it carries.
@@ -357,21 +354,6 @@ export function FileReviewPanel({
           }}
         />
       ) : null}
-
-      <ConfirmDeleteModal
-        open={Boolean(deleting)}
-        entityLabel="Document"
-        targetName={deleting?.original_file_name}
-        isDeleting={remove.isPending}
-        onCancel={() => setDeleting(null)}
-        onConfirm={() => {
-          if (!deleting) return
-          void remove
-            .mutateAsync(deleting.id)
-            .then(() => setDeleting(null))
-            .catch(() => undefined)
-        }}
-      />
 
       {viewing ? (
         <FileViewerModal

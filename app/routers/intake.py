@@ -138,6 +138,33 @@ def export_files(
     )
 
 
+class RetryAll(BaseModel):
+    code: Optional[str] = None
+
+
+@router.post("/files/retry-all")
+def retry_all_files(
+    payload: RetryAll,
+    background: BackgroundTasks,
+    request: Request,
+    actor: User = Depends(require_permission("application:update")),
+):
+    """Move every failed file (or every one for a code) back to incoming."""
+    moved = intake.retry_all_failed(payload.code or None)
+    intake_progress.clear_cache()
+    background.add_task(
+        record_audit,
+        action="UPDATE",
+        entity_type="intake_file",
+        entity_id=payload.code or "all",
+        user_id=actor.id,
+        old_values={"status": "failed"},
+        new_values={"status": "incoming", "files": moved},
+        request_id=request.headers.get("X-Request-ID"),
+    )
+    return {"moved": moved}
+
+
 @router.post("/files/retry")
 def retry_file(
     payload: FilePath,

@@ -721,6 +721,7 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
         if is_main:
             try:
                 intake.prune_empty_folders(root)
+                intake.prune_data_folders()
             except Exception as e:
                 log.warning("intake_prune_failed", error=str(e))
         if status_thread:

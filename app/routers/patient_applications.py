@@ -3,16 +3,12 @@ from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from pydantic import BaseModel
 
-from app import intake
+from app import intake, purge
 from app.audit import record_audit
-from app.crud import file_metadata as metadata_crud
-from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as crud
 from app.crud import patients as patients_crud
 from app.crud import users as users_crud
 from app.db import get_cursor
-from app.deid import remove_deid_artifacts
-from app.storage import delete_file as remove_from_disk, prune_stored_folders
 from app.submission import finalize_submission
 from app.errors import ValidationError
 from app.logging_setup import get_logger
@@ -175,6 +171,10 @@ def update_application(
     actor: User = Depends(require_permission("application:update")),
 ):
     before = crud.get_application_or_404(cursor, application_id)
+    if before.status == "deleted":
+        raise ValidationError(
+            "This application's documents were deleted; it can no longer be changed"
+        )
 
     if "assigned_to_id" in payload.model_fields_set:
         _assert_assignee_exists(cursor, payload.assigned_to_id)
@@ -244,7 +244,7 @@ def reject_application(
     return after
 
 
-@router.delete("/{application_id}", status_code=204)
+@router.delete("/{application_id}")
 def delete_application(
     application_id: str,
     background: BackgroundTasks,
@@ -253,35 +253,14 @@ def delete_application(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:delete")),
 ):
-    before = crud.get_application_or_404(cursor, application_id)
+    """Delete a rejected application's documents and keep it as a record.
 
-    detail = (reason or "").strip()
-    if not detail:
-        raise ValidationError("A reason is required when deleting an application")
-
-    orphaned = files_crud.delete_files_for_application(cursor, application_id)
-    metadata_crud.delete_metadata_for_files(cursor, [f.id for f in orphaned])
-
-    for record in orphaned:
-        if intake.is_data_file(record.file_path):
-            continue
-        remove_deid_artifacts(record.file_path, record.deidentified_file_name or "")
-        remove_from_disk(record.file_path)
-        if record.de_identified_file_path:
-            remove_from_disk(record.de_identified_file_path)
-        prune_stored_folders(record.file_path, record.de_identified_file_path)
-
-    after = crud.update_application(
-        cursor,
-        application_id,
-        PatientApplicationUpdate(status="deleted", status_reason=detail),
-        actor_id=actor.id,
-    )
-
-    log.info(
-        "application_soft_deleted",
-        application_id=application_id,
-        files_removed=len(orphaned),
+    Every file of this application is removed from disk (original and
+    de-identified); the application and its file rows stay, marked deleted
+    with the reason. Other applications of the same patient are untouched.
+    """
+    before, after, summary = purge.purge_rejected_application(
+        cursor, application_id, reason, actor.id
     )
 
     background.add_task(
@@ -291,9 +270,10 @@ def delete_application(
         entity_id=application_id,
         user_id=actor.id,
         old_values=_snapshot(before),
-        new_values=_snapshot(after),
+        new_values=dict(_snapshot(after), **summary),
         request_id=request.headers.get("X-Request-ID"),
     )
+    return summary
 
 
 class IntakeSelection(BaseModel):

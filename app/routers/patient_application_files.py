@@ -5,9 +5,11 @@ from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
 from fastapi import Response
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from app import deid_progress
-from app import intake
+from app import intake, purge
+from app.audit import record_audit
 from app import uploads
 from app.crud import file_metadata as metadata_crud
 from app.crud import patient_application_files as crud
@@ -67,6 +69,10 @@ from app.storage import (
 log = get_logger(__name__)
 
 router = APIRouter(tags=["application-files"])
+
+
+class FilePurge(BaseModel):
+    reason: str
 
 MAX_FILE_BYTES = 50 * 1024 * 1024
 
@@ -401,6 +407,7 @@ def get_application_file_metadata(
 ):
     assert_permission(actor, metadata_permission(deidentified))
     document = crud.get_file_or_404(cursor, file_id)
+    purge.refuse_if_deleted(document)
     record = _get_file_metadata(cursor, document, deidentified)
 
     _record_file_access(
@@ -420,6 +427,7 @@ def export_application_file_metadata(
     assert_permission(actor, metadata_permission(deidentified))
     assert_permission(actor, "files:download")
     document = crud.get_file_or_404(cursor, file_id)
+    purge.refuse_if_deleted(document)
     record = _get_file_metadata(cursor, document, deidentified)
 
     wanted = [name.strip() for name in (fields or "").split(",") if name.strip()]
@@ -470,6 +478,7 @@ def read_application_file(
         assert_permission(actor, "files:download")
 
     record = crud.get_file_or_404(cursor, file_id)
+    purge.refuse_if_deleted(record)
 
     if deidentified:
         if not record.de_identified_file_path:
@@ -536,6 +545,7 @@ def _record_file_access(
 
 
 def _preview_path(record, deidentified: bool):
+    purge.refuse_if_deleted(record)
     if deidentified:
         if not record.de_identified_file_path:
             raise ValidationError("This file has not been de-identified yet")
@@ -611,6 +621,7 @@ def deidentify_application_file(
     _actor: User = Depends(require_permission("application:update")),
 ):
     record = crud.get_file_or_404(cursor, file_id)
+    purge.refuse_if_deleted(record)
 
     if record.deid_status in ("queued", "processing"):
         raise ValidationError("This file is already queued for de-identification")
@@ -780,6 +791,7 @@ def review_application_file(
         assert_permission(actor, "application:update")
 
     record = crud.get_file_or_404(cursor, file_id)
+    purge.refuse_if_deleted(record)
 
     if not record.is_deidentified:
         raise ValidationError(
@@ -801,12 +813,43 @@ def review_application_file(
     )
 
 
+@router.post("/files/{file_id}/purge", response_model=PatientApplicationFile)
+def purge_rejected_file(
+    file_id: str,
+    payload: FilePurge,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("files:delete")),
+):
+    """Delete a rejected file's documents from disk and keep its row as a record."""
+    before = crud.get_file_or_404(cursor, file_id)
+    after = purge.purge_rejected_file(cursor, file_id, payload.reason)
+
+    background.add_task(
+        record_audit,
+        action="DELETE",
+        entity_type="application_file",
+        entity_id=file_id,
+        user_id=actor.id,
+        old_values={
+            "name": before.original_file_name,
+            "review_status": before.review_status,
+            "review_note": before.review_note,
+        },
+        new_values={"review_status": after.review_status, "reason": after.review_note},
+        request_id=request.headers.get("X-Request-ID"),
+    )
+    return after
+
+
 @router.delete("/files/{file_id}", status_code=204)
 def delete_application_file(
     file_id: str,
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("files:delete")),
 ):
+    purge.refuse_if_deleted(crud.get_file_or_404(cursor, file_id))
     record = crud.delete_file(cursor, file_id)
     metadata_crud.delete_metadata_for_files(cursor, [file_id])
 
