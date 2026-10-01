@@ -764,7 +764,6 @@ def attach_to_draft(cursor, code):
                 patient_id=code,
                 status="draft",
                 original_file_path=str(folder),
-                description="Created by intake",
             ),
             actor_id=INTAKE_ACTOR,
         )
