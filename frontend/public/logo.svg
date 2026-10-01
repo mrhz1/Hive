@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Logo">
+  <!-- Sample logo: replace this file with your own (same name), or see src/components/Logo.tsx. -->
+  <path d="M32 3 57 17.5v29L32 61 7 46.5v-29Z" fill="#0d9488"/>
+  <path d="M32 18 44 25v14l-12 7-12-7V25Z" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+</svg>

@@ -1,5 +1,6 @@
 import { useCallback, useState, type ReactNode } from 'react'
 import { Header } from './Header'
+import { Logo } from '@/components/Logo'
 import { Sidebar } from './Sidebar'
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -31,7 +32,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
       </div>
 
-      <footer className="border-t border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-6 py-4 text-center text-xs text-[rgb(var(--foreground-muted))]">
+      <footer className="flex items-center justify-center gap-2 border-t border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-6 py-4 text-center text-xs text-[rgb(var(--foreground-muted))]">
+        <Logo className="size-4" />
         Hive Admin · FastAPI + HiveServer2 (ORC)
       </footer>
     </div>
