@@ -16,6 +16,8 @@ PERMISSION_ACTIONS = ("view", "create", "update", "delete")
 MODEL_ACTIONS = {
     model: PERMISSION_ACTIONS for model in PERMISSION_MODELS if model != "files"
 }
+# Only the roles that handle rejections see them.
+MODEL_ACTIONS["rejection"] = ("view",)
 MODEL_ACTIONS["files"] = (
     "read",
     "upload",

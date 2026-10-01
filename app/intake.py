@@ -161,6 +161,21 @@ def code_in_path(relative_path):
     return None
 
 
+def deidentified_subfolder(relative_path, code):
+    """Where under de_identified/<code>/ a file's copy goes.
+
+    The folders after the code folder, so AA0001/scan.pdf lands in
+    de_identified/AA0001/ and X/AA0001/mri/a.dcm in de_identified/AA0001/mri/,
+    not under a second AA0001. With the code only in the file name, the whole
+    incoming folder path is kept.
+    """
+    folders = Path(relative_path).parts[:-1]
+    for index in range(len(folders) - 1, -1, -1):
+        if clean_patient_code(folders[index]) == code:
+            return Path(*folders[index + 1 :])
+    return Path(*folders)
+
+
 def detect(relative_path):
     return Detection(
         path_code=code_in_path(relative_path),
@@ -515,7 +530,13 @@ def available_codes(cursor):
         free = [p for p in files if str(p) not in attached]
         if not free:
             continue
-        relative_dirs = [p.relative_to(root / code) for p in free]
+        # The incoming path is in each file's sidecar; the de-identified
+        # layout under the code folder no longer mirrors it.
+        relative_dirs = [
+            read_json(str(p) + SIDECAR_SUFFIX).get("relative_path")
+            or p.relative_to(root / code).as_posix()
+            for p in free
+        ]
         codes.append(
             {
                 "code": code,
