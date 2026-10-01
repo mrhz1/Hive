@@ -72,7 +72,18 @@ export const intakeWorkerSchema = z.object({
 
 export type IntakeWorker = z.infer<typeof intakeWorkerSchema>
 
+export const codeFormatSchema = z.object({ prefix: z.string(), digits: z.number() })
+
+export type CodeFormat = z.infer<typeof codeFormatSchema>
+
+export function codeFormatExample(format: CodeFormat): string {
+  return format.prefix + '1'.padStart(Math.max(1, format.digits), '0')
+}
+
 export const intakeStatusSchema = z.object({
+  code_formats: z.array(codeFormatSchema).default([]),
+  code_pattern: z.string().optional(),
+  code_pattern_is_default: z.boolean().default(true),
   running: z.boolean(),
   starting: z.boolean().default(false),
   start_requested_at: z.number().nullable().optional(),

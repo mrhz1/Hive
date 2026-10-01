@@ -36,7 +36,7 @@ export function IntakeCodePicker({ value, onChoose, disabled = false }: Props) {
       <p className="mt-4 text-sm text-[rgb(var(--foreground-muted))]">
         {search
           ? 'No code matches.'
-          : 'Nothing is waiting. Documents appear here once the intake sweep has de-identified them.'}
+          : 'Nothing is waiting. Documents appear here once the De-Identifier has processed them.'}
       </p>
     )
   } else {
@@ -114,8 +114,9 @@ export function IntakeCodePicker({ value, onChoose, disabled = false }: Props) {
         Patient code
       </h2>
       <p className="mt-1 text-xs text-[rgb(var(--foreground-muted))]">
-        Codes with de-identified documents waiting in the intake folder. Make sure the
-        code is the one you expect, a typo upstream can still look like a real code.
+        Codes with de-identified documents from the De-Identifier that are not on an
+        application yet. Make sure the code is the one you expect, a typo upstream can
+        still look like a real code.
       </p>
 
       <div className="mt-4 max-w-xs">

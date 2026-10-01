@@ -112,7 +112,7 @@ function FilesPage() {
         {}
         <PageHeader
           title="Files"
-          description="De-identified documents, across every patient. Read-only. They arrive through intake."
+          description="De-identified documents, across every patient. Read-only. They arrive through the De-Identifier."
         />
 
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4">
