@@ -2,6 +2,7 @@ import { Moon, Sun } from 'lucide-react'
 import { useCallback } from 'react'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useTheme } from '@/hooks/useTheme'
+import { Logo } from '@/components/Logo'
 import { UserSwitcher } from './UserSwitcher'
 
 function ThemeToggle() {
@@ -81,6 +82,7 @@ export function Header({
         </button>
 
         <div className="flex items-center gap-2">
+          <Logo className="size-7 sm:size-8" />
           <span className="text-lg font-bold tracking-tight text-[rgb(var(--brand))] sm:text-xl">
             Hive Admin
           </span>
