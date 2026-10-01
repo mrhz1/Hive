@@ -525,8 +525,40 @@ def retry_all_failed(code=None):
     return moved
 
 
+def remove_orphaned_sidecars():
+    """Delete sidecar and reason files whose document is gone.
+
+    A .json next to a de-identified copy, or a .reason.json next to a failed
+    or excluded file, only means something while that file is there; one left
+    behind (a killed run, an older version's submit) is noise in pending_data.
+    """
+    removed = 0
+    places = (
+        (deidentified_root(), SIDECAR_SUFFIX),
+        (failed_root(), REASON_SUFFIX),
+        (attention_root(), REASON_SUFFIX),
+    )
+    for root, suffix in places:
+        if not root.is_dir():
+            continue
+        for extra in root.rglob(f"*{suffix}"):
+            if extra.name.endswith(REASON_SUFFIX) and suffix != REASON_SUFFIX:
+                continue
+            document = Path(str(extra)[: -len(suffix)])
+            if document.exists() or Path(str(document) + PARTIAL_SUFFIX).exists():
+                continue
+            if not is_settled(extra):
+                continue
+            extra.unlink(missing_ok=True)
+            removed += 1
+    if removed:
+        log.info("intake_orphaned_sidecars_removed", files=removed)
+    return removed
+
+
 def prune_data_folders():
-    """Remove empty folders left anywhere in DATA_DIR (not the folders themselves)."""
+    """Remove orphaned sidecars, then empty folders, anywhere in DATA_DIR."""
+    remove_orphaned_sidecars()
     removed = 0
     for root in (original_root(), deidentified_root(), failed_root(), attention_root()):
         removed += prune_empty_folders(root)
