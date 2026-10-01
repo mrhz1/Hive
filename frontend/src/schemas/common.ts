@@ -16,10 +16,15 @@ export const FILE_REVIEW_ACTIONS = [
   'reject',
 ] as const
 
+export const REJECTION_ACTIONS = ['view'] as const
+
 export type FilesAction =
   (typeof FILES_ACTIONS)[number] | (typeof FILE_REVIEW_ACTIONS)[number]
 
-export type Permission = `${Model}:${Action}` | `files:${FilesAction}`
+export type Permission =
+  | `${Model}:${Action}`
+  | `files:${FilesAction}`
+  | `rejection:${(typeof REJECTION_ACTIONS)[number]}`
 
 export const ALL_PERMISSIONS: Permission[] = [
   ...MODELS.flatMap((model) =>
@@ -27,6 +32,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   ),
   ...FILES_ACTIONS.map((action) => `files:${action}` as Permission),
   ...FILE_REVIEW_ACTIONS.map((action) => `files:${action}` as Permission),
+  ...REJECTION_ACTIONS.map((action) => `rejection:${action}` as Permission),
 ]
 
 export const PERMISSION_GROUPS: ReadonlyArray<{
@@ -37,6 +43,7 @@ export const PERMISSION_GROUPS: ReadonlyArray<{
   { models: MODELS, actions: ACTIONS },
   { models: ['files'], actions: FILES_ACTIONS },
   { models: ['files'], actions: FILE_REVIEW_ACTIONS, rowLabel: 'documents' },
+  { models: ['rejection'], actions: REJECTION_ACTIONS, rowLabel: 'rejections' },
 ]
 
 const ACTION_LABELS: Record<string, string> = {

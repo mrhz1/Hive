@@ -54,7 +54,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Rejections',
     to: '/rejections',
     icon: FileWarning,
-    permission: 'application:view',
+    permission: 'rejection:view',
   },
   {
     label: 'Metadata',

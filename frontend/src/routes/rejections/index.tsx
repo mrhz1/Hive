@@ -233,7 +233,7 @@ function RejectionsPage() {
   ]
 
   return (
-    <RequirePermission permission="application:view">
+    <RequirePermission permission="rejection:view">
       <div className="space-y-6">
         <PageHeader
           title="Rejections"

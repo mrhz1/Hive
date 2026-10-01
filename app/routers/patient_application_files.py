@@ -335,7 +335,7 @@ def _file_exists(stored: Optional[str]) -> bool:
 @router.get("/files/rejected", response_model=List[RejectedFile])
 def list_rejected_files(
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:view")),
+    _actor: User = Depends(require_permission("rejection:view")),
 ):
     patient_ids = {}
     for application in applications_crud.list_applications(cursor):

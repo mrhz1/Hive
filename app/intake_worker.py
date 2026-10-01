@@ -478,7 +478,11 @@ def finish(task, result):
             log.error("intake_file_move_failed", path=task.relative_path, error=str(e))
         return "failed"
 
-    target_dir = intake.deidentified_root() / task.code / Path(task.relative_path).parent
+    target_dir = (
+        intake.deidentified_root()
+        / task.code
+        / intake.deidentified_subfolder(task.relative_path, task.code)
+    )
     target_dir.mkdir(parents=True, exist_ok=True)
     stem = deid.unique_output_stem(target_dir, task.code, result.suffix)
     final = target_dir / f"{stem}{result.suffix}"
