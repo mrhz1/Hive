@@ -29,8 +29,8 @@ test:
 	$(PYTHON) -m pytest
 
 run:
-	# exclude storage/ so uploaded files don't trigger a reload
-	$(PYTHON) -m uvicorn app.main:app --host 0.0.0.0 --port $(CDSW_APP_PORT) --reload --reload-exclude "$(CURDIR)/storage"
+	# watch only the code, so files arriving in storage/ never trigger a reload
+	$(PYTHON) -m uvicorn app.main:app --host 0.0.0.0 --port $(CDSW_APP_PORT) --reload --reload-dir app
 
 # de-identification (two venvs, see OCR/README.md)
 ocr-install:
