@@ -21,8 +21,10 @@ from app.routers import (
     patient_applications,
     patient_application_files,
     patients,
+    projects as projects_router,
     roles,
     users,
+    zone2 as zone2_router,
 )
 
 configure_logging()
@@ -144,6 +146,8 @@ async def validation_error_handler(request, exc: RequestValidationError):
 
 
 app.include_router(me.router)
+app.include_router(projects_router.router)
+app.include_router(zone2_router.router)
 app.include_router(users.router)
 app.include_router(patients.router)
 app.include_router(files.router)

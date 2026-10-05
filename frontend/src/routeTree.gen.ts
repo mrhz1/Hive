@@ -22,11 +22,14 @@ import { Route as LogsLogIdRouteImport } from './routes/logs/$logId'
 import { Route as MetadataIndexRouteImport } from './routes/metadata/index'
 import { Route as PatientsIndexRouteImport } from './routes/patients/index'
 import { Route as PatientsNewRouteImport } from './routes/patients/new'
+import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
+import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
 import { Route as RejectionsIndexRouteImport } from './routes/rejections/index'
 import { Route as RolesIndexRouteImport } from './routes/roles/index'
 import { Route as RolesNewRouteImport } from './routes/roles/new'
 import { Route as UsersIndexRouteImport } from './routes/users/index'
 import { Route as UsersNewRouteImport } from './routes/users/new'
+import { Route as Zone2InboxIndexRouteImport } from './routes/zone2-inbox/index'
 import { Route as PatientsPatientIdEditRouteImport } from './routes/patients/$patientId.edit'
 import { Route as RolesRoleIdEditRouteImport } from './routes/roles/$roleId.edit'
 import { Route as UsersUserIdEditRouteImport } from './routes/users/$userId.edit'
@@ -97,6 +100,16 @@ const PatientsNewRoute = PatientsNewRouteImport.update({
   path: '/patients/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
+  id: '/projects/',
+  path: '/projects/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
+  id: '/projects/$projectId',
+  path: '/projects/$projectId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RejectionsIndexRoute = RejectionsIndexRouteImport.update({
   id: '/rejections/',
   path: '/rejections/',
@@ -122,6 +135,11 @@ const UsersNewRoute = UsersNewRouteImport.update({
   path: '/users/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const Zone2InboxIndexRoute = Zone2InboxIndexRouteImport.update({
+  id: '/zone2-inbox/',
+  path: '/zone2-inbox/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PatientsPatientIdEditRoute = PatientsPatientIdEditRouteImport.update({
   id: '/patients/$patientId/edit',
   path: '/patients/$patientId/edit',
@@ -144,6 +162,7 @@ export interface FileRoutesByFullPath {
   '/applications/$applicationId': typeof ApplicationsApplicationIdRoute
   '/logs/$logId': typeof LogsLogIdRoute
   '/patients/new': typeof PatientsNewRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
   '/access-logs/': typeof AccessLogsIndexRoute
@@ -154,9 +173,11 @@ export interface FileRoutesByFullPath {
   '/logs/': typeof LogsIndexRoute
   '/metadata/': typeof MetadataIndexRoute
   '/patients/': typeof PatientsIndexRoute
+  '/projects/': typeof ProjectsIndexRoute
   '/rejections/': typeof RejectionsIndexRoute
   '/roles/': typeof RolesIndexRoute
   '/users/': typeof UsersIndexRoute
+  '/zone2-inbox/': typeof Zone2InboxIndexRoute
   '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
   '/roles/$roleId/edit': typeof RolesRoleIdEditRoute
   '/users/$userId/edit': typeof UsersUserIdEditRoute
@@ -167,6 +188,7 @@ export interface FileRoutesByTo {
   '/applications/$applicationId': typeof ApplicationsApplicationIdRoute
   '/logs/$logId': typeof LogsLogIdRoute
   '/patients/new': typeof PatientsNewRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
   '/access-logs': typeof AccessLogsIndexRoute
@@ -177,9 +199,11 @@ export interface FileRoutesByTo {
   '/logs': typeof LogsIndexRoute
   '/metadata': typeof MetadataIndexRoute
   '/patients': typeof PatientsIndexRoute
+  '/projects': typeof ProjectsIndexRoute
   '/rejections': typeof RejectionsIndexRoute
   '/roles': typeof RolesIndexRoute
   '/users': typeof UsersIndexRoute
+  '/zone2-inbox': typeof Zone2InboxIndexRoute
   '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
   '/roles/$roleId/edit': typeof RolesRoleIdEditRoute
   '/users/$userId/edit': typeof UsersUserIdEditRoute
@@ -191,6 +215,7 @@ export interface FileRoutesById {
   '/applications/$applicationId': typeof ApplicationsApplicationIdRoute
   '/logs/$logId': typeof LogsLogIdRoute
   '/patients/new': typeof PatientsNewRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
   '/access-logs/': typeof AccessLogsIndexRoute
@@ -201,9 +226,11 @@ export interface FileRoutesById {
   '/logs/': typeof LogsIndexRoute
   '/metadata/': typeof MetadataIndexRoute
   '/patients/': typeof PatientsIndexRoute
+  '/projects/': typeof ProjectsIndexRoute
   '/rejections/': typeof RejectionsIndexRoute
   '/roles/': typeof RolesIndexRoute
   '/users/': typeof UsersIndexRoute
+  '/zone2-inbox/': typeof Zone2InboxIndexRoute
   '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
   '/roles/$roleId/edit': typeof RolesRoleIdEditRoute
   '/users/$userId/edit': typeof UsersUserIdEditRoute
@@ -216,6 +243,7 @@ export interface FileRouteTypes {
     | '/applications/$applicationId'
     | '/logs/$logId'
     | '/patients/new'
+    | '/projects/$projectId'
     | '/roles/new'
     | '/users/new'
     | '/access-logs/'
@@ -226,9 +254,11 @@ export interface FileRouteTypes {
     | '/logs/'
     | '/metadata/'
     | '/patients/'
+    | '/projects/'
     | '/rejections/'
     | '/roles/'
     | '/users/'
+    | '/zone2-inbox/'
     | '/patients/$patientId/edit'
     | '/roles/$roleId/edit'
     | '/users/$userId/edit'
@@ -239,6 +269,7 @@ export interface FileRouteTypes {
     | '/applications/$applicationId'
     | '/logs/$logId'
     | '/patients/new'
+    | '/projects/$projectId'
     | '/roles/new'
     | '/users/new'
     | '/access-logs'
@@ -249,9 +280,11 @@ export interface FileRouteTypes {
     | '/logs'
     | '/metadata'
     | '/patients'
+    | '/projects'
     | '/rejections'
     | '/roles'
     | '/users'
+    | '/zone2-inbox'
     | '/patients/$patientId/edit'
     | '/roles/$roleId/edit'
     | '/users/$userId/edit'
@@ -262,6 +295,7 @@ export interface FileRouteTypes {
     | '/applications/$applicationId'
     | '/logs/$logId'
     | '/patients/new'
+    | '/projects/$projectId'
     | '/roles/new'
     | '/users/new'
     | '/access-logs/'
@@ -272,9 +306,11 @@ export interface FileRouteTypes {
     | '/logs/'
     | '/metadata/'
     | '/patients/'
+    | '/projects/'
     | '/rejections/'
     | '/roles/'
     | '/users/'
+    | '/zone2-inbox/'
     | '/patients/$patientId/edit'
     | '/roles/$roleId/edit'
     | '/users/$userId/edit'
@@ -286,6 +322,7 @@ export interface RootRouteChildren {
   ApplicationsApplicationIdRoute: typeof ApplicationsApplicationIdRoute
   LogsLogIdRoute: typeof LogsLogIdRoute
   PatientsNewRoute: typeof PatientsNewRoute
+  ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
   RolesNewRoute: typeof RolesNewRoute
   UsersNewRoute: typeof UsersNewRoute
   AccessLogsIndexRoute: typeof AccessLogsIndexRoute
@@ -296,9 +333,11 @@ export interface RootRouteChildren {
   LogsIndexRoute: typeof LogsIndexRoute
   MetadataIndexRoute: typeof MetadataIndexRoute
   PatientsIndexRoute: typeof PatientsIndexRoute
+  ProjectsIndexRoute: typeof ProjectsIndexRoute
   RejectionsIndexRoute: typeof RejectionsIndexRoute
   RolesIndexRoute: typeof RolesIndexRoute
   UsersIndexRoute: typeof UsersIndexRoute
+  Zone2InboxIndexRoute: typeof Zone2InboxIndexRoute
   PatientsPatientIdEditRoute: typeof PatientsPatientIdEditRoute
   RolesRoleIdEditRoute: typeof RolesRoleIdEditRoute
   UsersUserIdEditRoute: typeof UsersUserIdEditRoute
@@ -397,6 +436,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PatientsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/projects/': {
+      id: '/projects/'
+      path: '/projects'
+      fullPath: '/projects/'
+      preLoaderRoute: typeof ProjectsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects/$projectId': {
+      id: '/projects/$projectId'
+      path: '/projects/$projectId'
+      fullPath: '/projects/$projectId'
+      preLoaderRoute: typeof ProjectsProjectIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/rejections/': {
       id: '/rejections/'
       path: '/rejections'
@@ -432,6 +485,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UsersNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/zone2-inbox/': {
+      id: '/zone2-inbox/'
+      path: '/zone2-inbox'
+      fullPath: '/zone2-inbox/'
+      preLoaderRoute: typeof Zone2InboxIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/patients/$patientId/edit': {
       id: '/patients/$patientId/edit'
       path: '/patients/$patientId/edit'
@@ -462,6 +522,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApplicationsApplicationIdRoute: ApplicationsApplicationIdRoute,
   LogsLogIdRoute: LogsLogIdRoute,
   PatientsNewRoute: PatientsNewRoute,
+  ProjectsProjectIdRoute: ProjectsProjectIdRoute,
   RolesNewRoute: RolesNewRoute,
   UsersNewRoute: UsersNewRoute,
   AccessLogsIndexRoute: AccessLogsIndexRoute,
@@ -472,9 +533,11 @@ const rootRouteChildren: RootRouteChildren = {
   LogsIndexRoute: LogsIndexRoute,
   MetadataIndexRoute: MetadataIndexRoute,
   PatientsIndexRoute: PatientsIndexRoute,
+  ProjectsIndexRoute: ProjectsIndexRoute,
   RejectionsIndexRoute: RejectionsIndexRoute,
   RolesIndexRoute: RolesIndexRoute,
   UsersIndexRoute: UsersIndexRoute,
+  Zone2InboxIndexRoute: Zone2InboxIndexRoute,
   PatientsPatientIdEditRoute: PatientsPatientIdEditRoute,
   RolesRoleIdEditRoute: RolesRoleIdEditRoute,
   UsersUserIdEditRoute: UsersUserIdEditRoute,

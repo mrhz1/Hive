@@ -5,6 +5,19 @@ import type { AuditLogFilters } from '@/schemas/log'
 export const queryKeys = {
   me: ['me'] as const,
 
+  projects: {
+    all: ['projects'] as const,
+    list: () => [...queryKeys.projects.all, 'list'] as const,
+    detail: (id: string) => [...queryKeys.projects.all, 'detail', id] as const,
+    candidates: () => [...queryKeys.projects.all, 'candidates'] as const,
+  },
+
+  zone2: {
+    all: ['zone2'] as const,
+    releases: (status: string) => [...queryKeys.zone2.all, 'releases', status] as const,
+    release: (id: string) => [...queryKeys.zone2.all, 'release', id] as const,
+  },
+
   users: {
     all: ['users'] as const,
     list: () => [...queryKeys.users.all, 'list'] as const,

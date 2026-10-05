@@ -11,8 +11,10 @@ import {
   fileMetadataApi,
   patientsApi,
   logsApi,
+  projectsApi,
   rolesApi,
   usersApi,
+  zone2Api,
   type ApplicationPayload,
 } from '@/lib/api/resources'
 import { queryKeys } from '@/lib/queryKeys'
@@ -31,6 +33,7 @@ import type { ApplicationFile } from '@/schemas/applicationFile'
 import type { PatientFormValues } from '@/schemas/patient'
 import type { RoleFormValues } from '@/schemas/role'
 import type { UserFormValues } from '@/schemas/user'
+import type { ProjectPayload } from '@/schemas/project'
 import type { Patient, Role, User } from '@/lib/api/resources'
 
 export const userHooks = createCrudHooks<User, UserFormValues>({
@@ -662,4 +665,122 @@ export function useAttachIntakeFiles(applicationId: string) {
       toast.error(errorMessage(error, 'Could not attach those files'))
     },
   })
+}
+
+// --- projects and Zone 2 ------------------------------------------------
+
+export function useProjects() {
+  return useQuery({
+    queryKey: queryKeys.projects.list(),
+    queryFn: () => projectsApi.list(),
+  })
+}
+
+export function useProject(id: string) {
+  return useQuery({
+    queryKey: queryKeys.projects.detail(id),
+    queryFn: () => projectsApi.get(id),
+  })
+}
+
+export function useProjectCandidates(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.projects.candidates(),
+    queryFn: () => projectsApi.candidates(),
+    enabled,
+  })
+}
+
+function useProjectMutation<TVariables, TResult>(
+  mutationFn: (variables: TVariables) => Promise<TResult>,
+  success: string | ((result: TResult) => string),
+  failure: string
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.zone2.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success(typeof success === 'string' ? success : success(result))
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, failure))
+    },
+  })
+}
+
+export function useCreateProject() {
+  return useProjectMutation(
+    (values: ProjectPayload) => projectsApi.create(values),
+    'Project created',
+    'Could not create the project'
+  )
+}
+
+export function useUpdateProject(id: string) {
+  return useProjectMutation(
+    (values: ProjectPayload) => projectsApi.update(id, values),
+    'Project saved',
+    'Could not save the project'
+  )
+}
+
+export function useSetCohort(id: string) {
+  return useProjectMutation(
+    (patientIds: string[]) => projectsApi.setCohort(id, patientIds),
+    (project) =>
+      `${project.cohort.length} patient${project.cohort.length === 1 ? '' : 's'} in the project`,
+    'Could not change the patients'
+  )
+}
+
+export function usePrepareProject(id: string) {
+  return useProjectMutation(
+    (_: void) => projectsApi.prepare(id),
+    (release) =>
+      `Safe copy prepared: ${release.patients} patients, ${release.applications} applications, ${release.documents} documents. It is in the Zone 2 inbox for review.`,
+    'Could not prepare the safe copy'
+  )
+}
+
+export function useDeleteProject() {
+  return useProjectMutation(
+    (id: string) => projectsApi.remove(id),
+    'Project deleted',
+    'Could not delete the project'
+  )
+}
+
+export function useZone2Releases(status = 'in_review') {
+  return useQuery({
+    queryKey: queryKeys.zone2.releases(status),
+    queryFn: () => zone2Api.releases(status),
+  })
+}
+
+export function useZone2Release(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.zone2.release(id ?? ''),
+    queryFn: () => zone2Api.release(id as string),
+    enabled: Boolean(id),
+  })
+}
+
+export function useApproveRelease() {
+  return useProjectMutation(
+    (id: string) => zone2Api.approve(id),
+    'Released to Zone 2',
+    'Could not release'
+  )
+}
+
+export function useRejectRelease() {
+  return useProjectMutation(
+    (variables: { id: string; reason: string }) =>
+      zone2Api.reject(variables.id, variables.reason),
+    'Sent back for changes',
+    'Could not reject the release'
+  )
 }

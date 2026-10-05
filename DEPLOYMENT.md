@@ -201,6 +201,24 @@ Users need to sign out and back in after that.
 | `rejection:view` | the Rejections page (not given to the default viewer role) |
 | `deidentifier:view` | the De-Identifier page: status, workers, runs, Failed and Excluded lists (not given to the default viewer role) |
 | `deidentifier:run` | Start de-identification, Retry, Retry all, pick the code for a conflict |
+| `project:view` / `create` / `update` / `delete` | the Projects pages: approvals, consent, patients (not given to the default viewer role) |
+| `zone2:prepare` | Prepare a project's safe copy into the Zone 2 inbox |
+| `zone2:review` | the Zone 2 inbox: release a safe copy to Zone 2 or send it back |
+
+### Research projects (Zone 2) on an existing database
+
+The project tables are new. Create them without touching the others:
+
+```bash
+python scripts/migrate_columns.py --list
+python scripts/migrate_columns.py --apply
+```
+
+Then set `PROJECTS_DIR`, `ZONE2_INBOX_DIR` and `ZONE2_DIR` on the API
+Application (or in `Backend/.env.local`), grant the `project:*` and `zone2:*`
+permissions to the right roles, and restart the API. In Cloudera, give each
+project's researchers access to `ZONE2_DIR/<project code>/` only; the
+archive (`PROJECTS_DIR`) holds the ID map and must stay restricted.
 
 ### New columns on an existing database
 

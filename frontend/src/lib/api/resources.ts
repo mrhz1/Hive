@@ -56,6 +56,15 @@ import {
   type RoleFormValues,
 } from '@/schemas/role'
 import {
+  candidateListSchema,
+  projectDetailSchema,
+  projectListSchema,
+  releaseSchema,
+  releaseSummaryListSchema,
+  releaseSummarySchema,
+  type ProjectPayload,
+} from '@/schemas/project'
+import {
   userListSchema,
   userSchema,
   type ProfileFormValues,
@@ -397,6 +406,44 @@ export const fileMetadataApi = {
       throw toApiError(error)
     }
   },
+}
+
+export const projectsApi = {
+  list: () => request(projectListSchema, () => api.get('/projects')),
+  get: (id: string) => request(projectDetailSchema, () => api.get(`/projects/${id}`)),
+  candidates: () => request(candidateListSchema, () => api.get('/projects/candidates')),
+  create: (values: ProjectPayload) =>
+    request(projectDetailSchema, () => api.post('/projects', values)),
+  update: (id: string, values: ProjectPayload) =>
+    request(projectDetailSchema, () => api.put(`/projects/${id}`, values)),
+  setCohort: (id: string, patientIds: string[]) =>
+    request(projectDetailSchema, () =>
+      api.put(`/projects/${id}/cohort`, { patient_ids: patientIds })
+    ),
+  prepare: (id: string) =>
+    request(releaseSchema, () => api.post(`/projects/${id}/prepare`)),
+  remove: async (id: string) => {
+    try {
+      await api.delete(`/projects/${id}`)
+    } catch (error) {
+      throw toApiError(error)
+    }
+  },
+}
+
+export const zone2Api = {
+  releases: (status = 'in_review') =>
+    request(releaseSummaryListSchema, () =>
+      api.get('/zone2/releases', { params: { status } })
+    ),
+  release: (id: string) =>
+    request(releaseSummarySchema, () => api.get(`/zone2/releases/${id}`)),
+  approve: (id: string) =>
+    request(releaseSummarySchema, () => api.post(`/zone2/releases/${id}/approve`)),
+  reject: (id: string, reason: string) =>
+    request(releaseSummarySchema, () =>
+      api.post(`/zone2/releases/${id}/reject`, { reason })
+    ),
 }
 
 export const meApi = {
