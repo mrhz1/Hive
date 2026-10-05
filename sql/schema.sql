@@ -159,3 +159,59 @@ CREATE TABLE `audit_logs` (
   `created_at` TIMESTAMP
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
+
+-- Research projects (Zone 2). A project asks for a safe copy of some
+-- patients' submitted data (see app/zone2.py).
+DROP TABLE IF EXISTS `projects`;
+
+CREATE TABLE `projects` (
+  `id` STRING,
+  `short_code` STRING,
+  `name` STRING,
+  `description` STRING,
+  `approval_reference` STRING,
+  `consent_confirmed` BOOLEAN,
+  `documents_approved` BOOLEAN,
+  `status` STRING,
+  `status_reason` STRING,
+  `created_by_id` STRING,
+  `created_at` TIMESTAMP,
+  `updated_at` TIMESTAMP
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
+-- The cohort and the locked ID map: each patient's project-only ID and the
+-- days every one of their dates is moved by. Never released.
+DROP TABLE IF EXISTS `project_patients`;
+
+CREATE TABLE `project_patients` (
+  `id` STRING,
+  `project_id` STRING,
+  `patient_id` STRING,
+  `project_patient_id` STRING,
+  `date_shift_days` INT,
+  `added_at` TIMESTAMP
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
+-- Each prepared safe copy and its review by the CHSS manager.
+DROP TABLE IF EXISTS `project_releases`;
+
+CREATE TABLE `project_releases` (
+  `id` STRING,
+  `project_id` STRING,
+  `status` STRING,
+  `status_reason` STRING,
+  `prepared_by_id` STRING,
+  `prepared_at` TIMESTAMP,
+  `reviewed_by_id` STRING,
+  `reviewed_at` TIMESTAMP,
+  `patients` INT,
+  `applications` INT,
+  `documents` INT,
+  `files_included` BOOLEAN,
+  `archive_path` STRING,
+  `inbox_path` STRING,
+  `release_path` STRING
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');

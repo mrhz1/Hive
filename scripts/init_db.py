@@ -19,7 +19,7 @@ ALL_PERMISSIONS = sorted(KNOWN_PERMISSIONS)
 READONLY_PERMISSIONS = [
     f"{model}:{'read' if 'read' in actions else 'view'}"
     for model, actions in MODEL_ACTIONS.items()
-    if model not in ("rejection", "deidentifier")  # granted to specific roles only
+    if model not in ("rejection", "deidentifier", "project", "zone2")  # granted to specific roles only
 ] + list(FILE_VIEW_PERMISSIONS)
 
 ADMIN_ROLE_ID = str(uuid.uuid4())

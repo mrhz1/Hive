@@ -1,6 +1,13 @@
 import { z } from 'zod'
 
-export const MODELS = ['user', 'patient', 'role', 'log', 'application'] as const
+export const MODELS = [
+  'user',
+  'patient',
+  'role',
+  'log',
+  'application',
+  'project',
+] as const
 export const ACTIONS = ['view', 'create', 'update', 'delete'] as const
 
 export type Model = (typeof MODELS)[number]
@@ -20,6 +27,8 @@ export const REJECTION_ACTIONS = ['view'] as const
 
 export const DEIDENTIFIER_ACTIONS = ['view', 'run'] as const
 
+export const ZONE2_ACTIONS = ['prepare', 'review'] as const
+
 export type FilesAction =
   (typeof FILES_ACTIONS)[number] | (typeof FILE_REVIEW_ACTIONS)[number]
 
@@ -28,6 +37,7 @@ export type Permission =
   | `files:${FilesAction}`
   | `rejection:${(typeof REJECTION_ACTIONS)[number]}`
   | `deidentifier:${(typeof DEIDENTIFIER_ACTIONS)[number]}`
+  | `zone2:${(typeof ZONE2_ACTIONS)[number]}`
 
 export const ALL_PERMISSIONS: Permission[] = [
   ...MODELS.flatMap((model) =>
@@ -37,6 +47,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   ...FILE_REVIEW_ACTIONS.map((action) => `files:${action}` as Permission),
   ...REJECTION_ACTIONS.map((action) => `rejection:${action}` as Permission),
   ...DEIDENTIFIER_ACTIONS.map((action) => `deidentifier:${action}` as Permission),
+  ...ZONE2_ACTIONS.map((action) => `zone2:${action}` as Permission),
 ]
 
 export const PERMISSION_GROUPS: ReadonlyArray<{
@@ -53,6 +64,7 @@ export const PERMISSION_GROUPS: ReadonlyArray<{
     actions: DEIDENTIFIER_ACTIONS,
     rowLabel: 'de-identifier',
   },
+  { models: ['zone2'], actions: ZONE2_ACTIONS, rowLabel: 'zone 2' },
 ]
 
 const ACTION_LABELS: Record<string, string> = {

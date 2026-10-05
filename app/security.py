@@ -20,6 +20,9 @@ MODEL_ACTIONS = {
 MODEL_ACTIONS["rejection"] = ("view",)
 # The De-Identifier page: seeing its status and lists, and running it.
 MODEL_ACTIONS["deidentifier"] = ("view", "run")
+# Research projects, and the Zone 2 safe copies made for them.
+MODEL_ACTIONS["project"] = PERMISSION_ACTIONS
+MODEL_ACTIONS["zone2"] = ("prepare", "review")
 MODEL_ACTIONS["files"] = (
     "read",
     "upload",
