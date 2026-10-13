@@ -565,3 +565,115 @@ class AuditLog(BaseModel):
     old_values: Optional[dict] = None
     new_values: Optional[dict] = None
     created_at: datetime
+
+
+# --- temporary abstraction folders (app/abstraction.py) ---------------------
+
+
+class AbstractionCriteria(BaseModel):
+    """Which de-identified documents to copy. Empty lists mean any."""
+
+    patient_ids: List[str] = Field(default_factory=list)
+    modalities: List[str] = Field(default_factory=list)
+    file_types: List[str] = Field(default_factory=list)
+    # YYYY-MM-DD; with either set, documents without a known date are left out
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    # matched against the file name and the metadata read from the file
+    search: Optional[str] = None
+
+    @field_validator("patient_ids", "modalities", "file_types", mode="before")
+    @classmethod
+    def _clean_list(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            value = value.split(",")
+        if isinstance(value, list):
+            return sorted({str(v).strip().upper() for v in value if str(v).strip()})
+        return value
+
+    @field_validator("modalities")
+    @classmethod
+    def _modality_codes(cls, value: List[str]) -> List[str]:
+        from app.document_info import clean_modality
+
+        codes = []
+        for typed in value:
+            code = clean_modality(typed)
+            if code is None:
+                raise ValueError(f"'{typed}' is not a known modality")
+            codes.append(code)
+        return sorted(set(codes))
+
+    @field_validator("search", mode="before")
+    @classmethod
+    def _blank_search(cls, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def _date_order(self):
+        if self.date_from and self.date_to and self.date_from > self.date_to:
+            raise ValueError("date_from is after date_to")
+        return self
+
+
+class AbstractionDocument(BaseModel):
+    file_id: str
+    application_id: str
+    patient_id: str
+    name: str
+    file_type: str
+    modality: Optional[str] = None
+    document_date: Optional[str] = None
+
+
+class AbstractionPreview(BaseModel):
+    total: int
+    patients: int
+    documents: List[AbstractionDocument]
+
+
+class AbstractionFolderCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    purpose: str = Field(min_length=1, max_length=1000)
+    criteria: AbstractionCriteria
+
+    @field_validator("name", "purpose")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Required")
+        return value
+
+
+class AbstractionFolder(BaseModel):
+    id: str
+    name: str
+    purpose: Optional[str] = None
+    owner_id: Optional[str] = None
+    owner_username: Optional[str] = None
+    status: str
+    criteria: Optional[Dict[str, Any]] = None
+    file_count: int = 0
+    folder_path: Optional[str] = None
+    created_at: Optional[datetime] = None
+    expires_at: Optional[str] = None
+    deleted_at: Optional[str] = None
+    deleted_by_id: Optional[str] = None
+    deleted_reason: Optional[str] = None
+
+    @field_validator("criteria", mode="before")
+    @classmethod
+    def _parse_criteria(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            try:
+                return json.loads(value) if value.strip() else None
+            except ValueError:
+                return None
+        return value
+
+
+class AbstractionDelete(BaseModel):
+    reason: Optional[str] = None

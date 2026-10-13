@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { createCrudHooks, errorMessage } from './createCrudHooks'
 import {
+  abstractionApi,
   accessLogsApi,
   applicationsApi,
   applicationFilesApi,
@@ -694,6 +695,84 @@ export function useAttachIntakeFiles(applicationId: string) {
 }
 
 // --- projects and Zone 2 ------------------------------------------------
+
+export function useAbstractionFolders() {
+  return useQuery({
+    queryKey: queryKeys.abstraction.list(),
+    queryFn: () => abstractionApi.list(),
+  })
+}
+
+export function useAbstractionDocuments(id: string) {
+  return useQuery({
+    queryKey: queryKeys.abstraction.documents(id),
+    queryFn: () => abstractionApi.documents(id),
+  })
+}
+
+export function useAbstractionPreview() {
+  return useMutation({
+    mutationFn: abstractionApi.preview,
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not find the documents'))
+    },
+  })
+}
+
+function useAbstractionMutation<TVariables, TResult>(
+  mutationFn: (variables: TVariables) => Promise<TResult>,
+  success: string | ((result: TResult) => string),
+  failure: string
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.abstraction.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success(typeof success === 'string' ? success : success(result))
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, failure))
+    },
+  })
+}
+
+export function useCreateAbstractionFolder() {
+  return useAbstractionMutation(
+    abstractionApi.create,
+    (folder) => `Folder made with ${folder.file_count} document(s)`,
+    'Could not make the folder'
+  )
+}
+
+export function useExtendAbstractionFolder() {
+  return useAbstractionMutation(
+    abstractionApi.extend,
+    'Folder extended',
+    'Could not extend the folder'
+  )
+}
+
+export function useRegenerateAbstractionFolder() {
+  return useAbstractionMutation(
+    abstractionApi.regenerate,
+    (result) =>
+      result.missing
+        ? `Folder made again; ${result.missing} document(s) are no longer available`
+        : 'Folder made again',
+    'Could not make the folder again'
+  )
+}
+
+export function useDeleteAbstractionFolder() {
+  return useAbstractionMutation(
+    (variables: { id: string; reason: string }) =>
+      abstractionApi.remove(variables.id, variables.reason),
+    'Folder deleted',
+    'Could not delete the folder'
+  )
+}
 
 export function useProjects() {
   return useQuery({

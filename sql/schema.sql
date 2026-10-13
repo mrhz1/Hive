@@ -216,3 +216,27 @@ CREATE TABLE `project_releases` (
   `release_path` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
+
+-- Temporary abstraction folders: read-only copies of de-identified documents
+-- picked by metadata for one person's task, deleted when done or when they
+-- expire (see app/abstraction.py). criteria and file_ids are JSON, kept so a
+-- folder can be made again.
+DROP TABLE IF EXISTS `abstraction_folders`;
+
+CREATE TABLE `abstraction_folders` (
+  `id` STRING,
+  `name` STRING,
+  `purpose` STRING,
+  `owner_id` STRING,
+  `status` STRING,
+  `criteria` STRING,
+  `file_ids` STRING,
+  `file_count` INT,
+  `folder_path` STRING,
+  `created_at` TIMESTAMP,
+  `expires_at` STRING,
+  `deleted_at` STRING,
+  `deleted_by_id` STRING,
+  `deleted_reason` STRING
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');

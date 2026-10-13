@@ -12,6 +12,7 @@ from app.errors import AppError, app_error_handler, unhandled_error_handler
 from app.logging_setup import configure_logging, get_logger
 from app.middleware import RequestContextMiddleware
 from app.routers import (
+    abstraction as abstraction_router,
     access_log as access_log_router,
     audit_log,
     file_metadata,
@@ -148,6 +149,7 @@ async def validation_error_handler(request, exc: RequestValidationError):
 app.include_router(me.router)
 app.include_router(projects_router.router)
 app.include_router(zone2_router.router)
+app.include_router(abstraction_router.router)
 app.include_router(users.router)
 app.include_router(patients.router)
 app.include_router(files.router)

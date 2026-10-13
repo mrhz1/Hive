@@ -12,6 +12,11 @@ export const queryKeys = {
     candidates: () => [...queryKeys.projects.all, 'candidates'] as const,
   },
 
+  abstraction: {
+    all: ['abstraction'] as const,
+    list: () => [...queryKeys.abstraction.all, 'list'] as const,
+    documents: (id: string) => [...queryKeys.abstraction.all, 'documents', id] as const,
+  },
   zone2: {
     all: ['zone2'] as const,
     releases: (status: string) => [...queryKeys.zone2.all, 'releases', status] as const,
