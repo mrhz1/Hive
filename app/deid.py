@@ -285,6 +285,16 @@ def _run_pipeline(
     return produced
 
 
+def boxes_applied(produced: Path) -> Optional[int]:
+    """How many areas the pipeline covered in `produced`, from the report
+    it writes next to it; None if there is no report."""
+    report = produced.with_name(produced.stem + ".report.json")
+    try:
+        return int(json.loads(report.read_text()).get("total_boxes"))
+    except (OSError, ValueError, TypeError):
+        return None
+
+
 @dataclass
 class Produced:
     path: Path
@@ -442,6 +452,7 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
             raise DeidError("The stored file is missing from disk")
 
         produced = _run_pipeline(source, source.parent / DEID_SUBFOLDER, file_id)
+        boxes = boxes_applied(produced)
 
         patient_id = _get_patient_id(record)
         info = find_document_info(
@@ -455,6 +466,7 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
             is_deidentified=True,
             deidentified_file_name=produced.name,
             de_identified_file_path=str(produced),
+            redaction_boxes=boxes,
         )
         _save_metadata(record, produced, patient_id)
         log.info("deid_succeeded", file_id=file_id, output=str(produced))

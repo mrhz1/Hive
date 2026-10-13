@@ -7,7 +7,7 @@ from fastapi import Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from app import deid_progress, document_info
+from app import deid_progress, document_info, file_corrections
 from app import intake, intake_notices, purge
 from app.audit import record_audit
 from app import uploads
@@ -859,32 +859,10 @@ def set_document_info(
             f"'{payload.document_date}' is not a date (use YYYY-MM-DD)"
         )
 
-    if not record.de_identified_file_path:
-        raise ValidationError(
-            f"'{record.original_file_name}' has no de-identified copy to rename"
-        )
-    current = resolve_stored_path(record.de_identified_file_path)
-    if not current.is_file():
-        raise ValidationError("The de-identified copy is missing from disk")
-
     info = document_info.DocumentInfo(modality=modality, date=day)
-    if document_info.renamed(current.name, info) is None:
-        raise ValidationError(f"'{current.name}' is not named like a redacted file")
-    try:
-        target = document_info.rename(current, info)
-    except FileExistsError as e:
-        raise ValidationError(str(e))
-
-    if target == current:
-        return record
-
-    changes = PatientApplicationFileUpdate(
-        deidentified_file_name=target.name,
-        de_identified_file_path=str(target),
-    )
-    if record.sanitized_file_name == current.name:
-        changes.sanitized_file_name = target.name
-    updated = crud.update_file(cursor, file_id, changes)
+    updated, old_name, new_name = file_corrections.rename_document(cursor, record, info)
+    if new_name == old_name:
+        return updated
 
     background.add_task(
         record_audit,
@@ -892,8 +870,8 @@ def set_document_info(
         entity_type="application_file",
         entity_id=file_id,
         user_id=actor.id,
-        old_values={"deidentified_file_name": current.name},
-        new_values={"deidentified_file_name": target.name},
+        old_values={"deidentified_file_name": old_name},
+        new_values={"deidentified_file_name": new_name},
         request_id=request.headers.get("X-Request-ID"),
     )
     return updated

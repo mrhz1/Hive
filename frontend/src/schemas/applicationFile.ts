@@ -37,9 +37,19 @@ export const applicationFileSchema = z.object({
   document_date: z.string().nullable().optional(),
   /** 'R': redacted by the pipeline, 'RR': by hand. */
   redaction: z.string().nullable().optional(),
+  /** Areas redaction covered; for an image, text burned into the picture. */
+  redaction_boxes: z.number().nullable().optional(),
 })
 
 export const UNKNOWN = 'UNKNOWN'
+
+/** An image whose picture had text (maybe a name) covered by redaction. */
+export function hasCoveredImageText(file: {
+  file_extension: string
+  redaction_boxes?: number | null
+}): boolean {
+  return previewKind(file.file_extension) === 'image' && (file.redaction_boxes ?? 0) > 0
+}
 
 // DICOM modality codes (app/document_info.py), the common ones first.
 const COMMON_MODALITIES = [

@@ -105,7 +105,8 @@ CREATE TABLE `patient_application_files` (
   `file_path` STRING,
   `de_identified_file_path` STRING,
   `review_status` STRING,
-  `review_note` STRING
+  `review_note` STRING,
+  `redaction_boxes` INT
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 

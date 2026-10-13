@@ -34,6 +34,7 @@ MIGRATIONS = (
     ("patient_applications", "checklist", "STRING"),
     ("patient", "details_checked_at", "STRING"),
     ("patient", "details_checked_by", "STRING"),
+    ("patient_application_files", "redaction_boxes", "INT"),
 )
 
 NEW_TABLES = ("projects", "project_patients", "project_releases", "abstraction_folders")

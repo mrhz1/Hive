@@ -22,6 +22,7 @@ import {
   deidTone,
   fileTally,
   fileSearchText,
+  hasCoveredImageText,
   formatFileSize,
   hasExtractableMetadata,
   isDeletedFile,
@@ -100,12 +101,14 @@ export function FileReviewPanel({
   const [rejecting, setRejecting] = useState<ApplicationFile | null>(null)
   const [naming, setNaming] = useState<ApplicationFile | null>(null)
   const [search, setSearch] = useState('')
+  const [onlyCoveredText, setOnlyCoveredText] = useState(false)
 
   const files = filesQuery.data ?? []
   const searchText = search.trim().toLowerCase()
-  const visible = searchText
-    ? files.filter((file) => fileSearchText(file).includes(searchText))
-    : files
+  const coveredCount = files.filter(hasCoveredImageText).length
+  const visible = files
+    .filter((file) => !searchText || fileSearchText(file).includes(searchText))
+    .filter((file) => !onlyCoveredText || hasCoveredImageText(file))
 
   const tally = fileTally(files)
 
@@ -304,6 +307,9 @@ export function FileReviewPanel({
             <Badge tone="warning">contains PII</Badge>
           )}
           {file.redaction === 'RR' ? <Badge tone="neutral">by hand</Badge> : null}
+          {hasCoveredImageText(file) ? (
+            <Badge tone="warning">text covered in picture ({file.redaction_boxes})</Badge>
+          ) : null}
         </div>
       ),
       sortValue: (file) => file.deid_status,
@@ -338,6 +344,19 @@ export function FileReviewPanel({
             aria-label="Search documents"
           />
         </div>
+        {coveredCount > 0 ? (
+          <label
+            className="flex items-center gap-2 text-sm"
+            title="Images where text, possibly a name or number, was covered in the picture. Checking them is optional; reject one if an identifier still shows."
+          >
+            <input
+              type="checkbox"
+              checked={onlyCoveredText}
+              onChange={(event) => setOnlyCoveredText(event.target.checked)}
+            />
+            Only images with covered text ({coveredCount})
+          </label>
+        ) : null}
       </div>
 
       <DataTable
