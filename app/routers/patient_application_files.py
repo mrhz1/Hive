@@ -7,7 +7,7 @@ from fastapi import Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from app import deid_progress, document_info, file_corrections
+from app import data_dictionary, deid_progress, document_info, file_corrections
 from app import intake, intake_notices, purge
 from app.audit import record_audit
 from app import uploads
@@ -442,6 +442,7 @@ def export_application_file_metadata(
         headers=("Field", "Value"),
         rows=items,
         sheet_title="Metadata",
+        dictionary=data_dictionary.METADATA_EXPORT,
     )
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")

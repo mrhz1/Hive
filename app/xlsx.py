@@ -1,5 +1,5 @@
 from io import BytesIO
-from typing import List
+from typing import List, Optional, Sequence, Tuple
 
 MIN_WIDTH = 12
 MAX_WIDTH = 80
@@ -9,7 +9,10 @@ def workbook_bytes(
     headers: List[str],
     rows: List[List[object]],
     sheet_title: str = "Sheet1",
+    dictionary: Optional[Sequence[Tuple[str, str]]] = None,
 ) -> bytes:
+    """One sheet of rows; with `dictionary`, a second "Data dictionary"
+    sheet saying what each column means (protocol 7.10)."""
     from openpyxl import Workbook
     from openpyxl.styles import Font
     from openpyxl.utils import get_column_letter
@@ -37,6 +40,17 @@ def workbook_bytes(
         )
 
     sheet.freeze_panes = "A2"
+
+    if dictionary:
+        definitions = book.create_sheet("Data dictionary")
+        definitions.append(["Column", "Meaning"])
+        for cell in definitions[1]:
+            cell.font = Font(bold=True)
+        for column, meaning in dictionary:
+            definitions.append([column, meaning])
+        definitions.column_dimensions["A"].width = 24
+        definitions.column_dimensions["B"].width = MAX_WIDTH
+        definitions.freeze_panes = "A2"
 
     buffer = BytesIO()
     book.save(buffer)
