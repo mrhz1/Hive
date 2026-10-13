@@ -32,7 +32,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from app import storage
+from app import data_dictionary, storage
 from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as applications_crud
 from app.crud import patients as patients_crud
@@ -67,6 +67,7 @@ README = """Zone 2 safe copy for project {name} ({code}), release {release}.
 patients.csv      one row per patient, by project ID
 applications.csv  their submitted applications
 documents.csv     the documents on those applications{documents_note}
+data_dictionary.csv  what every column means
 
 Patient IDs are project-only and cannot be matched to CHSS IDs here. Every
 date of a patient is moved by the same number of days (up to 5 years either
@@ -468,6 +469,11 @@ def _build(cursor, project, cohort, release_id, archive: Path, safe: Path) -> di
     _write_csv(safe / "patients.csv", PATIENT_COLUMNS, zone2["patients"])
     _write_csv(safe / "applications.csv", APPLICATION_COLUMNS, zone2["applications"])
     _write_csv(safe / "documents.csv", DOCUMENT_COLUMNS, zone2["documents"])
+    _write_csv(
+        safe / "data_dictionary.csv",
+        data_dictionary.RELEASE_HEADER,
+        [dict(zip(data_dictionary.RELEASE_HEADER, row)) for row in data_dictionary.release_rows()],
+    )
     (safe / "README.txt").write_text(
         README.format(
             name=project.name,

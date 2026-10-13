@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Response
 
+from app import data_dictionary
 from app.crud import file_metadata as crud
 from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as applications_crud
@@ -153,6 +154,7 @@ def export_file_metadata(
         headers=(*EXPORT_HEADERS, *keys),
         rows=[_export_row(row, keys) for row in rows],
         sheet_title="File metadata",
+        dictionary=data_dictionary.file_metadata_export(),
     )
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
