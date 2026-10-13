@@ -7,7 +7,7 @@ from fastapi import Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from app import deid_progress
+from app import deid_progress, document_info
 from app import intake, purge
 from app.audit import record_audit
 from app import uploads
@@ -34,6 +34,7 @@ from app.schemas import (
     BulkResult,
     DeidProgress,
     DeidProgressList,
+    DocumentInfoUpdate,
     FileMetadata,
     FileReview,
     PatientApplicationFile,
@@ -263,7 +264,8 @@ async def upload_deidentified_application_file(
         )
 
     patient_id = _known_patient_id(cursor, application) or ""
-    stored_name = deid_output_name(patient_id, extension)
+    info = document_info.find(raw_name, extension, patient_id, data)
+    stored_name = deid_output_name(patient_id, extension, info)
 
     directory = deid_dir_for(extension)
     if patient_id:
@@ -811,6 +813,78 @@ def review_application_file(
             review_note=note or None,
         ),
     )
+
+
+# Submitted applications are final; their files keep their names.
+DOCUMENT_INFO_FROZEN = ("submitted", "deleted")
+
+
+@router.put("/files/{file_id}/document-info", response_model=PatientApplicationFile)
+def set_document_info(
+    file_id: str,
+    payload: DocumentInfoUpdate,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("application:update")),
+):
+    """Set the modality and date a redacted file is named by, renaming it on disk."""
+    record = crud.get_file_or_404(cursor, file_id)
+    purge.refuse_if_deleted(record)
+
+    application = applications_crud.get_application(cursor, record.application_id)
+    if getattr(application, "status", None) in DOCUMENT_INFO_FROZEN:
+        raise ValidationError(
+            f"The application is '{application.status}', so its files can't be renamed"
+        )
+
+    modality = document_info.clean_modality(payload.modality)
+    if modality is None:
+        raise ValidationError(f"'{payload.modality}' is not a known modality")
+    day = document_info.clean_date(payload.document_date)
+    if day is None:
+        raise ValidationError(
+            f"'{payload.document_date}' is not a date (use YYYY-MM-DD)"
+        )
+
+    if not record.de_identified_file_path:
+        raise ValidationError(
+            f"'{record.original_file_name}' has no de-identified copy to rename"
+        )
+    current = resolve_stored_path(record.de_identified_file_path)
+    if not current.is_file():
+        raise ValidationError("The de-identified copy is missing from disk")
+
+    info = document_info.DocumentInfo(modality=modality, date=day)
+    if document_info.renamed(current.name, info) is None:
+        raise ValidationError(f"'{current.name}' is not named like a redacted file")
+    try:
+        target = document_info.rename(current, info)
+    except FileExistsError as e:
+        raise ValidationError(str(e))
+
+    if target == current:
+        return record
+
+    changes = PatientApplicationFileUpdate(
+        deidentified_file_name=target.name,
+        de_identified_file_path=str(target),
+    )
+    if record.sanitized_file_name == current.name:
+        changes.sanitized_file_name = target.name
+    updated = crud.update_file(cursor, file_id, changes)
+
+    background.add_task(
+        record_audit,
+        action="UPDATE",
+        entity_type="application_file",
+        entity_id=file_id,
+        user_id=actor.id,
+        old_values={"deidentified_file_name": current.name},
+        new_values={"deidentified_file_name": target.name},
+        request_id=request.headers.get("X-Request-ID"),
+    )
+    return updated
 
 
 @router.post("/files/{file_id}/purge", response_model=PatientApplicationFile)

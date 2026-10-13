@@ -1,8 +1,16 @@
 from datetime import date, datetime, timezone
 from typing import Any, List, Mapping, Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
+from app.document_info import parse_name as parse_document_name
 from app.ids import (
     code_formats,
     describe_code_formats,
@@ -240,6 +248,26 @@ class PatientApplicationFile(BaseModel):
     review_status: str = "pending"
     review_note: Optional[str] = None
 
+    @computed_field
+    @property
+    def modality(self) -> Optional[str]:
+        parts = parse_document_name(self.deidentified_file_name or "")
+        return parts and parts["modality"]
+
+    @computed_field
+    @property
+    def document_date(self) -> Optional[str]:
+        parts = parse_document_name(self.deidentified_file_name or "")
+        return parts and parts["day"]
+
+
+class DocumentInfoUpdate(BaseModel):
+    """Modality code (or an alias like MRI) and date (YYYY-MM-DD or YYYYMMDD);
+    either can be UNKNOWN."""
+
+    modality: str
+    document_date: str
+
 
 REVIEW_STATUSES = ("pending", "approved", "rejected")
 
@@ -289,6 +317,7 @@ class PatientApplicationFileUpdate(BaseModel):
     is_deidentified: Optional[bool] = None
     deidentified_file_name: Optional[str] = None
     de_identified_file_path: Optional[str] = None
+    sanitized_file_name: Optional[str] = None
     review_status: Optional[str] = Field(
         default=None, pattern="^(pending|approved|rejected|deleted)$"
     )

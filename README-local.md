@@ -273,9 +273,21 @@ return 409 (checked with a `SELECT`, since Hive has no constraints).
 
 - Uploaded document: `<code>-<type>-<date>-<16-digit serial>.<ext>`
   (`storage.document_name`).
-- De-identified copy: `<code>_<date>_<16-digit serial>.<ext>`, e.g.
-  `AA1234_20260924_1790261077741000.pdf` (`deid.deid_output_name`). The date
-  and serial are from the de-identification run.
+- De-identified copy: `<code>_<modality>_<date>_<16-digit serial>.<ext>`,
+  e.g. `AA1234_MR_20190312_1790261077741000.pdf` (`deid.deid_output_name`).
+  The modality and date come from `app/document_info.py`:
+  - DICOM: the `Modality` tag and the first of `StudyDate`, `SeriesDate`,
+    `AcquisitionDate`, `ContentDate`, falling back to the file name.
+  - PDF and Word: the file name as received. The modality is a whole word
+    (`CT`, `MR`, `MRI`, `Echo`, `X-ray`, ...; aliases become DICOM codes, so
+    `MRI` is `MR`). The date is `YYYYMMDD` or `YYYY-MM-DD` (or with `_`, `.`,
+    a space).
+  - Not found: `UNKNOWN`. Staff set both with **Set modality & date** on the
+    application's files (`PUT /files/{id}/document-info`), which renames the
+    copy and its sidecar. Not allowed once the application is submitted.
+  - The API returns `modality` and `document_date` on each file, read from
+    the name. Names from before modalities (`<code>_<date>_<serial>`) still
+    work and get a modality when renamed.
 
 The OCR pipeline names its outputs after the input file, so
 `deid._rename_outputs` renames the copy, text and report together after a

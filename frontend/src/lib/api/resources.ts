@@ -328,6 +328,14 @@ export const applicationFilesApi = {
       })
     ),
 
+  setDocumentInfo: (fileId: string, modality: string, documentDate: string) =>
+    request(applicationFileSchema, () =>
+      api.put(`/files/${fileId}/document-info`, {
+        modality,
+        document_date: documentDate,
+      })
+    ),
+
   metadata: (fileId: string, deidentified = false) =>
     request(fileMetadataSchema, () =>
       api.get(`/files/${fileId}/metadata`, {
