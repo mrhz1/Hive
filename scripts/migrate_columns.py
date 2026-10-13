@@ -32,6 +32,8 @@ MIGRATIONS = (
     ("patient_applications", "assigned_to_id", "STRING"),
     ("patient_applications", "original_file_path", "STRING"),
     ("patient_applications", "checklist", "STRING"),
+    ("patient", "details_checked_at", "STRING"),
+    ("patient", "details_checked_by", "STRING"),
 )
 
 NEW_TABLES = ("projects", "project_patients", "project_releases", "abstraction_folders")

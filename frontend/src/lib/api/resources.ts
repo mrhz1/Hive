@@ -18,6 +18,7 @@ import {
   type AuditLogFilters,
 } from '@/schemas/log'
 import {
+  importResultSchema,
   PATIENT_FIELD_NAMES,
   patientListSchema,
   patientSchema,
@@ -177,6 +178,25 @@ export const patientsApi = {
       await api.delete(`/patients/${id}`)
     } catch (error) {
       throw toApiError(error)
+    }
+  },
+  confirmDetails: (id: string) =>
+    request(patientSchema, () => api.post(`/patients/${id}/confirm-details`)),
+  importFile: (file: File, apply: boolean) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request(importResultSchema, () =>
+      api.post(apply ? '/patients/import' : '/patients/import/preview', form)
+    )
+  },
+  importTemplate: async (): Promise<Blob> => {
+    try {
+      const response = await api.get('/patients/import/template', {
+        responseType: 'blob',
+      })
+      return response.data as Blob
+    } catch (error) {
+      throw await blobError(error)
     }
   },
 }

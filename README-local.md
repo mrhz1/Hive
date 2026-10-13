@@ -362,6 +362,29 @@ is marked `failed` on the job and the others continue (`partial`). Job
 progress is kept in memory, so after a restart `/upload-jobs/{id}` returns
 404, but the files already processed are fine.
 
+### Bulk patient import and checked details
+
+**Import** on the Patients page (`app/patient_import.py`) loads patients
+from an Excel or CSV file: download the template, upload, preview, import.
+
+- Columns are matched by the template's labels ("First name", "Date of
+  birth") or the database names (`fstname`, `dt_b`); labels win, so "City"
+  is the patient's city. Unknown columns are listed and left out.
+- New codes are created (in batches of 200; one INSERT per row is slow on
+  Hive). Existing patients only get their empty fields filled; a different
+  value is shown as a conflict and kept as it is.
+- Rows with a bad or repeated code, a date that isn't an Excel date or
+  YYYY-MM-DD, a bad email, or another patient's email/phone are skipped.
+- Needs `patient:create` and `patient:update`. One audit entry per import.
+
+**Checked details** (`patient.details_checked_at`, `details_checked_by`):
+patients made by intake or the import start unchecked; their first
+application can't be submitted until someone clicks *Details are correct*
+in step 1 (`POST /patients/{id}/confirm-details`). Patients typed in by hand
+count as checked. Patients already in the database before this column
+start unchecked too. Add the columns with
+`python scripts/migrate_columns.py --apply`.
+
 ### Enrollment checklist
 
 Submitting an application asks for the four checks (all files submitted,

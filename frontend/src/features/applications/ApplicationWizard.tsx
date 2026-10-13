@@ -4,8 +4,10 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Card, PageHeader } from '@/components/ui/Misc'
 import { PatientForm } from '@/features/patients/PatientForm'
+import { Can } from '@/components/PermissionGate'
 import {
   useApplicationFiles,
+  useConfirmPatientDetails,
   useCreateApplication,
   useRejectApplication,
   useUpdateApplication,
@@ -83,6 +85,7 @@ export function ApplicationWizard({
   const createApplication = useCreateApplication()
   const updateApplication = useUpdateApplication()
   const reject = useRejectApplication()
+  const confirmDetails = useConfirmPatientDetails()
 
   const [patient, setPatient] = useState<Patient | undefined>(initialPatient)
   const [current, setCurrent] = useState<StepNumber>(1)
@@ -190,6 +193,15 @@ export function ApplicationWizard({
   const rejected = rejectedCount(files.data ?? [])
 
   const locked = isReadOnly(record?.status)
+  const unchecked = Boolean(patient && !patient.details_checked_at)
+
+  function confirmPatientDetails() {
+    if (!patient) return
+    void confirmDetails
+      .mutateAsync(patient.id)
+      .then(setPatient)
+      .catch(() => undefined)
+  }
 
   return (
     <div className="space-y-6">
@@ -252,6 +264,24 @@ export function ApplicationWizard({
 
           {code && !choosingCode ? (
             <>
+              {unchecked && !locked ? (
+                <Card className="flex flex-wrap items-center justify-between gap-3 border-amber-500/40 p-4 text-sm">
+                  <span>
+                    <strong>Patient details not checked yet.</strong> This patient came
+                    from the old data or the bulk import. Check the details below, save
+                    any corrections, then confirm. It is asked only once.
+                  </span>
+                  <Can permission="patient:update">
+                    <Button
+                      size="sm"
+                      isLoading={confirmDetails.isPending}
+                      onClick={confirmPatientDetails}
+                    >
+                      Details are correct
+                    </Button>
+                  </Can>
+                </Card>
+              ) : null}
               {!patient ? (
                 <Card className="p-4 text-sm text-[rgb(var(--foreground-muted))]">
                   No patient has code <strong className="font-mono">{code}</strong> yet.
@@ -343,6 +373,13 @@ export function ApplicationWizard({
               {...(record ? { application: record } : {})}
             />
 
+            {!locked && unchecked ? (
+              <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
+                The patient&apos;s details have not been checked yet. Confirm them in step
+                1 before submitting.
+              </Card>
+            ) : null}
+
             {!locked && undecided > 0 ? (
               <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
                 {undecided} document{undecided === 1 ? '' : 's'} still{' '}
@@ -382,13 +419,15 @@ export function ApplicationWizard({
                   ) : null}
                   <Button
                     isLoading={isSaving}
-                    disabled={undecided > 0 || rejected > 0}
+                    disabled={unchecked || undecided > 0 || rejected > 0}
                     title={
-                      undecided > 0
-                        ? `${undecided} document${undecided === 1 ? '' : 's'} still need a decision`
-                        : rejected > 0
-                          ? `${rejected} document${rejected === 1 ? '' : 's'} rejected in step 2`
-                          : undefined
+                      unchecked
+                        ? "Confirm the patient's details in step 1 first"
+                        : undecided > 0
+                          ? `${undecided} document${undecided === 1 ? '' : 's'} still need a decision`
+                          : rejected > 0
+                            ? `${rejected} document${rejected === 1 ? '' : 's'} rejected in step 2`
+                            : undefined
                     }
                     onClick={() => setChecking(true)}
                   >

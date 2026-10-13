@@ -22,6 +22,7 @@ import { Route as LogsIndexRouteImport } from './routes/logs/index'
 import { Route as LogsLogIdRouteImport } from './routes/logs/$logId'
 import { Route as MetadataIndexRouteImport } from './routes/metadata/index'
 import { Route as PatientsIndexRouteImport } from './routes/patients/index'
+import { Route as PatientsImportRouteImport } from './routes/patients/import'
 import { Route as PatientsNewRouteImport } from './routes/patients/new'
 import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
@@ -101,6 +102,11 @@ const PatientsIndexRoute = PatientsIndexRouteImport.update({
   path: '/patients/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PatientsImportRoute = PatientsImportRouteImport.update({
+  id: '/patients/import',
+  path: '/patients/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PatientsNewRoute = PatientsNewRouteImport.update({
   id: '/patients/new',
   path: '/patients/new',
@@ -167,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/applications/$applicationId': typeof ApplicationsApplicationIdRoute
   '/logs/$logId': typeof LogsLogIdRoute
+  '/patients/import': typeof PatientsImportRoute
   '/patients/new': typeof PatientsNewRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/roles/new': typeof RolesNewRoute
@@ -194,6 +201,7 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/applications/$applicationId': typeof ApplicationsApplicationIdRoute
   '/logs/$logId': typeof LogsLogIdRoute
+  '/patients/import': typeof PatientsImportRoute
   '/patients/new': typeof PatientsNewRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/roles/new': typeof RolesNewRoute
@@ -222,6 +230,7 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/applications/$applicationId': typeof ApplicationsApplicationIdRoute
   '/logs/$logId': typeof LogsLogIdRoute
+  '/patients/import': typeof PatientsImportRoute
   '/patients/new': typeof PatientsNewRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/roles/new': typeof RolesNewRoute
@@ -251,6 +260,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/applications/$applicationId'
     | '/logs/$logId'
+    | '/patients/import'
     | '/patients/new'
     | '/projects/$projectId'
     | '/roles/new'
@@ -278,6 +288,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/applications/$applicationId'
     | '/logs/$logId'
+    | '/patients/import'
     | '/patients/new'
     | '/projects/$projectId'
     | '/roles/new'
@@ -305,6 +316,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/applications/$applicationId'
     | '/logs/$logId'
+    | '/patients/import'
     | '/patients/new'
     | '/projects/$projectId'
     | '/roles/new'
@@ -333,6 +345,7 @@ export interface RootRouteChildren {
   ProfileRoute: typeof ProfileRoute
   ApplicationsApplicationIdRoute: typeof ApplicationsApplicationIdRoute
   LogsLogIdRoute: typeof LogsLogIdRoute
+  PatientsImportRoute: typeof PatientsImportRoute
   PatientsNewRoute: typeof PatientsNewRoute
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
   RolesNewRoute: typeof RolesNewRoute
@@ -449,6 +462,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PatientsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/patients/import': {
+      id: '/patients/import'
+      path: '/patients/import'
+      fullPath: '/patients/import'
+      preLoaderRoute: typeof PatientsImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/patients/new': {
       id: '/patients/new'
       path: '/patients/new'
@@ -541,6 +561,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileRoute: ProfileRoute,
   ApplicationsApplicationIdRoute: ApplicationsApplicationIdRoute,
   LogsLogIdRoute: LogsLogIdRoute,
+  PatientsImportRoute: PatientsImportRoute,
   PatientsNewRoute: PatientsNewRoute,
   ProjectsProjectIdRoute: ProjectsProjectIdRoute,
   RolesNewRoute: RolesNewRoute,

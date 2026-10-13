@@ -59,7 +59,9 @@ CREATE TABLE `patient` (
   `dt_b` DATE,
   `dt_d` DATE,
   `original_file_path` STRING,
-  `deidentified_file_path` STRING
+  `deidentified_file_path` STRING,
+  `details_checked_at` STRING,
+  `details_checked_by` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
