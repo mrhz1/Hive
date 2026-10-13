@@ -31,6 +31,9 @@ export const DEIDENTIFIER_ACTIONS = ['view', 'run', 'notify'] as const
 
 export const ZONE2_ACTIONS = ['prepare', 'review'] as const
 
+// manage: lock/unlock the app (and keep using it while locked), record incidents.
+export const SECURITY_ACTIONS = ['view', 'manage'] as const
+
 export type FilesAction =
   (typeof FILES_ACTIONS)[number] | (typeof FILE_REVIEW_ACTIONS)[number]
 
@@ -40,6 +43,7 @@ export type Permission =
   | `rejection:${(typeof REJECTION_ACTIONS)[number]}`
   | `deidentifier:${(typeof DEIDENTIFIER_ACTIONS)[number]}`
   | `zone2:${(typeof ZONE2_ACTIONS)[number]}`
+  | `security:${(typeof SECURITY_ACTIONS)[number]}`
 
 export const ALL_PERMISSIONS: Permission[] = [
   ...MODELS.flatMap((model) =>
@@ -50,6 +54,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   ...REJECTION_ACTIONS.map((action) => `rejection:${action}` as Permission),
   ...DEIDENTIFIER_ACTIONS.map((action) => `deidentifier:${action}` as Permission),
   ...ZONE2_ACTIONS.map((action) => `zone2:${action}` as Permission),
+  ...SECURITY_ACTIONS.map((action) => `security:${action}` as Permission),
 ]
 
 export const PERMISSION_GROUPS: ReadonlyArray<{
@@ -67,6 +72,7 @@ export const PERMISSION_GROUPS: ReadonlyArray<{
     rowLabel: 'de-identifier',
   },
   { models: ['zone2'], actions: ZONE2_ACTIONS, rowLabel: 'zone 2' },
+  { models: ['security'], actions: SECURITY_ACTIONS, rowLabel: 'security' },
 ]
 
 const ACTION_LABELS: Record<string, string> = {

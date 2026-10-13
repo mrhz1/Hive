@@ -6,6 +6,7 @@ import {
   FileWarning,
   FolderDown,
   FolderKanban,
+  ShieldAlert,
   Inbox,
   LayoutDashboard,
   PackageCheck,
@@ -84,6 +85,12 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'zone2:review',
   },
   { label: 'Roles', to: '/roles', icon: Shield, permission: 'role:view' },
+  {
+    label: 'Security',
+    to: '/security',
+    icon: ShieldAlert,
+    permission: 'security:view',
+  },
   { label: 'Audit log', to: '/logs', icon: ClipboardList, permission: 'log:view' },
   {
     label: 'Access log',

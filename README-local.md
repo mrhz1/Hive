@@ -504,6 +504,36 @@ python scripts/access_alerts.py --window 60 --dry-run
 
 It only sees requests that reach the API.
 
+### Security: lockdown and incidents (section 4)
+
+- **Lockdown** (`app/lockdown.py`, Security page or the banner): a user with
+  `security:manage` locks the app with a reason and level; everyone else gets
+  503 `locked` on every call except `/me` and `/security/lockdown`, and
+  every page shows a banner. Locking and unlocking are emailed and audited.
+  The state is `SECURITY_STATE_DIR/lockdown.json`, shared by all instances.
+- **Alert levels** (`scripts/access_alerts.py`): identified downloads and
+  auth failures are high, exports and denials low; any rule turns critical
+  at `ALERT_CRITICAL_FACTOR` (3) times its limit. Low goes to
+  `ALERT_EMAIL_LOW_TO` (the application specialist), high and critical to
+  `ALERT_EMAIL_TO` (Program Manager, specialist, Host IT). At
+  `ALERT_LOCKDOWN_LEVEL` (critical) or above the job locks the app itself;
+  `none` turns that off.
+- **Incidents** (`app/incidents.py`, table `incidents`): title, level,
+  detection time, what happened, data affected, risk, containment, affected
+  parties. The preliminary report is due 24 h after detection and the full
+  one 72 h; mark each as sent. High and critical incidents are emailed when
+  recorded. `scripts/incident_reminders.py` (hourly Job) emails once per
+  report 6 h before it is due or when overdue. *Report (.docx)* exports the
+  breach report. Closing needs the data affected, the containment and the
+  full report sent.
+
+### Data dictionary (7.10)
+
+Every Zone 2 safe copy has `data_dictionary.csv` (file, column, type,
+meaning, values) and the Excel exports a "Data dictionary" sheet
+(`app/data_dictionary.py`). A test fails if a released column has no
+definition.
+
 ### Logging
 
 structlog, with `request_id`, `source_ip` and `user_agent` on every line of

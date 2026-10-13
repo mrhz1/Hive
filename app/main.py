@@ -24,6 +24,7 @@ from app.routers import (
     patients,
     projects as projects_router,
     roles,
+    security as security_router,
     users,
     zone2 as zone2_router,
 )
@@ -150,6 +151,7 @@ app.include_router(me.router)
 app.include_router(projects_router.router)
 app.include_router(zone2_router.router)
 app.include_router(abstraction_router.router)
+app.include_router(security_router.router)
 app.include_router(users.router)
 app.include_router(patients.router)
 app.include_router(files.router)
