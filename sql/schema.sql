@@ -243,3 +243,30 @@ CREATE TABLE `abstraction_folders` (
   `deleted_reason` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
+
+-- Security incidents and breach reports (protocol section 4, app/incidents.py).
+-- Times are ISO strings in UTC; the 24 h and 72 h report deadlines are
+-- counted from detected_at.
+DROP TABLE IF EXISTS `incidents`;
+
+CREATE TABLE `incidents` (
+  `id` STRING,
+  `title` STRING,
+  `level` STRING,
+  `status` STRING,
+  `detected_at` STRING,
+  `description` STRING,
+  `data_affected` STRING,
+  `risk` STRING,
+  `containment` STRING,
+  `affected_parties` STRING,
+  `preliminary_sent_at` STRING,
+  `full_sent_at` STRING,
+  `preliminary_reminded_at` STRING,
+  `full_reminded_at` STRING,
+  `created_by_id` STRING,
+  `created_at` TIMESTAMP,
+  `updated_at` STRING,
+  `closed_at` STRING
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');

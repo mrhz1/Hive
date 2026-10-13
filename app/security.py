@@ -1,6 +1,7 @@
 import structlog
 from fastapi import Depends, Request
 
+from app import lockdown
 from app.access_log import AUTH_FAILURE, DENIED, FAILURE, record_access
 from app.crud.users import _find_by_username
 from app.db import get_cursor
@@ -27,6 +28,9 @@ MODEL_ACTIONS["zone2"] = ("prepare", "review")
 # Temporary abstraction folders (app/abstraction.py): view and update your
 # own, create them; delete covers everyone's (the application specialist).
 MODEL_ACTIONS["abstraction"] = PERMISSION_ACTIONS
+# Section 4: view incidents and the lock; manage = lock/unlock the app (and
+# keep using it while locked) and record incidents.
+MODEL_ACTIONS["security"] = ("view", "manage")
 MODEL_ACTIONS["files"] = (
     "read",
     "upload",
@@ -65,6 +69,7 @@ def _current_username(request: Request) -> str:
 
 
 def get_current_user(
+    request: Request,
     username: str = Depends(_current_username),
     cursor=Depends(get_cursor),
 ) -> User:
@@ -87,6 +92,9 @@ def get_current_user(
         raise AuthError(f"User '{username}' is inactive")
 
     structlog.contextvars.bind_contextvars(actor_id=user.id, actor_role=user.role_name)
+    # The route's own path, not the URL: behind a proxy the URL has a prefix.
+    route = request.scope.get("route")
+    lockdown.refuse_if_locked(user.permissions, getattr(route, "path", request.url.path))
     return user
 
 

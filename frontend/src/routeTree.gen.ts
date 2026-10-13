@@ -29,6 +29,7 @@ import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projec
 import { Route as RejectionsIndexRouteImport } from './routes/rejections/index'
 import { Route as RolesIndexRouteImport } from './routes/roles/index'
 import { Route as RolesNewRouteImport } from './routes/roles/new'
+import { Route as SecurityIndexRouteImport } from './routes/security/index'
 import { Route as UsersIndexRouteImport } from './routes/users/index'
 import { Route as UsersNewRouteImport } from './routes/users/new'
 import { Route as Zone2InboxIndexRouteImport } from './routes/zone2-inbox/index'
@@ -137,6 +138,11 @@ const RolesNewRoute = RolesNewRouteImport.update({
   path: '/roles/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SecurityIndexRoute = SecurityIndexRouteImport.update({
+  id: '/security/',
+  path: '/security/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const UsersIndexRoute = UsersIndexRouteImport.update({
   id: '/users/',
   path: '/users/',
@@ -190,6 +196,7 @@ export interface FileRoutesByFullPath {
   '/projects/': typeof ProjectsIndexRoute
   '/rejections/': typeof RejectionsIndexRoute
   '/roles/': typeof RolesIndexRoute
+  '/security/': typeof SecurityIndexRoute
   '/users/': typeof UsersIndexRoute
   '/zone2-inbox/': typeof Zone2InboxIndexRoute
   '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
@@ -218,6 +225,7 @@ export interface FileRoutesByTo {
   '/projects': typeof ProjectsIndexRoute
   '/rejections': typeof RejectionsIndexRoute
   '/roles': typeof RolesIndexRoute
+  '/security': typeof SecurityIndexRoute
   '/users': typeof UsersIndexRoute
   '/zone2-inbox': typeof Zone2InboxIndexRoute
   '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
@@ -247,6 +255,7 @@ export interface FileRoutesById {
   '/projects/': typeof ProjectsIndexRoute
   '/rejections/': typeof RejectionsIndexRoute
   '/roles/': typeof RolesIndexRoute
+  '/security/': typeof SecurityIndexRoute
   '/users/': typeof UsersIndexRoute
   '/zone2-inbox/': typeof Zone2InboxIndexRoute
   '/patients/$patientId/edit': typeof PatientsPatientIdEditRoute
@@ -277,6 +286,7 @@ export interface FileRouteTypes {
     | '/projects/'
     | '/rejections/'
     | '/roles/'
+    | '/security/'
     | '/users/'
     | '/zone2-inbox/'
     | '/patients/$patientId/edit'
@@ -305,6 +315,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/rejections'
     | '/roles'
+    | '/security'
     | '/users'
     | '/zone2-inbox'
     | '/patients/$patientId/edit'
@@ -333,6 +344,7 @@ export interface FileRouteTypes {
     | '/projects/'
     | '/rejections/'
     | '/roles/'
+    | '/security/'
     | '/users/'
     | '/zone2-inbox/'
     | '/patients/$patientId/edit'
@@ -362,6 +374,7 @@ export interface RootRouteChildren {
   ProjectsIndexRoute: typeof ProjectsIndexRoute
   RejectionsIndexRoute: typeof RejectionsIndexRoute
   RolesIndexRoute: typeof RolesIndexRoute
+  SecurityIndexRoute: typeof SecurityIndexRoute
   UsersIndexRoute: typeof UsersIndexRoute
   Zone2InboxIndexRoute: typeof Zone2InboxIndexRoute
   PatientsPatientIdEditRoute: typeof PatientsPatientIdEditRoute
@@ -511,6 +524,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RolesNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/security/': {
+      id: '/security/'
+      path: '/security'
+      fullPath: '/security/'
+      preLoaderRoute: typeof SecurityIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/users/': {
       id: '/users/'
       path: '/users'
@@ -578,6 +598,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProjectsIndexRoute: ProjectsIndexRoute,
   RejectionsIndexRoute: RejectionsIndexRoute,
   RolesIndexRoute: RolesIndexRoute,
+  SecurityIndexRoute: SecurityIndexRoute,
   UsersIndexRoute: UsersIndexRoute,
   Zone2InboxIndexRoute: Zone2InboxIndexRoute,
   PatientsPatientIdEditRoute: PatientsPatientIdEditRoute,

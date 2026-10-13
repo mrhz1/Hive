@@ -28,6 +28,7 @@ from app.access_log import AUTH_FAILURE, DENIED, DOWNLOAD, EXPORT  # noqa: E402
 from app.crud import access_log as crud  # noqa: E402
 from app.db import hive_cursor  # noqa: E402
 from app.logging_setup import configure_logging, get_logger  # noqa: E402
+from app import lockdown  # noqa: E402
 from app.mailer import send_email  # noqa: E402
 
 log = get_logger(__name__)
@@ -50,6 +51,7 @@ def rules():
             "identified_only": True,
             "outcome": None,
             "limit": _threshold("ALERT_DOWNLOAD_LIMIT", 50),
+            "level": "high",
             "why": "Bulk retrieval of identified documents by one account.",
         },
         {
@@ -58,6 +60,7 @@ def rules():
             "identified_only": False,
             "outcome": None,
             "limit": _threshold("ALERT_EXPORT_LIMIT", 5),
+            "level": "low",
             "why": "Exports leave with many records at once.",
         },
         {
@@ -66,6 +69,7 @@ def rules():
             "identified_only": False,
             "outcome": "denied",
             "limit": _threshold("ALERT_DENIED_LIMIT", 15),
+            "level": "low",
             "why": "Repeated refusals across resources look like probing.",
         },
         {
@@ -74,6 +78,7 @@ def rules():
             "identified_only": False,
             "outcome": "failure",
             "limit": _threshold("ALERT_AUTH_FAILURE_LIMIT", 10),
+            "level": "high",
             "why": (
                 "Only failures that reached the app are here, the proxy "
                 "sees the rest, and those logs have to be read there."
@@ -82,9 +87,34 @@ def rules():
     )
 
 
-def recipients():
-    raw = os.environ.get("ALERT_EMAIL_TO") or ""
-    return [address.strip() for address in raw.split(",") if address.strip()]
+LEVELS = ("low", "high", "critical")
+
+
+def recipients(level="high"):
+    """low -> ALERT_EMAIL_LOW_TO (the application specialist; falls back to
+    ALERT_EMAIL_TO), high and critical -> ALERT_EMAIL_TO (Program Manager,
+    application specialist, Host IT)."""
+    return lockdown.contacts(level)
+
+
+def level_for(rule, hits):
+    """The rule's level, raised to critical once hits reach
+    ALERT_CRITICAL_FACTOR (3) times its limit."""
+    factor = _threshold("ALERT_CRITICAL_FACTOR", 3)
+    if factor > 0 and hits >= factor * rule["limit"]:
+        return "critical"
+    return rule["level"]
+
+
+def lockdown_level():
+    """At or above this level the app is locked at once (ALERT_LOCKDOWN_LEVEL:
+    high, critical (default) or none)."""
+    value = (os.environ.get("ALERT_LOCKDOWN_LEVEL") or "critical").strip().lower()
+    return value if value in LEVELS else None
+
+
+def _rank(level):
+    return LEVELS.index(level) if level in LEVELS else -1
 
 
 def breaches(cursor, since, day_from):
@@ -109,6 +139,7 @@ def breaches(cursor, since, day_from):
                 found.append(
                     {
                         "rule": rule["name"],
+                        "level": level_for(rule, int(hits)),
                         "why": rule["why"],
                         "actor": actor_username or actor_id or "(unknown)",
                         "hits": int(hits),
@@ -127,7 +158,7 @@ def message(found, window_minutes, since):
         "",
     ]
     for item in found:
-        lines.append(f"* {item['rule']}: {item['actor']}")
+        lines.append(f"* [{item['level']}] {item['rule']}: {item['actor']}")
         lines.append(
             f"    {item['hits']} events (threshold {item['limit']}), "
             f"{item['patients']} distinct patients"
@@ -181,13 +212,33 @@ def main(argv=None) -> int:
     if args.dry_run:
         return 0
 
-    to = recipients()
-    if not to:
-        log.error("access_alerts_no_recipients", detail="set ALERT_EMAIL_TO")
-        return 1
+    top = max((item["level"] for item in found), key=_rank)
+    locked = None
+    floor = lockdown_level()
+    if floor and _rank(top) >= _rank(floor) and not lockdown.state(fresh=True).locked:
+        worst = [i for i in found if i["level"] == top]
+        reason = "; ".join(f"{i['rule']} by {i['actor']} ({i['hits']})" for i in worst)
+        locked = lockdown.lock(f"Automatic: {reason}", top, "access-alerts")
+        log.warning("access_alerts_locked_app", level=top)
 
-    send_email(to, f"Hive: {len(found)} access threshold(s) crossed", body)
-    return 0
+    by_audience = {}
+    for item in found:
+        audience = "low" if item["level"] == "low" else "high"
+        by_audience.setdefault(audience, []).append(item)
+
+    status = 0
+    for audience, items in by_audience.items():
+        to = recipients(audience)
+        if not to:
+            log.error("access_alerts_no_recipients", detail="set ALERT_EMAIL_TO")
+            status = 1
+            continue
+        body = message(items, args.window, since)
+        if locked and audience == "high":
+            body = "THE APP HAS BEEN LOCKED. Unlock it from the Security page.\n\n" + body
+        worst = max((i["level"] for i in items), key=_rank)
+        send_email(to, f"Hive [{worst}]: {len(items)} access threshold(s) crossed", body)
+    return status
 
 
 if __name__ == "__main__":

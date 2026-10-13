@@ -12,6 +12,13 @@ import {
 } from '@/schemas/abstraction'
 import { accessLogListSchema, type AccessLogFilters } from '@/schemas/accessLog'
 import {
+  incidentListSchema,
+  incidentSchema,
+  lockdownSchema,
+  type IncidentPayload,
+  type Level,
+} from '@/schemas/security'
+import {
   auditLogListSchema,
   auditLogSchema,
   type AuditLog,
@@ -531,6 +538,31 @@ export const zone2Api = {
     request(releaseSummarySchema, () =>
       api.post(`/zone2/releases/${id}/documents/${documentId}/flag`, { reason })
     ),
+}
+
+export const securityApi = {
+  lockdown: () => request(lockdownSchema, () => api.get('/security/lockdown')),
+  lock: (reason: string, level: Level) =>
+    request(lockdownSchema, () => api.post('/security/lockdown', { reason, level })),
+  unlock: (reason: string) =>
+    request(lockdownSchema, () => api.post('/security/unlock', { reason })),
+  incidents: () => request(incidentListSchema, () => api.get('/incidents')),
+  createIncident: (values: IncidentPayload) =>
+    request(incidentSchema, () => api.post('/incidents', values)),
+  updateIncident: (id: string, values: IncidentPayload) =>
+    request(incidentSchema, () => api.put(`/incidents/${id}`, values)),
+  markSent: (id: string, report: 'preliminary' | 'full') =>
+    request(incidentSchema, () => api.post(`/incidents/${id}/sent`, { report })),
+  close: (id: string) =>
+    request(incidentSchema, () => api.post(`/incidents/${id}/close`)),
+  report: async (id: string): Promise<Blob> => {
+    try {
+      const response = await api.get(`/incidents/${id}/report`, { responseType: 'blob' })
+      return response.data as Blob
+    } catch (error) {
+      throw await blobError(error)
+    }
+  },
 }
 
 export const meApi = {

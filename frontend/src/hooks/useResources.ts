@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { createCrudHooks, errorMessage } from './createCrudHooks'
 import {
+  securityApi,
   abstractionApi,
   accessLogsApi,
   applicationsApi,
@@ -729,6 +730,94 @@ export function useAttachIntakeFiles(applicationId: string) {
 }
 
 // --- projects and Zone 2 ------------------------------------------------
+
+export function useLockdown() {
+  return useQuery({
+    queryKey: queryKeys.security.lockdown(),
+    queryFn: () => securityApi.lockdown(),
+    refetchInterval: 30_000,
+  })
+}
+
+export function useIncidents(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.security.incidents(),
+    queryFn: () => securityApi.incidents(),
+    enabled,
+  })
+}
+
+function useSecurityMutation<TVariables, TResult>(
+  mutationFn: (variables: TVariables) => Promise<TResult>,
+  success: string,
+  failure: string
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.security.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success(success)
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, failure))
+    },
+  })
+}
+
+export function useLockApp() {
+  return useSecurityMutation(
+    (variables: { reason: string; level: 'low' | 'high' | 'critical' }) =>
+      securityApi.lock(variables.reason, variables.level),
+    'The app is locked',
+    'Could not lock the app'
+  )
+}
+
+export function useUnlockApp() {
+  return useSecurityMutation(
+    (reason: string) => securityApi.unlock(reason),
+    'The app is unlocked',
+    'Could not unlock the app'
+  )
+}
+
+export function useCreateIncident() {
+  return useSecurityMutation(
+    securityApi.createIncident,
+    'Incident recorded',
+    'Could not record the incident'
+  )
+}
+
+export function useUpdateIncident() {
+  return useSecurityMutation(
+    (variables: {
+      id: string
+      values: Parameters<typeof securityApi.updateIncident>[1]
+    }) => securityApi.updateIncident(variables.id, variables.values),
+    'Incident saved',
+    'Could not save the incident'
+  )
+}
+
+export function useMarkReportSent() {
+  return useSecurityMutation(
+    (variables: { id: string; report: 'preliminary' | 'full' }) =>
+      securityApi.markSent(variables.id, variables.report),
+    'Marked as sent',
+    'Could not mark it as sent'
+  )
+}
+
+export function useCloseIncident() {
+  return useSecurityMutation(
+    securityApi.close,
+    'Incident closed',
+    'Could not close the incident'
+  )
+}
 
 export function useAbstractionFolders() {
   return useQuery({
