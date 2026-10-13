@@ -24,6 +24,7 @@ import {
 import { ApiError } from '@/lib/api/client'
 import {
   PROJECT_STATUS_LABELS,
+  groupByPrefix,
   projectTone,
   releaseTone,
   type ProjectDetail,
@@ -277,6 +278,7 @@ function CohortPicker({
   const all = candidates.data ?? []
   const shown = text ? all.filter((c) => c.patient_id.includes(text)) : all
   const allShown = shown.length > 0 && shown.every((c) => selected.has(c.patient_id))
+  const cohorts = groupByPrefix(all.map((c) => c.patient_id))
 
   const toggle = (codes: string[], on: boolean) =>
     setSelected((current) => {
@@ -294,6 +296,35 @@ function CohortPicker({
         Patients with at least one submitted application. Only submitted applications go
         into the safe copy.
       </p>
+      {cohorts.length > 1 ? (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">By cohort (code prefix)</p>
+          <div className="flex flex-wrap gap-2">
+            {cohorts.map(([prefix, codes]) => {
+              const picked = codes.filter((code) => selected.has(code)).length
+              const all = picked === codes.length
+              return (
+                <Button
+                  key={prefix}
+                  size="sm"
+                  variant={all ? 'primary' : 'outline'}
+                  title={
+                    all ? `Remove all ${prefix} patients` : `Add all ${prefix} patients`
+                  }
+                  onClick={() => toggle(codes, !all)}
+                >
+                  <span className="font-mono">{prefix}</span>
+                  <span className="tabular-nums">
+                    {picked > 0 && !all ? `${picked}/` : ''}
+                    {codes.length}
+                  </span>
+                </Button>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-64 flex-1">
           <TextField
