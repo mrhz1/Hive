@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app import deid_progress, document_info
-from app import intake, purge
+from app import intake, intake_notices, purge
 from app.audit import record_audit
 from app import uploads
 from app.crud import file_metadata as metadata_crud
@@ -784,6 +784,7 @@ def update_application_file(
 def review_application_file(
     file_id: str,
     payload: FileReview,
+    background: BackgroundTasks,
     cursor=Depends(get_cursor),
     actor: User = Depends(get_current_user),
 ):
@@ -805,7 +806,7 @@ def review_application_file(
     if payload.review_status == "rejected" and not note:
         raise ValidationError("A reason is required when rejecting a file")
 
-    return crud.update_file(
+    updated = crud.update_file(
         cursor,
         file_id,
         PatientApplicationFileUpdate(
@@ -813,6 +814,17 @@ def review_application_file(
             review_note=note or None,
         ),
     )
+
+    if payload.review_status == "rejected" and record.review_status != "rejected":
+        background.add_task(
+            intake_notices.notify_file_rejected,
+            application_id=record.application_id,
+            patient_id=_get_patient_id(cursor, record.application_id) or "",
+            file_name=record.deidentified_file_name or record.original_file_name,
+            actor=actor,
+            note=note,
+        )
+    return updated
 
 
 # Submitted applications are final; their files keep their names.

@@ -19,7 +19,8 @@ MODEL_ACTIONS = {
 # Only the roles that handle rejections see them.
 MODEL_ACTIONS["rejection"] = ("view",)
 # The De-Identifier page: seeing its status and lists, and running it.
-MODEL_ACTIONS["deidentifier"] = ("view", "run")
+# notify: gets the intake emails (app/intake_notices.py).
+MODEL_ACTIONS["deidentifier"] = ("view", "run", "notify")
 # Research projects, and the Zone 2 safe copies made for them.
 MODEL_ACTIONS["project"] = PERMISSION_ACTIONS
 MODEL_ACTIONS["zone2"] = ("prepare", "review")

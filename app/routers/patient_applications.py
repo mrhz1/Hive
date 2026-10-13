@@ -4,7 +4,7 @@ from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from pydantic import BaseModel
 
-from app import intake, purge
+from app import intake, intake_notices, purge
 from app.audit import record_audit
 from app.crud import patient_applications as crud
 from app.crud import patients as patients_crud
@@ -312,6 +312,16 @@ def reject_application(
             new_values=dict(_snapshot(after), **summary),
             request_id=request.headers.get("X-Request-ID"),
         )
+
+    background.add_task(
+        intake_notices.notify_application_rejected,
+        application_id=application_id,
+        patient_id=before.patient_id,
+        actor=actor,
+        failed_checks=failed,
+        reason=reason,
+        deleted=purge_all,
+    )
     return after
 
 
