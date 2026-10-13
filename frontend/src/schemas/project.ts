@@ -90,6 +90,24 @@ export type ReleaseDocument = z.infer<typeof releaseDocumentSchema>
 
 export const releaseDocumentListSchema = z.array(releaseDocumentSchema)
 
+/** The letters a patient code starts with, its cohort: AVSD0012 -> AVSD. */
+export function codePrefix(code: string): string {
+  return /^[A-Za-z]+/.exec(code)?.[0].toUpperCase() ?? ''
+}
+
+/** Codes grouped by prefix, largest group first. */
+export function groupByPrefix(codes: readonly string[]): Array<[string, string[]]> {
+  const groups = new Map<string, string[]>()
+  for (const code of codes) {
+    const prefix = codePrefix(code)
+    if (!prefix) continue
+    groups.set(prefix, [...(groups.get(prefix) ?? []), code])
+  }
+  return [...groups.entries()].sort(
+    (a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])
+  )
+}
+
 /** Up to `count` documents picked at random, for a spot check. */
 export function randomSample<T>(
   items: readonly T[],
