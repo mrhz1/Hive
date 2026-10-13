@@ -362,6 +362,22 @@ is marked `failed` on the job and the others continue (`partial`). Job
 progress is kept in memory, so after a restart `/upload-jobs/{id}` returns
 404, but the files already processed are fine.
 
+### Text in images and bulk file corrections (7.9)
+
+- **Burned-in text**: redaction already finds and covers text inside DICOM
+  pictures (e.g. lead letters with a name). How many areas it covered is
+  read from the pipeline's report and kept on the file
+  (`patient_application_files.redaction_boxes`). The file list shows "text
+  covered in picture (N)" on such images and can show only them. Checking
+  them is optional; if an identifier still shows, **Reject** the image: it
+  goes to Rejections and stays out of Zone 2 until replaced (`_RR`).
+- **Bulk corrections**: `scripts/update_file_metadata.py corrections.xlsx`
+  (add `--apply` to make the changes, `--user` for the audit log). Columns:
+  File (redacted name or file id), Modality, Document date, Reject reason;
+  blank keeps what is there. Renames files of any application except
+  deleted ones (`app/file_corrections.py`).
+- New column: run `python scripts/migrate_columns.py --apply`.
+
 ### Bulk patient import and checked details
 
 **Import** on the Patients page (`app/patient_import.py`) loads patients

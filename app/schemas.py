@@ -252,6 +252,7 @@ class PatientApplicationFile(BaseModel):
     de_identified_file_path: Optional[str] = None
     review_status: str = "pending"
     review_note: Optional[str] = None
+    redaction_boxes: Optional[int] = None
 
     @computed_field
     @property
@@ -330,6 +331,7 @@ class PatientApplicationFileUpdate(BaseModel):
     deidentified_file_name: Optional[str] = None
     de_identified_file_path: Optional[str] = None
     sanitized_file_name: Optional[str] = None
+    redaction_boxes: Optional[int] = None
     review_status: Optional[str] = Field(
         default=None, pattern="^(pending|approved|rejected|deleted)$"
     )

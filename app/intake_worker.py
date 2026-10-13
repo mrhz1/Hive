@@ -461,6 +461,7 @@ def finish(task, result):
     if isinstance(result, deid.Produced):
         method = result.method
         result = result.path
+    boxes = deid.boxes_applied(result) if isinstance(result, Path) else None
 
     if not isinstance(result, Path):
         detail = str(result) if result is not None else "no result"
@@ -500,6 +501,7 @@ def finish(task, result):
             "final": str(final),
             "original": str(original),
             "method": method,
+            "boxes": boxes,
             "original_name": task.name,
         },
     )
@@ -536,6 +538,7 @@ def complete(pending, original=None):
             "relative_path": info["relative_path"],
             "code": info["code"],
             "method": info.get("method"),
+            "boxes": info.get("boxes"),
             "created_at": time.time(),
         },
     )

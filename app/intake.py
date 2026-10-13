@@ -728,6 +728,7 @@ def attach_to_application(cursor, application, file_ids):
                 is_deidentified=True,
                 deidentified_file_name=path.name,
                 de_identified_file_path=str(path),
+                redaction_boxes=info.get("boxes"),
             ),
         )
         record_metadata(cursor, new_file.id, original, extension)
