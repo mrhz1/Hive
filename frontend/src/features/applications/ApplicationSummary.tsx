@@ -3,7 +3,11 @@ import { LoadingBlock } from '@/components/ui/Spinner'
 import { useApplicationFiles, userHooks } from '@/hooks/useResources'
 import { userLabel } from '@/schemas/user'
 import { patientName, type Patient } from '@/schemas/patient'
-import { applicationTone, type PatientApplication } from '@/schemas/patientApplication'
+import {
+  applicationTone,
+  checkLabel,
+  type PatientApplication,
+} from '@/schemas/patientApplication'
 import {
   deidTone,
   formatFileSize,
@@ -118,6 +122,17 @@ export function ApplicationSummary({
                 }
               >
                 {application.status_reason}
+              </DescriptionItem>
+            ) : null}
+            {application.checklist?.passed ? (
+              <DescriptionItem label="Enrollment checklist">
+                All {application.checklist.passed.length} points confirmed
+                {application.checklist.at ? ` · ${moment(application.checklist.at)}` : ''}
+              </DescriptionItem>
+            ) : null}
+            {application.checklist?.failed ? (
+              <DescriptionItem label="Checklist points that failed">
+                {application.checklist.failed.map(checkLabel).join('; ')}
               </DescriptionItem>
             ) : null}
             {application.original_file_path ? (

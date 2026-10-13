@@ -12,6 +12,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 
+from app import document_info
 from app.access_log import DOWNLOAD, READ, record_access
 from app.audit import record_audit
 from app.crud import patient_application_files as crud
@@ -254,7 +255,15 @@ async def upload_deidentified_file(
             patient_id,
             extension,
             data,
-            record.deidentified_file_name or deid_output_name(patient_id, extension),
+            document_info.renamed(
+                record.deidentified_file_name or "", redaction=document_info.MANUAL
+            )
+            or deid_output_name(
+                patient_id,
+                extension,
+                document_info.find(raw_name, extension, patient_id, data),
+                document_info.MANUAL,
+            ),
         )
 
         updated = crud.update_file(
@@ -289,7 +298,8 @@ async def upload_deidentified_file(
                 "This patient has no application to attach the file to"
             )
 
-        name = deid_output_name(patient_id, extension)
+        info = document_info.find(raw_name, extension, patient_id, data)
+        name = deid_output_name(patient_id, extension, info, document_info.MANUAL)
         stored = _write_redacted(patient_id, extension, data, name)
 
         result = crud.create_file(

@@ -25,6 +25,9 @@ COLUMNS = (
     "de_identified_file_path",
     "review_status",
     "review_note",
+    # How many areas redaction covered; for an image, text burned into the
+    # picture (7.9). NULL when not known.
+    "redaction_boxes",
 )
 
 _COLS = ", ".join(f"`{c}`" for c in COLUMNS)
@@ -34,6 +37,8 @@ def _row_to_file(row) -> PatientApplicationFile:
     values = dict(zip(COLUMNS, row))
     values["file_size"] = int(values["file_size"] or 0)
     values["is_deidentified"] = bool(values["is_deidentified"])
+    boxes = values.get("redaction_boxes")
+    values["redaction_boxes"] = int(boxes) if boxes not in (None, "") else None
     return PatientApplicationFile(**values)
 
 
@@ -74,6 +79,7 @@ def create_file(
             file_path,
             None,
             "approved",
+            None,
             None,
         ),
     )

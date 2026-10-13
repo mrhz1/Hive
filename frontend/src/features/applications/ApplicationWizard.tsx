@@ -1,12 +1,13 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { ReasonDialog } from '@/components/ReasonDialog'
 import { Button } from '@/components/ui/Button'
 import { Card, PageHeader } from '@/components/ui/Misc'
 import { PatientForm } from '@/features/patients/PatientForm'
+import { Can } from '@/components/PermissionGate'
 import {
   useApplicationFiles,
+  useConfirmPatientDetails,
   useCreateApplication,
   useRejectApplication,
   useUpdateApplication,
@@ -23,6 +24,7 @@ import {
 } from '@/schemas/patientApplication'
 import { ApplicationSummary } from './ApplicationSummary'
 import { AssigneeCard } from './AssigneeField'
+import { RejectApplicationDialog, SubmitChecklistDialog } from './EnrollmentDialogs'
 import { FileReviewPanel } from './FileReviewPanel'
 import { IntakeCodePicker } from './IntakeCodePicker'
 import { IntakeFilePicker } from './IntakeFilePicker'
@@ -83,12 +85,14 @@ export function ApplicationWizard({
   const createApplication = useCreateApplication()
   const updateApplication = useUpdateApplication()
   const reject = useRejectApplication()
+  const confirmDetails = useConfirmPatientDetails()
 
   const [patient, setPatient] = useState<Patient | undefined>(initialPatient)
   const [current, setCurrent] = useState<StepNumber>(1)
   const [furthest, setFurthest] = useState<StepNumber>(initialPatient ? 3 : 1)
   const [record, setRecord] = useState<PatientApplication | undefined>(application)
   const [rejecting, setRejecting] = useState(false)
+  const [checking, setChecking] = useState(false)
   const [assignedTo, setAssignedTo] = useState(application?.assigned_to_id ?? '')
 
   const [folder, setFolder] = useState(application?.original_file_path ?? '')
@@ -164,7 +168,7 @@ export function ApplicationWizard({
     }
   }
 
-  async function submitApplication() {
+  async function submitApplication(checklist: Record<string, boolean>) {
     if (!record) {
       toast.error('This application has not been created yet')
       return
@@ -172,8 +176,9 @@ export function ApplicationWizard({
     try {
       await updateApplication.mutateAsync({
         id: record.id,
-        values: { status: 'submitted' },
+        values: { status: 'submitted', checklist },
       })
+      setChecking(false)
       toast.success('Application submitted')
       await navigate({ to: '/applications' })
     } catch {
@@ -188,6 +193,15 @@ export function ApplicationWizard({
   const rejected = rejectedCount(files.data ?? [])
 
   const locked = isReadOnly(record?.status)
+  const unchecked = Boolean(patient && !patient.details_checked_at)
+
+  function confirmPatientDetails() {
+    if (!patient) return
+    void confirmDetails
+      .mutateAsync(patient.id)
+      .then(setPatient)
+      .catch(() => undefined)
+  }
 
   return (
     <div className="space-y-6">
@@ -250,6 +264,24 @@ export function ApplicationWizard({
 
           {code && !choosingCode ? (
             <>
+              {unchecked && !locked ? (
+                <Card className="flex flex-wrap items-center justify-between gap-3 border-amber-500/40 p-4 text-sm">
+                  <span>
+                    <strong>Patient details not checked yet.</strong> This patient came
+                    from the old data or the bulk import. Check the details below, save
+                    any corrections, then confirm. It is asked only once.
+                  </span>
+                  <Can permission="patient:update">
+                    <Button
+                      size="sm"
+                      isLoading={confirmDetails.isPending}
+                      onClick={confirmPatientDetails}
+                    >
+                      Details are correct
+                    </Button>
+                  </Can>
+                </Card>
+              ) : null}
               {!patient ? (
                 <Card className="p-4 text-sm text-[rgb(var(--foreground-muted))]">
                   No patient has code <strong className="font-mono">{code}</strong> yet.
@@ -297,7 +329,7 @@ export function ApplicationWizard({
       ) : null}
 
       {rejecting && record ? (
-        <ReasonDialog
+        <RejectApplicationDialog
           title={
             record.status === 'rejected'
               ? 'Reject this application again?'
@@ -308,13 +340,11 @@ export function ApplicationWizard({
               ? 'The new reason replaces the one on the record, so say what is wrong now.'
               : 'The reason is kept on the record.'
           }
-          confirmLabel="Reject application"
-          placeholder="e.g. consent form missing"
           isBusy={reject.isPending}
           onCancel={() => setRejecting(false)}
-          onConfirm={(reason) => {
+          onConfirm={(failedChecks, reason) => {
             void reject
-              .mutateAsync({ id: record.id, reason })
+              .mutateAsync({ id: record.id, reason, failedChecks })
               .then(async (updated) => {
                 setRejecting(false)
 
@@ -327,6 +357,14 @@ export function ApplicationWizard({
         />
       ) : null}
 
+      {checking && record ? (
+        <SubmitChecklistDialog
+          isBusy={updateApplication.isPending}
+          onCancel={() => setChecking(false)}
+          onConfirm={(checklist) => void submitApplication(checklist)}
+        />
+      ) : null}
+
       {current === 3 ? (
         patient ? (
           <>
@@ -334,6 +372,13 @@ export function ApplicationWizard({
               patient={patient}
               {...(record ? { application: record } : {})}
             />
+
+            {!locked && unchecked ? (
+              <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
+                The patient&apos;s details have not been checked yet. Confirm them in step
+                1 before submitting.
+              </Card>
+            ) : null}
 
             {!locked && undecided > 0 ? (
               <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
@@ -374,15 +419,17 @@ export function ApplicationWizard({
                   ) : null}
                   <Button
                     isLoading={isSaving}
-                    disabled={undecided > 0 || rejected > 0}
+                    disabled={unchecked || undecided > 0 || rejected > 0}
                     title={
-                      undecided > 0
-                        ? `${undecided} document${undecided === 1 ? '' : 's'} still need a decision`
-                        : rejected > 0
-                          ? `${rejected} document${rejected === 1 ? '' : 's'} rejected in step 2`
-                          : undefined
+                      unchecked
+                        ? "Confirm the patient's details in step 1 first"
+                        : undecided > 0
+                          ? `${undecided} document${undecided === 1 ? '' : 's'} still need a decision`
+                          : rejected > 0
+                            ? `${rejected} document${rejected === 1 ? '' : 's'} rejected in step 2`
+                            : undefined
                     }
-                    onClick={() => void submitApplication()}
+                    onClick={() => setChecking(true)}
                   >
                     Submit application
                   </Button>

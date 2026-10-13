@@ -1,4 +1,4 @@
-import { Eye, FileJson, FileSearch, ShieldCheck, X } from 'lucide-react'
+import { Eye, FileJson, FileSearch, ShieldCheck, Tag, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
@@ -14,6 +14,7 @@ import {
   useApplicationFiles,
   useBackgroundUpload,
   useReviewApplicationFile,
+  useSetDocumentInfo,
 } from '@/hooks/useResources'
 import { ApiError } from '@/lib/api/client'
 import { applicationFilesApi } from '@/lib/api/resources'
@@ -21,14 +22,18 @@ import {
   deidTone,
   fileTally,
   fileSearchText,
+  hasCoveredImageText,
   formatFileSize,
   hasExtractableMetadata,
   isDeletedFile,
+  isoDocumentDate,
   previewKind,
   reviewTone,
+  UNKNOWN,
   type ApplicationFile,
   type UploadJob,
 } from '@/schemas/applicationFile'
+import { DocumentInfoDialog } from './DocumentInfoDialog'
 import { FileTallyBar } from './FileTallyBar'
 import { UploadProgress } from './UploadProgress'
 
@@ -57,6 +62,7 @@ export function FileReviewPanel({
   const { can } = usePermissions()
   const filesQuery = useApplicationFiles(applicationId)
   const review = useReviewApplicationFile(applicationId)
+  const setDocumentInfo = useSetDocumentInfo(applicationId)
 
   const onJobFinished = useCallback(
     (job: UploadJob) => {
@@ -93,13 +99,16 @@ export function FileReviewPanel({
     deidentified: boolean
   } | null>(null)
   const [rejecting, setRejecting] = useState<ApplicationFile | null>(null)
+  const [naming, setNaming] = useState<ApplicationFile | null>(null)
   const [search, setSearch] = useState('')
+  const [onlyCoveredText, setOnlyCoveredText] = useState(false)
 
   const files = filesQuery.data ?? []
   const searchText = search.trim().toLowerCase()
-  const visible = searchText
-    ? files.filter((file) => fileSearchText(file).includes(searchText))
-    : files
+  const coveredCount = files.filter(hasCoveredImageText).length
+  const visible = files
+    .filter((file) => !searchText || fileSearchText(file).includes(searchText))
+    .filter((file) => !onlyCoveredText || hasCoveredImageText(file))
 
   const tally = fileTally(files)
 
@@ -185,6 +194,17 @@ export function FileReviewPanel({
     }
     if (readOnly) return actions
 
+    if (can('application:update')) {
+      actions.push({
+        id: 'document-info',
+        separatorBefore: actions.length > 0,
+        label: 'Set modality & date',
+        icon: <Tag className="size-4" aria-hidden="true" />,
+        disabled: !hasCopy,
+        title: hasCopy ? 'Renames the de-identified copy' : noCopy,
+        onSelect: () => setNaming(file),
+      })
+    }
     if (can('files:reject')) {
       actions.push({
         id: 'reject',
@@ -226,6 +246,28 @@ export function FileReviewPanel({
       sortValue: (file) => file.file_extension,
     },
     {
+      id: 'modality',
+      header: 'Modality / date',
+      cell: (file) =>
+        file.modality ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge tone={file.modality === UNKNOWN ? 'warning' : 'neutral'}>
+              {file.modality === UNKNOWN ? 'modality?' : file.modality}
+            </Badge>
+            {isoDocumentDate(file.document_date) ? (
+              <span className="text-xs tabular-nums">
+                {isoDocumentDate(file.document_date)}
+              </span>
+            ) : (
+              <Badge tone="warning">date?</Badge>
+            )}
+          </div>
+        ) : (
+          <span className="text-xs text-[rgb(var(--foreground-muted))]">—</span>
+        ),
+      sortValue: (file) => `${file.modality ?? ''} ${file.document_date ?? ''}`,
+    },
+    {
       id: 'review',
       header: 'Review',
       cell: (file) => (
@@ -264,6 +306,10 @@ export function FileReviewPanel({
           ) : (
             <Badge tone="warning">contains PII</Badge>
           )}
+          {file.redaction === 'RR' ? <Badge tone="neutral">by hand</Badge> : null}
+          {hasCoveredImageText(file) ? (
+            <Badge tone="warning">text covered in picture ({file.redaction_boxes})</Badge>
+          ) : null}
         </div>
       ),
       sortValue: (file) => file.deid_status,
@@ -298,6 +344,19 @@ export function FileReviewPanel({
             aria-label="Search documents"
           />
         </div>
+        {coveredCount > 0 ? (
+          <label
+            className="flex items-center gap-2 text-sm"
+            title="Images where text, possibly a name or number, was covered in the picture. Checking them is optional; reject one if an identifier still shows."
+          >
+            <input
+              type="checkbox"
+              checked={onlyCoveredText}
+              onChange={(event) => setOnlyCoveredText(event.target.checked)}
+            />
+            Only images with covered text ({coveredCount})
+          </label>
+        ) : null}
       </div>
 
       <DataTable
@@ -350,6 +409,20 @@ export function FileReviewPanel({
                 note,
               })
               .then(() => setRejecting(null))
+              .catch(() => undefined)
+          }}
+        />
+      ) : null}
+
+      {naming ? (
+        <DocumentInfoDialog
+          file={naming}
+          isBusy={setDocumentInfo.isPending}
+          onCancel={() => setNaming(null)}
+          onConfirm={(modality, documentDate) => {
+            void setDocumentInfo
+              .mutateAsync({ fileId: naming.id, modality, documentDate })
+              .then(() => setNaming(null))
               .catch(() => undefined)
           }}
         />

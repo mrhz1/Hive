@@ -103,9 +103,17 @@ function PatientsList() {
         description="Patient records held in Hive."
         actions={
           <Can permission="patient:create">
-            <Button onClick={() => void navigate({ to: '/patients/new' })}>
-              Add Patient
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => void navigate({ to: '/patients/import' })}
+              >
+                Import
+              </Button>
+              <Button onClick={() => void navigate({ to: '/patients/new' })}>
+                Add Patient
+              </Button>
+            </div>
           </Can>
         }
       />

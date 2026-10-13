@@ -31,9 +31,13 @@ MIGRATIONS = (
     ("patient_applications", "status_reason", "STRING"),
     ("patient_applications", "assigned_to_id", "STRING"),
     ("patient_applications", "original_file_path", "STRING"),
+    ("patient_applications", "checklist", "STRING"),
+    ("patient", "details_checked_at", "STRING"),
+    ("patient", "details_checked_by", "STRING"),
+    ("patient_application_files", "redaction_boxes", "INT"),
 )
 
-NEW_TABLES = ()
+NEW_TABLES = ("projects", "project_patients", "project_releases", "abstraction_folders", "incidents")
 
 SCHEMA_FILE = _repo_root() / "sql" / "schema.sql"
 

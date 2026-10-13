@@ -1,8 +1,17 @@
+import json
 from datetime import date, datetime, timezone
-from typing import Any, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
+from app.document_info import parse_name as parse_document_name
 from app.ids import (
     code_formats,
     describe_code_formats,
@@ -217,6 +226,10 @@ class Patient(_PatientFields):
     pemail: Optional[str] = None
     ptemail: Optional[str] = None
     original_file_path: Optional[str] = None
+    # Empty for patients made by intake or the bulk import until someone
+    # confirms their details; their first application waits for it.
+    details_checked_at: Optional[str] = None
+    details_checked_by: Optional[str] = None
 
 
 DEID_STATUSES = ("pending", "queued", "processing", "done", "failed")
@@ -239,6 +252,34 @@ class PatientApplicationFile(BaseModel):
     de_identified_file_path: Optional[str] = None
     review_status: str = "pending"
     review_note: Optional[str] = None
+    redaction_boxes: Optional[int] = None
+
+    @computed_field
+    @property
+    def modality(self) -> Optional[str]:
+        parts = parse_document_name(self.deidentified_file_name or "")
+        return parts and parts["modality"]
+
+    @computed_field
+    @property
+    def document_date(self) -> Optional[str]:
+        parts = parse_document_name(self.deidentified_file_name or "")
+        return parts and parts["day"]
+
+    @computed_field
+    @property
+    def redaction(self) -> Optional[str]:
+        """R: redacted by the pipeline, RR: by hand."""
+        parts = parse_document_name(self.deidentified_file_name or "")
+        return parts and parts["redaction"]
+
+
+class DocumentInfoUpdate(BaseModel):
+    """Modality code (or an alias like MRI) and date (YYYY-MM-DD or YYYYMMDD);
+    either can be UNKNOWN."""
+
+    modality: str
+    document_date: str
 
 
 REVIEW_STATUSES = ("pending", "approved", "rejected")
@@ -289,6 +330,8 @@ class PatientApplicationFileUpdate(BaseModel):
     is_deidentified: Optional[bool] = None
     deidentified_file_name: Optional[str] = None
     de_identified_file_path: Optional[str] = None
+    sanitized_file_name: Optional[str] = None
+    redaction_boxes: Optional[int] = None
     review_status: Optional[str] = Field(
         default=None, pattern="^(pending|approved|rejected|deleted)$"
     )
@@ -398,6 +441,17 @@ APPLICATION_STATUSES = ("draft", "submitted", "approved", "rejected", "deleted")
 
 _STATUS_PATTERN = "^(draft|submitted|approved|rejected|deleted)$"
 
+# The enrollment checklist a reviewer completes before submitting an
+# application, and picks from when rejecting one. A failed consent check
+# deletes the application's documents; the others can be fixed.
+ENROLLMENT_CHECKS = {
+    "files_complete": "All required files were submitted",
+    "eligible": "The patient is eligible",
+    "consent": "The right consent form is present",
+    "no_identifiers": "No identifiers were found",
+}
+CONSENT_CHECK = "consent"
+
 
 class PatientApplicationCreate(BaseModel):
     patient_id: str = Field(min_length=1)
@@ -420,6 +474,8 @@ class PatientApplicationUpdate(BaseModel):
     status_reason: Optional[str] = None
     assigned_to_id: Optional[str] = None
     original_file_path: Optional[str] = None
+    # Required, all true, when status becomes 'submitted'; not stored as given.
+    checklist: Optional[Dict[str, bool]] = None
 
     @field_validator("assigned_to_id", "original_file_path", mode="before")
     @classmethod
@@ -429,8 +485,10 @@ class PatientApplicationUpdate(BaseModel):
         return value
 
 
-class StatusReason(BaseModel):
+class ApplicationRejection(BaseModel):
     reason: Optional[str] = None
+    # Which ENROLLMENT_CHECKS failed; at least one.
+    failed_checks: List[str] = Field(default_factory=list)
 
 
 class PatientApplication(BaseModel):
@@ -449,10 +507,22 @@ class PatientApplication(BaseModel):
     status_reason: Optional[str] = None
     assigned_to_id: Optional[str] = None
     original_file_path: Optional[str] = None
+    # The last checklist: {"passed"|"failed": [...], "by": user id, "at": iso time}
+    checklist: Optional[Dict[str, Any]] = None
     assigned_to_username: Optional[str] = None
     created_by_username: Optional[str] = None
     submitted_by_username: Optional[str] = None
     reviewed_by_username: Optional[str] = None
+
+    @field_validator("checklist", mode="before")
+    @classmethod
+    def _parse_checklist(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            try:
+                return json.loads(value) if value.strip() else None
+            except ValueError:
+                return None
+        return value
 
 
 class AuditLogCreate(BaseModel):
@@ -501,3 +571,115 @@ class AuditLog(BaseModel):
     old_values: Optional[dict] = None
     new_values: Optional[dict] = None
     created_at: datetime
+
+
+# --- temporary abstraction folders (app/abstraction.py) ---------------------
+
+
+class AbstractionCriteria(BaseModel):
+    """Which de-identified documents to copy. Empty lists mean any."""
+
+    patient_ids: List[str] = Field(default_factory=list)
+    modalities: List[str] = Field(default_factory=list)
+    file_types: List[str] = Field(default_factory=list)
+    # YYYY-MM-DD; with either set, documents without a known date are left out
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    # matched against the file name and the metadata read from the file
+    search: Optional[str] = None
+
+    @field_validator("patient_ids", "modalities", "file_types", mode="before")
+    @classmethod
+    def _clean_list(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            value = value.split(",")
+        if isinstance(value, list):
+            return sorted({str(v).strip().upper() for v in value if str(v).strip()})
+        return value
+
+    @field_validator("modalities")
+    @classmethod
+    def _modality_codes(cls, value: List[str]) -> List[str]:
+        from app.document_info import clean_modality
+
+        codes = []
+        for typed in value:
+            code = clean_modality(typed)
+            if code is None:
+                raise ValueError(f"'{typed}' is not a known modality")
+            codes.append(code)
+        return sorted(set(codes))
+
+    @field_validator("search", mode="before")
+    @classmethod
+    def _blank_search(cls, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def _date_order(self):
+        if self.date_from and self.date_to and self.date_from > self.date_to:
+            raise ValueError("date_from is after date_to")
+        return self
+
+
+class AbstractionDocument(BaseModel):
+    file_id: str
+    application_id: str
+    patient_id: str
+    name: str
+    file_type: str
+    modality: Optional[str] = None
+    document_date: Optional[str] = None
+
+
+class AbstractionPreview(BaseModel):
+    total: int
+    patients: int
+    documents: List[AbstractionDocument]
+
+
+class AbstractionFolderCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    purpose: str = Field(min_length=1, max_length=1000)
+    criteria: AbstractionCriteria
+
+    @field_validator("name", "purpose")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Required")
+        return value
+
+
+class AbstractionFolder(BaseModel):
+    id: str
+    name: str
+    purpose: Optional[str] = None
+    owner_id: Optional[str] = None
+    owner_username: Optional[str] = None
+    status: str
+    criteria: Optional[Dict[str, Any]] = None
+    file_count: int = 0
+    folder_path: Optional[str] = None
+    created_at: Optional[datetime] = None
+    expires_at: Optional[str] = None
+    deleted_at: Optional[str] = None
+    deleted_by_id: Optional[str] = None
+    deleted_reason: Optional[str] = None
+
+    @field_validator("criteria", mode="before")
+    @classmethod
+    def _parse_criteria(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            try:
+                return json.loads(value) if value.strip() else None
+            except ValueError:
+                return None
+        return value
+
+
+class AbstractionDelete(BaseModel):
+    reason: Optional[str] = None

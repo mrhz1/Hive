@@ -59,7 +59,9 @@ CREATE TABLE `patient` (
   `dt_b` DATE,
   `dt_d` DATE,
   `original_file_path` STRING,
-  `deidentified_file_path` STRING
+  `deidentified_file_path` STRING,
+  `details_checked_at` STRING,
+  `details_checked_by` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
@@ -80,7 +82,8 @@ CREATE TABLE `patient_applications` (
   `updated_by_id` STRING,
   `status_reason` STRING,
   `assigned_to_id` STRING,
-  `original_file_path` STRING
+  `original_file_path` STRING,
+  `checklist` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
@@ -102,7 +105,8 @@ CREATE TABLE `patient_application_files` (
   `file_path` STRING,
   `de_identified_file_path` STRING,
   `review_status` STRING,
-  `review_note` STRING
+  `review_note` STRING,
+  `redaction_boxes` INT
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
@@ -157,5 +161,112 @@ CREATE TABLE `audit_logs` (
   `old_values` STRING,
   `new_values` STRING,
   `created_at` TIMESTAMP
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
+-- Research projects (Zone 2). A project asks for a safe copy of some
+-- patients' submitted data (see app/zone2.py).
+DROP TABLE IF EXISTS `projects`;
+
+CREATE TABLE `projects` (
+  `id` STRING,
+  `short_code` STRING,
+  `name` STRING,
+  `description` STRING,
+  `approval_reference` STRING,
+  `consent_confirmed` BOOLEAN,
+  `documents_approved` BOOLEAN,
+  `status` STRING,
+  `status_reason` STRING,
+  `created_by_id` STRING,
+  `created_at` TIMESTAMP,
+  `updated_at` TIMESTAMP
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
+-- The cohort and the locked ID map: each patient's project-only ID and the
+-- days every one of their dates is moved by. Never released.
+DROP TABLE IF EXISTS `project_patients`;
+
+CREATE TABLE `project_patients` (
+  `id` STRING,
+  `project_id` STRING,
+  `patient_id` STRING,
+  `project_patient_id` STRING,
+  `date_shift_days` INT,
+  `added_at` TIMESTAMP
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
+-- Each prepared safe copy and its review by the CHSS manager.
+DROP TABLE IF EXISTS `project_releases`;
+
+CREATE TABLE `project_releases` (
+  `id` STRING,
+  `project_id` STRING,
+  `status` STRING,
+  `status_reason` STRING,
+  `prepared_by_id` STRING,
+  `prepared_at` TIMESTAMP,
+  `reviewed_by_id` STRING,
+  `reviewed_at` TIMESTAMP,
+  `patients` INT,
+  `applications` INT,
+  `documents` INT,
+  `files_included` BOOLEAN,
+  `archive_path` STRING,
+  `inbox_path` STRING,
+  `release_path` STRING
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
+-- Temporary abstraction folders: read-only copies of de-identified documents
+-- picked by metadata for one person's task, deleted when done or when they
+-- expire (see app/abstraction.py). criteria and file_ids are JSON, kept so a
+-- folder can be made again.
+DROP TABLE IF EXISTS `abstraction_folders`;
+
+CREATE TABLE `abstraction_folders` (
+  `id` STRING,
+  `name` STRING,
+  `purpose` STRING,
+  `owner_id` STRING,
+  `status` STRING,
+  `criteria` STRING,
+  `file_ids` STRING,
+  `file_count` INT,
+  `folder_path` STRING,
+  `created_at` TIMESTAMP,
+  `expires_at` STRING,
+  `deleted_at` STRING,
+  `deleted_by_id` STRING,
+  `deleted_reason` STRING
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
+-- Security incidents and breach reports (protocol section 4, app/incidents.py).
+-- Times are ISO strings in UTC; the 24 h and 72 h report deadlines are
+-- counted from detected_at.
+DROP TABLE IF EXISTS `incidents`;
+
+CREATE TABLE `incidents` (
+  `id` STRING,
+  `title` STRING,
+  `level` STRING,
+  `status` STRING,
+  `detected_at` STRING,
+  `description` STRING,
+  `data_affected` STRING,
+  `risk` STRING,
+  `containment` STRING,
+  `affected_parties` STRING,
+  `preliminary_sent_at` STRING,
+  `full_sent_at` STRING,
+  `preliminary_reminded_at` STRING,
+  `full_reminded_at` STRING,
+  `created_by_id` STRING,
+  `created_at` TIMESTAMP,
+  `updated_at` STRING,
+  `closed_at` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');

@@ -7,8 +7,8 @@ from fastapi import Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from app import deid_progress
-from app import intake, purge
+from app import data_dictionary, deid_progress, document_info, file_corrections
+from app import intake, intake_notices, purge
 from app.audit import record_audit
 from app import uploads
 from app.crud import file_metadata as metadata_crud
@@ -34,6 +34,7 @@ from app.schemas import (
     BulkResult,
     DeidProgress,
     DeidProgressList,
+    DocumentInfoUpdate,
     FileMetadata,
     FileReview,
     PatientApplicationFile,
@@ -263,7 +264,8 @@ async def upload_deidentified_application_file(
         )
 
     patient_id = _known_patient_id(cursor, application) or ""
-    stored_name = deid_output_name(patient_id, extension)
+    info = document_info.find(raw_name, extension, patient_id, data)
+    stored_name = deid_output_name(patient_id, extension, info, document_info.MANUAL)
 
     directory = deid_dir_for(extension)
     if patient_id:
@@ -440,6 +442,7 @@ def export_application_file_metadata(
         headers=("Field", "Value"),
         rows=items,
         sheet_title="Metadata",
+        dictionary=data_dictionary.METADATA_EXPORT,
     )
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
@@ -782,6 +785,7 @@ def update_application_file(
 def review_application_file(
     file_id: str,
     payload: FileReview,
+    background: BackgroundTasks,
     cursor=Depends(get_cursor),
     actor: User = Depends(get_current_user),
 ):
@@ -803,7 +807,7 @@ def review_application_file(
     if payload.review_status == "rejected" and not note:
         raise ValidationError("A reason is required when rejecting a file")
 
-    return crud.update_file(
+    updated = crud.update_file(
         cursor,
         file_id,
         PatientApplicationFileUpdate(
@@ -811,6 +815,67 @@ def review_application_file(
             review_note=note or None,
         ),
     )
+
+    if payload.review_status == "rejected" and record.review_status != "rejected":
+        background.add_task(
+            intake_notices.notify_file_rejected,
+            application_id=record.application_id,
+            patient_id=_get_patient_id(cursor, record.application_id) or "",
+            file_name=record.deidentified_file_name or record.original_file_name,
+            actor=actor,
+            note=note,
+        )
+    return updated
+
+
+# Submitted applications are final; their files keep their names.
+DOCUMENT_INFO_FROZEN = ("submitted", "deleted")
+
+
+@router.put("/files/{file_id}/document-info", response_model=PatientApplicationFile)
+def set_document_info(
+    file_id: str,
+    payload: DocumentInfoUpdate,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("application:update")),
+):
+    """Set the modality and date a redacted file is named by, renaming it on disk."""
+    record = crud.get_file_or_404(cursor, file_id)
+    purge.refuse_if_deleted(record)
+
+    application = applications_crud.get_application(cursor, record.application_id)
+    if getattr(application, "status", None) in DOCUMENT_INFO_FROZEN:
+        raise ValidationError(
+            f"The application is '{application.status}', so its files can't be renamed"
+        )
+
+    modality = document_info.clean_modality(payload.modality)
+    if modality is None:
+        raise ValidationError(f"'{payload.modality}' is not a known modality")
+    day = document_info.clean_date(payload.document_date)
+    if day is None:
+        raise ValidationError(
+            f"'{payload.document_date}' is not a date (use YYYY-MM-DD)"
+        )
+
+    info = document_info.DocumentInfo(modality=modality, date=day)
+    updated, old_name, new_name = file_corrections.rename_document(cursor, record, info)
+    if new_name == old_name:
+        return updated
+
+    background.add_task(
+        record_audit,
+        action="UPDATE",
+        entity_type="application_file",
+        entity_id=file_id,
+        user_id=actor.id,
+        old_values={"deidentified_file_name": old_name},
+        new_values={"deidentified_file_name": new_name},
+        request_id=request.headers.get("X-Request-ID"),
+    )
+    return updated
 
 
 @router.post("/files/{file_id}/purge", response_model=PatientApplicationFile)

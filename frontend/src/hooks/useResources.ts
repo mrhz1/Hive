@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { createCrudHooks, errorMessage } from './createCrudHooks'
 import {
+  securityApi,
+  abstractionApi,
   accessLogsApi,
   applicationsApi,
   applicationFilesApi,
@@ -11,8 +13,10 @@ import {
   fileMetadataApi,
   patientsApi,
   logsApi,
+  projectsApi,
   rolesApi,
   usersApi,
+  zone2Api,
   type ApplicationPayload,
 } from '@/lib/api/resources'
 import { queryKeys } from '@/lib/queryKeys'
@@ -31,6 +35,7 @@ import type { ApplicationFile } from '@/schemas/applicationFile'
 import type { PatientFormValues } from '@/schemas/patient'
 import type { RoleFormValues } from '@/schemas/role'
 import type { UserFormValues } from '@/schemas/user'
+import type { ProjectPayload } from '@/schemas/project'
 import type { Patient, Role, User } from '@/lib/api/resources'
 
 export const userHooks = createCrudHooks<User, UserFormValues>({
@@ -46,6 +51,40 @@ export const patientHooks = createCrudHooks<Patient, PatientFormValues>({
   label: 'Patient',
   alsoInvalidate: [queryKeys.logs.all],
 })
+
+export function useConfirmPatientDetails() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => patientsApi.confirmDetails(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.patients.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success('Patient details confirmed')
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not confirm the details'))
+    },
+  })
+}
+
+export function usePatientImport() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (variables: { file: File; apply: boolean }) =>
+      patientsApi.importFile(variables.file, variables.apply),
+    onSuccess: (result) => {
+      if (!result.applied) return
+      void queryClient.invalidateQueries({ queryKey: queryKeys.patients.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success(
+        `Imported: ${result.counts.create ?? 0} new, ${result.counts.update ?? 0} updated`
+      )
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not read the file'))
+    },
+  })
+}
 
 export const roleHooks = createCrudHooks<Role, RoleFormValues>({
   api: rolesApi,
@@ -141,12 +180,17 @@ export function useDeleteApplication() {
 export function useRejectApplication() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (variables: { id: string; reason: string }) =>
-      applicationsApi.reject(variables.id, variables.reason),
-    onSuccess: () => {
+    mutationFn: (variables: { id: string; reason: string; failedChecks: string[] }) =>
+      applicationsApi.reject(variables.id, variables.reason, variables.failedChecks),
+    onSuccess: (application) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.applications.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.applicationFiles.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
-      toast.success('Application rejected')
+      toast.success(
+        application.status === 'deleted'
+          ? 'Application rejected and its documents deleted'
+          : 'Application rejected'
+      )
     },
     onError: (error) => {
       toast.error(errorMessage(error, 'Could not reject the application'))
@@ -177,6 +221,27 @@ export function useReviewApplicationFile(applicationId: string) {
     },
     onError: (error) => {
       toast.error(errorMessage(error, 'Could not record the review'))
+    },
+  })
+}
+
+export function useSetDocumentInfo(applicationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (variables: { fileId: string; modality: string; documentDate: string }) =>
+      applicationFilesApi.setDocumentInfo(
+        variables.fileId,
+        variables.modality,
+        variables.documentDate
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.applicationFiles.list(applicationId),
+      })
+      toast.success('File renamed')
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not rename the file'))
     },
   })
 }
@@ -662,4 +727,319 @@ export function useAttachIntakeFiles(applicationId: string) {
       toast.error(errorMessage(error, 'Could not attach those files'))
     },
   })
+}
+
+// --- projects and Zone 2 ------------------------------------------------
+
+export function useLockdown() {
+  return useQuery({
+    queryKey: queryKeys.security.lockdown(),
+    queryFn: () => securityApi.lockdown(),
+    refetchInterval: 30_000,
+  })
+}
+
+export function useIncidents(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.security.incidents(),
+    queryFn: () => securityApi.incidents(),
+    enabled,
+  })
+}
+
+function useSecurityMutation<TVariables, TResult>(
+  mutationFn: (variables: TVariables) => Promise<TResult>,
+  success: string,
+  failure: string
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.security.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success(success)
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, failure))
+    },
+  })
+}
+
+export function useLockApp() {
+  return useSecurityMutation(
+    (variables: { reason: string; level: 'low' | 'high' | 'critical' }) =>
+      securityApi.lock(variables.reason, variables.level),
+    'The app is locked',
+    'Could not lock the app'
+  )
+}
+
+export function useUnlockApp() {
+  return useSecurityMutation(
+    (reason: string) => securityApi.unlock(reason),
+    'The app is unlocked',
+    'Could not unlock the app'
+  )
+}
+
+export function useCreateIncident() {
+  return useSecurityMutation(
+    securityApi.createIncident,
+    'Incident recorded',
+    'Could not record the incident'
+  )
+}
+
+export function useUpdateIncident() {
+  return useSecurityMutation(
+    (variables: {
+      id: string
+      values: Parameters<typeof securityApi.updateIncident>[1]
+    }) => securityApi.updateIncident(variables.id, variables.values),
+    'Incident saved',
+    'Could not save the incident'
+  )
+}
+
+export function useMarkReportSent() {
+  return useSecurityMutation(
+    (variables: { id: string; report: 'preliminary' | 'full' }) =>
+      securityApi.markSent(variables.id, variables.report),
+    'Marked as sent',
+    'Could not mark it as sent'
+  )
+}
+
+export function useCloseIncident() {
+  return useSecurityMutation(
+    securityApi.close,
+    'Incident closed',
+    'Could not close the incident'
+  )
+}
+
+export function useAbstractionFolders() {
+  return useQuery({
+    queryKey: queryKeys.abstraction.list(),
+    queryFn: () => abstractionApi.list(),
+  })
+}
+
+export function useAbstractionDocuments(id: string) {
+  return useQuery({
+    queryKey: queryKeys.abstraction.documents(id),
+    queryFn: () => abstractionApi.documents(id),
+  })
+}
+
+export function useAbstractionPreview() {
+  return useMutation({
+    mutationFn: abstractionApi.preview,
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not find the documents'))
+    },
+  })
+}
+
+function useAbstractionMutation<TVariables, TResult>(
+  mutationFn: (variables: TVariables) => Promise<TResult>,
+  success: string | ((result: TResult) => string),
+  failure: string
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.abstraction.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success(typeof success === 'string' ? success : success(result))
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, failure))
+    },
+  })
+}
+
+export function useCreateAbstractionFolder() {
+  return useAbstractionMutation(
+    abstractionApi.create,
+    (folder) => `Folder made with ${folder.file_count} document(s)`,
+    'Could not make the folder'
+  )
+}
+
+export function useExtendAbstractionFolder() {
+  return useAbstractionMutation(
+    abstractionApi.extend,
+    'Folder extended',
+    'Could not extend the folder'
+  )
+}
+
+export function useRegenerateAbstractionFolder() {
+  return useAbstractionMutation(
+    abstractionApi.regenerate,
+    (result) =>
+      result.missing
+        ? `Folder made again; ${result.missing} document(s) are no longer available`
+        : 'Folder made again',
+    'Could not make the folder again'
+  )
+}
+
+export function useDeleteAbstractionFolder() {
+  return useAbstractionMutation(
+    (variables: { id: string; reason: string }) =>
+      abstractionApi.remove(variables.id, variables.reason),
+    'Folder deleted',
+    'Could not delete the folder'
+  )
+}
+
+export function useProjects() {
+  return useQuery({
+    queryKey: queryKeys.projects.list(),
+    queryFn: () => projectsApi.list(),
+  })
+}
+
+export function useProject(id: string) {
+  return useQuery({
+    queryKey: queryKeys.projects.detail(id),
+    queryFn: () => projectsApi.get(id),
+  })
+}
+
+export function useProjectCandidates(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.projects.candidates(),
+    queryFn: () => projectsApi.candidates(),
+    enabled,
+  })
+}
+
+function useProjectMutation<TVariables, TResult>(
+  mutationFn: (variables: TVariables) => Promise<TResult>,
+  success: string | ((result: TResult) => string),
+  failure: string
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.zone2.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success(typeof success === 'string' ? success : success(result))
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, failure))
+    },
+  })
+}
+
+export function useCreateProject() {
+  return useProjectMutation(
+    (values: ProjectPayload) => projectsApi.create(values),
+    'Project created',
+    'Could not create the project'
+  )
+}
+
+export function useUpdateProject(id: string) {
+  return useProjectMutation(
+    (values: ProjectPayload) => projectsApi.update(id, values),
+    'Project saved',
+    'Could not save the project'
+  )
+}
+
+export function useSetCohort(id: string) {
+  return useProjectMutation(
+    (patientIds: string[]) => projectsApi.setCohort(id, patientIds),
+    (project) =>
+      `${project.cohort.length} patient${project.cohort.length === 1 ? '' : 's'} in the project`,
+    'Could not change the patients'
+  )
+}
+
+export function usePrepareProject(id: string) {
+  return useProjectMutation(
+    (_: void) => projectsApi.prepare(id),
+    (release) =>
+      `Safe copy prepared: ${release.patients} patients, ${release.applications} applications, ${release.documents} documents. It is in the Zone 2 inbox for review.`,
+    'Could not prepare the safe copy'
+  )
+}
+
+export function useDeleteProject() {
+  return useProjectMutation(
+    (id: string) => projectsApi.remove(id),
+    'Project deleted',
+    'Could not delete the project'
+  )
+}
+
+export function useZone2Releases(status = 'in_review') {
+  return useQuery({
+    queryKey: queryKeys.zone2.releases(status),
+    queryFn: () => zone2Api.releases(status),
+  })
+}
+
+export function useZone2Release(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.zone2.release(id ?? ''),
+    queryFn: () => zone2Api.release(id as string),
+    enabled: Boolean(id),
+  })
+}
+
+export function useApproveRelease() {
+  return useProjectMutation(
+    (id: string) => zone2Api.approve(id),
+    'Released to Zone 2',
+    'Could not release'
+  )
+}
+
+export function useReleaseDocuments(id: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.zone2.documents(id),
+    queryFn: () => zone2Api.documents(id),
+    enabled,
+  })
+}
+
+export function useFlagReleaseDocument() {
+  const queryClient = useQueryClient()
+  return useProjectMutation(
+    (variables: { id: string; documentId: string; reason: string }) =>
+      zone2Api
+        .flag(variables.id, variables.documentId, variables.reason)
+        .then((release) => {
+          void queryClient.invalidateQueries({ queryKey: queryKeys.applicationFiles.all })
+          return release
+        }),
+    'Release sent back; the document is in Rejections',
+    'Could not flag the document'
+  )
+}
+
+export function useEndProject(id: string) {
+  return useProjectMutation(
+    (reason: string) => projectsApi.end(id, reason),
+    'Project ended',
+    'Could not end the project'
+  )
+}
+
+export function useRejectRelease() {
+  return useProjectMutation(
+    (variables: { id: string; reason: string }) =>
+      zone2Api.reject(variables.id, variables.reason),
+    'Sent back for changes',
+    'Could not reject the release'
+  )
 }

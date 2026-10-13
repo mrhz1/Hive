@@ -273,9 +273,24 @@ return 409 (checked with a `SELECT`, since Hive has no constraints).
 
 - Uploaded document: `<code>-<type>-<date>-<16-digit serial>.<ext>`
   (`storage.document_name`).
-- De-identified copy: `<code>_<date>_<16-digit serial>.<ext>`, e.g.
-  `AA1234_20260924_1790261077741000.pdf` (`deid.deid_output_name`). The date
-  and serial are from the de-identification run.
+- De-identified copy: `<code>_<modality>_<date>_<16-digit serial>_<R|RR>.<ext>`,
+  e.g. `AA1234_MR_20190312_1790261077741000_R.pdf` (`deid.deid_output_name`).
+  `_R`: redacted by the pipeline (intake, De-identify). `_RR`: redacted by
+  hand -- uploaded already de-identified, or a replacement uploaded from
+  Rejections, which keeps the file's name and turns `_R` into `_RR`.
+  The modality and date come from `app/document_info.py`:
+  - DICOM: the `Modality` tag and the first of `StudyDate`, `SeriesDate`,
+    `AcquisitionDate`, `ContentDate`, falling back to the file name.
+  - PDF and Word: the file name as received. The modality is a whole word
+    (`CT`, `MR`, `MRI`, `Echo`, `X-ray`, ...; aliases become DICOM codes, so
+    `MRI` is `MR`). The date is `YYYYMMDD` or `YYYY-MM-DD` (or with `_`, `.`,
+    a space).
+  - Not found: `UNKNOWN`. Staff set both with **Set modality & date** on the
+    application's files (`PUT /files/{id}/document-info`), which renames the
+    copy and its sidecar. Not allowed once the application is submitted.
+  - The API returns `modality` and `document_date` on each file, read from
+    the name. Names from before modalities (`<code>_<date>_<serial>`) still
+    work and get a modality when renamed.
 
 The OCR pipeline names its outputs after the input file, so
 `deid._rename_outputs` renames the copy, text and report together after a
@@ -319,6 +334,25 @@ the same time (`DEID_NOTICE_REPEAT_SECONDS`, default 120). Intake redaction
 doesn't send emails since there is no application yet. With the `cml_job`
 backend the Job needs `SMTP_HOST` and `APP_BASE_URL` too.
 
+#### Intake emails
+
+`app/intake_notices.py` emails every active user whose role has
+`deidentifier:notify` ("gets emails" on the de-identifier row of the Roles
+page):
+
+- **New files waiting**: `scripts/intake_notify.py`, run as a scheduled
+  Cloudera Job (e.g. every 30 minutes). It counts settled files in
+  `INTAKE_DIR` by patient code and only mentions files that arrived since
+  its last sent email (`.intake/notices.json`); if the email couldn't be
+  sent they are mentioned again next time.
+- **Intake run finished**: done / failed / need attention, from the end of
+  every run. With `--shards` each machine sends its own.
+- **Application rejected**: the failed checklist points and the reason, and
+  whether the documents were deleted (no consent).
+- **Document rejected**: the file and the reviewer's note.
+
+They need `SMTP_HOST`, and `APP_BASE_URL` for the links.
+
 ### Background uploads
 
 `POST /applications/{id}/files/background` saves the files to
@@ -327,6 +361,62 @@ background task (move, insert row, extract metadata, email). A failed file
 is marked `failed` on the job and the others continue (`partial`). Job
 progress is kept in memory, so after a restart `/upload-jobs/{id}` returns
 404, but the files already processed are fine.
+
+### Text in images and bulk file corrections (7.9)
+
+- **Burned-in text**: redaction already finds and covers text inside DICOM
+  pictures (e.g. lead letters with a name). How many areas it covered is
+  read from the pipeline's report and kept on the file
+  (`patient_application_files.redaction_boxes`). The file list shows "text
+  covered in picture (N)" on such images and can show only them. Checking
+  them is optional; if an identifier still shows, **Reject** the image: it
+  goes to Rejections and stays out of Zone 2 until replaced (`_RR`).
+- **Bulk corrections**: `scripts/update_file_metadata.py corrections.xlsx`
+  (add `--apply` to make the changes, `--user` for the audit log). Columns:
+  File (redacted name or file id), Modality, Document date, Reject reason;
+  blank keeps what is there. Renames files of any application except
+  deleted ones (`app/file_corrections.py`).
+- New column: run `python scripts/migrate_columns.py --apply`.
+
+### Bulk patient import and checked details
+
+**Import** on the Patients page (`app/patient_import.py`) loads patients
+from an Excel or CSV file: download the template, upload, preview, import.
+
+- Columns are matched by the template's labels ("First name", "Date of
+  birth") or the database names (`fstname`, `dt_b`); labels win, so "City"
+  is the patient's city. Unknown columns are listed and left out.
+- New codes are created (in batches of 200; one INSERT per row is slow on
+  Hive). Existing patients only get their empty fields filled; a different
+  value is shown as a conflict and kept as it is.
+- Rows with a bad or repeated code, a date that isn't an Excel date or
+  YYYY-MM-DD, a bad email, or another patient's email/phone are skipped.
+- Needs `patient:create` and `patient:update`. One audit entry per import.
+
+**Checked details** (`patient.details_checked_at`, `details_checked_by`):
+patients made by intake or the import start unchecked; their first
+application can't be submitted until someone clicks *Details are correct*
+in step 1 (`POST /patients/{id}/confirm-details`). Patients typed in by hand
+count as checked. Patients already in the database before this column
+start unchecked too. Add the columns with
+`python scripts/migrate_columns.py --apply`.
+
+### Enrollment checklist
+
+Submitting an application asks for the four checks (all files submitted,
+patient eligible, right consent form, no identifiers left); the API refuses
+`status: submitted` unless `checklist` has all four true. Rejecting asks
+which of them failed (`failed_checks`) and a reason:
+
+- `consent` failed: the data can't be kept. The application's documents
+  (originals and de-identified copies) are deleted at once, as Delete on
+  Rejections does, and it becomes a deleted record. Needs
+  `application:delete`.
+- anything else: it is rejected, to be fixed and submitted again.
+
+The last result is in `patient_applications.checklist` (JSON: `passed` or
+`failed`, `by`, `at`). On an existing database add the column with
+`python scripts/migrate_columns.py --apply`.
 
 ### Rejections
 
@@ -340,6 +430,51 @@ progress is kept in memory, so after a restart `/upload-jobs/{id}` returns
 Uploading a replacement (`/files-library` with `replaces_file_id`) sets
 `review_status` back to `pending` and clears the note. The old note is kept
 in the audit log (`REPLACE` action).
+
+### Abstraction folders
+
+`/abstraction` (`app/abstraction.py`): temporary, read-only copies of
+de-identified documents for one person's task.
+
+- **Pick by metadata**: patient codes, modality, document date range, file
+  type, and text in the file name or the metadata read from the file. Only
+  documents of submitted applications are offered. *Find documents* shows
+  what matches before anything is copied.
+- **On disk**: `ABSTRACTION_DIR/<username>/<id8>-<name>/<CODE>/<file>` plus
+  `MANIFEST.csv` (file, patient, modality, date, type, file id). Files and
+  folders are made read-only so nothing new is added; on Cloudera also set
+  the folder ACLs so only the owner can read their folder.
+- **Expiry**: `ABSTRACTION_EXPIRY_DAYS` (90) from making or extending it.
+  `scripts/abstraction_cleanup.py`, run daily as a scheduled Job, deletes
+  the expired ones. *Make again* copies the same documents again (those
+  still available) with a fresh 90 days. At most `ABSTRACTION_MAX_FILES`
+  (5000) per folder.
+- **Permissions** (`abstraction:*`): `view` and `update` your own folders,
+  `create` new ones, `delete` = see and manage everyone's (the application
+  specialist). Making a folder is logged in the access log as an export, and
+  every change in the audit log.
+- Table `abstraction_folders`; on an existing database run
+  `python scripts/migrate_columns.py --apply`.
+
+### Zone 2 review and project end
+
+`app/zone2.py`. Reviewing a release on the Zone 2 inbox page:
+
+- **Spot checks**: when the release includes documents, the manager can open
+  any of them (PDF in the page, DICOM as an image, Word downloaded), or pick
+  5 at random. Opening one is logged in the access log
+  (`release_document`). Checking every file is not required.
+- **Flag**: a document that still identifies someone is flagged with a
+  reason. The release is sent back, the source document is marked rejected
+  so it shows in Rejections (and the intake team gets an email), and the
+  project can't be prepared again with documents until it is replaced
+  (`_RR`) or deleted. Rejected documents are also left out of abstraction
+  folders.
+- **End project** (`POST /projects/{id}/end`, with a reason): the project
+  becomes `ended` and can't be changed or prepared again. Its Zone 2 copy
+  and archive stay. Researchers' access is removed by hand in Users and
+  Roles; ethics approvals, agreements and training are tracked outside the
+  app.
 
 ### Audit log and access log
 
@@ -368,6 +503,36 @@ python scripts/access_alerts.py --window 60 --dry-run
 ```
 
 It only sees requests that reach the API.
+
+### Security: lockdown and incidents (section 4)
+
+- **Lockdown** (`app/lockdown.py`, Security page or the banner): a user with
+  `security:manage` locks the app with a reason and level; everyone else gets
+  503 `locked` on every call except `/me` and `/security/lockdown`, and
+  every page shows a banner. Locking and unlocking are emailed and audited.
+  The state is `SECURITY_STATE_DIR/lockdown.json`, shared by all instances.
+- **Alert levels** (`scripts/access_alerts.py`): identified downloads and
+  auth failures are high, exports and denials low; any rule turns critical
+  at `ALERT_CRITICAL_FACTOR` (3) times its limit. Low goes to
+  `ALERT_EMAIL_LOW_TO` (the application specialist), high and critical to
+  `ALERT_EMAIL_TO` (Program Manager, specialist, Host IT). At
+  `ALERT_LOCKDOWN_LEVEL` (critical) or above the job locks the app itself;
+  `none` turns that off.
+- **Incidents** (`app/incidents.py`, table `incidents`): title, level,
+  detection time, what happened, data affected, risk, containment, affected
+  parties. The preliminary report is due 24 h after detection and the full
+  one 72 h; mark each as sent. High and critical incidents are emailed when
+  recorded. `scripts/incident_reminders.py` (hourly Job) emails once per
+  report 6 h before it is due or when overdue. *Report (.docx)* exports the
+  breach report. Closing needs the data affected, the containment and the
+  full report sent.
+
+### Data dictionary (7.10)
+
+Every Zone 2 safe copy has `data_dictionary.csv` (file, column, type,
+meaning, values) and the Excel exports a "Data dictionary" sheet
+(`app/data_dictionary.py`). A test fails if a released column has no
+definition.
 
 ### Logging
 

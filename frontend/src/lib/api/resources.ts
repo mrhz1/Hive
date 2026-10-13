@@ -2,7 +2,22 @@ import axios from 'axios'
 import { apiErrorSchema } from '@/schemas/common'
 import type { z } from 'zod'
 import { ApiError, api, toApiError } from './client'
+import {
+  abstractionDocumentListSchema,
+  abstractionFolderListSchema,
+  abstractionFolderSchema,
+  abstractionPreviewSchema,
+  regeneratedSchema,
+  type AbstractionCriteria,
+} from '@/schemas/abstraction'
 import { accessLogListSchema, type AccessLogFilters } from '@/schemas/accessLog'
+import {
+  incidentListSchema,
+  incidentSchema,
+  lockdownSchema,
+  type IncidentPayload,
+  type Level,
+} from '@/schemas/security'
 import {
   auditLogListSchema,
   auditLogSchema,
@@ -10,6 +25,7 @@ import {
   type AuditLogFilters,
 } from '@/schemas/log'
 import {
+  importResultSchema,
   PATIENT_FIELD_NAMES,
   patientListSchema,
   patientSchema,
@@ -55,6 +71,16 @@ import {
   type Role,
   type RoleFormValues,
 } from '@/schemas/role'
+import {
+  candidateListSchema,
+  projectDetailSchema,
+  projectListSchema,
+  releaseDocumentListSchema,
+  releaseSchema,
+  releaseSummaryListSchema,
+  releaseSummarySchema,
+  type ProjectPayload,
+} from '@/schemas/project'
 import {
   userListSchema,
   userSchema,
@@ -161,6 +187,25 @@ export const patientsApi = {
       throw toApiError(error)
     }
   },
+  confirmDetails: (id: string) =>
+    request(patientSchema, () => api.post(`/patients/${id}/confirm-details`)),
+  importFile: (file: File, apply: boolean) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request(importResultSchema, () =>
+      api.post(apply ? '/patients/import' : '/patients/import/preview', form)
+    )
+  },
+  importTemplate: async (): Promise<Blob> => {
+    try {
+      const response = await api.get('/patients/import/template', {
+        responseType: 'blob',
+      })
+      return response.data as Blob
+    } catch (error) {
+      throw await blobError(error)
+    }
+  },
 }
 
 export type ApplicationPayload = {
@@ -170,6 +215,9 @@ export type ApplicationPayload = {
 
   assigned_to_id?: string | null
   original_file_path?: string | null
+
+  /** Every check ticked; required when status becomes 'submitted'. */
+  checklist?: Record<string, boolean>
 }
 
 function toApplicationPayload(values: ApplicationPayload) {
@@ -204,9 +252,9 @@ export const applicationsApi = {
       api.put(`/applications/${id}`, toApplicationPayload(values))
     ),
 
-  reject: (id: string, reason: string) =>
+  reject: (id: string, reason: string, failedChecks: string[]) =>
     request(patientApplicationSchema, () =>
-      api.post(`/applications/${id}/reject`, { reason })
+      api.post(`/applications/${id}/reject`, { reason, failed_checks: failedChecks })
     ),
 
   remove: async (id: string, reason: string): Promise<PurgeSummary> => {
@@ -319,6 +367,14 @@ export const applicationFilesApi = {
       })
     ),
 
+  setDocumentInfo: (fileId: string, modality: string, documentDate: string) =>
+    request(applicationFileSchema, () =>
+      api.put(`/files/${fileId}/document-info`, {
+        modality,
+        document_date: documentDate,
+      })
+    ),
+
   metadata: (fileId: string, deidentified = false) =>
     request(fileMetadataSchema, () =>
       api.get(`/files/${fileId}/metadata`, {
@@ -395,6 +451,116 @@ export const fileMetadataApi = {
       return response.data as Blob
     } catch (error) {
       throw toApiError(error)
+    }
+  },
+}
+
+export const abstractionApi = {
+  list: () => request(abstractionFolderListSchema, () => api.get('/abstraction-folders')),
+  preview: (criteria: AbstractionCriteria) =>
+    request(abstractionPreviewSchema, () =>
+      api.post('/abstraction-folders/preview', criteria)
+    ),
+  create: (values: { name: string; purpose: string; criteria: AbstractionCriteria }) =>
+    request(abstractionFolderSchema, () => api.post('/abstraction-folders', values)),
+  documents: (id: string) =>
+    request(abstractionDocumentListSchema, () =>
+      api.get(`/abstraction-folders/${id}/documents`)
+    ),
+  extend: (id: string) =>
+    request(abstractionFolderSchema, () => api.post(`/abstraction-folders/${id}/extend`)),
+  regenerate: (id: string) =>
+    request(regeneratedSchema, () => api.post(`/abstraction-folders/${id}/regenerate`)),
+  remove: (id: string, reason: string) =>
+    request(abstractionFolderSchema, () =>
+      api.post(`/abstraction-folders/${id}/delete`, { reason })
+    ),
+}
+
+export const projectsApi = {
+  list: () => request(projectListSchema, () => api.get('/projects')),
+  get: (id: string) => request(projectDetailSchema, () => api.get(`/projects/${id}`)),
+  candidates: () => request(candidateListSchema, () => api.get('/projects/candidates')),
+  create: (values: ProjectPayload) =>
+    request(projectDetailSchema, () => api.post('/projects', values)),
+  update: (id: string, values: ProjectPayload) =>
+    request(projectDetailSchema, () => api.put(`/projects/${id}`, values)),
+  end: (id: string, reason: string) =>
+    request(projectDetailSchema, () => api.post(`/projects/${id}/end`, { reason })),
+  setCohort: (id: string, patientIds: string[]) =>
+    request(projectDetailSchema, () =>
+      api.put(`/projects/${id}/cohort`, { patient_ids: patientIds })
+    ),
+  prepare: (id: string) =>
+    request(releaseSchema, () => api.post(`/projects/${id}/prepare`)),
+  remove: async (id: string) => {
+    try {
+      await api.delete(`/projects/${id}`)
+    } catch (error) {
+      throw toApiError(error)
+    }
+  },
+}
+
+export const zone2Api = {
+  releases: (status = 'in_review') =>
+    request(releaseSummaryListSchema, () =>
+      api.get('/zone2/releases', { params: { status } })
+    ),
+  release: (id: string) =>
+    request(releaseSummarySchema, () => api.get(`/zone2/releases/${id}`)),
+  approve: (id: string) =>
+    request(releaseSummarySchema, () => api.post(`/zone2/releases/${id}/approve`)),
+  reject: (id: string, reason: string) =>
+    request(releaseSummarySchema, () =>
+      api.post(`/zone2/releases/${id}/reject`, { reason })
+    ),
+  documents: (id: string) =>
+    request(releaseDocumentListSchema, () => api.get(`/zone2/releases/${id}/documents`)),
+  documentContent: async (id: string, documentId: string): Promise<Blob> => {
+    try {
+      const response = await api.get(
+        `/zone2/releases/${id}/documents/${documentId}/content`,
+        { responseType: 'blob' }
+      )
+      return response.data as Blob
+    } catch (error) {
+      throw await blobError(error)
+    }
+  },
+  documentImage: (id: string, documentId: string, frame = 0) =>
+    fetchImagePreview(
+      `/zone2/releases/${id}/documents/${documentId}/image`,
+      frame,
+      false
+    ),
+  flag: (id: string, documentId: string, reason: string) =>
+    request(releaseSummarySchema, () =>
+      api.post(`/zone2/releases/${id}/documents/${documentId}/flag`, { reason })
+    ),
+}
+
+export const securityApi = {
+  lockdown: () => request(lockdownSchema, () => api.get('/security/lockdown')),
+  lock: (reason: string, level: Level) =>
+    request(lockdownSchema, () => api.post('/security/lockdown', { reason, level })),
+  unlock: (reason: string) =>
+    request(lockdownSchema, () => api.post('/security/unlock', { reason })),
+  incidents: () => request(incidentListSchema, () => api.get('/incidents')),
+  createIncident: (values: IncidentPayload) =>
+    request(incidentSchema, () => api.post('/incidents', values)),
+  updateIncident: (id: string, values: IncidentPayload) =>
+    request(incidentSchema, () => api.put(`/incidents/${id}`, values)),
+  markSent: (id: string, report: 'preliminary' | 'full') =>
+    request(incidentSchema, () => api.post(`/incidents/${id}/sent`, { report })),
+  close: (id: string) =>
+    request(incidentSchema, () => api.post(`/incidents/${id}/close`)),
+  report: async (id: string): Promise<Blob> => {
+    try {
+      const response = await api.get(`/incidents/${id}/report`, { responseType: 'blob' })
+      return response.data as Blob
+    } catch (error) {
+      throw await blobError(error)
     }
   },
 }
