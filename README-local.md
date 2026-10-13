@@ -334,6 +334,25 @@ the same time (`DEID_NOTICE_REPEAT_SECONDS`, default 120). Intake redaction
 doesn't send emails since there is no application yet. With the `cml_job`
 backend the Job needs `SMTP_HOST` and `APP_BASE_URL` too.
 
+#### Intake emails
+
+`app/intake_notices.py` emails every active user whose role has
+`deidentifier:notify` ("gets emails" on the de-identifier row of the Roles
+page):
+
+- **New files waiting**: `scripts/intake_notify.py`, run as a scheduled
+  Cloudera Job (e.g. every 30 minutes). It counts settled files in
+  `INTAKE_DIR` by patient code and only mentions files that arrived since
+  its last sent email (`.intake/notices.json`); if the email couldn't be
+  sent they are mentioned again next time.
+- **Intake run finished**: done / failed / need attention, from the end of
+  every run. With `--shards` each machine sends its own.
+- **Application rejected**: the failed checklist points and the reason, and
+  whether the documents were deleted (no consent).
+- **Document rejected**: the file and the reviewer's note.
+
+They need `SMTP_HOST`, and `APP_BASE_URL` for the links.
+
 ### Background uploads
 
 `POST /applications/{id}/files/background` saves the files to

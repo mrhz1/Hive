@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app import intake, intake_worker
+from app import intake, intake_notices, intake_worker
 from app.logging_setup import get_logger
 
 log = get_logger(__name__)
@@ -104,6 +104,7 @@ def run(limit=None, pool_size=None, shards=None, of=1, root=None):
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     intake.write_json(intake.state_dir() / "reports" / f"{stamp}-{socket.gethostname()}.json", report)
     log.info("intake_run_finished", **{k: v for k, v in report.items() if k != "shards"})
+    intake_notices.notify_run_finished(report)
     return report
 
 

@@ -25,7 +25,8 @@ export const FILE_REVIEW_ACTIONS = [
 
 export const REJECTION_ACTIONS = ['view'] as const
 
-export const DEIDENTIFIER_ACTIONS = ['view', 'run'] as const
+// notify: gets the intake emails (new files waiting, runs, rejections).
+export const DEIDENTIFIER_ACTIONS = ['view', 'run', 'notify'] as const
 
 export const ZONE2_ACTIONS = ['prepare', 'review'] as const
 
@@ -72,6 +73,7 @@ const ACTION_LABELS: Record<string, string> = {
   view_deidentified: 'view de-identified',
   metadata: 'metadata',
   deid_metadata: 'de-identified metadata',
+  notify: 'gets emails',
 }
 
 export function actionLabel(action: string): string {
