@@ -265,7 +265,7 @@ async def upload_deidentified_application_file(
 
     patient_id = _known_patient_id(cursor, application) or ""
     info = document_info.find(raw_name, extension, patient_id, data)
-    stored_name = deid_output_name(patient_id, extension, info)
+    stored_name = deid_output_name(patient_id, extension, info, document_info.MANUAL)
 
     directory = deid_dir_for(extension)
     if patient_id:

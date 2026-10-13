@@ -273,8 +273,11 @@ return 409 (checked with a `SELECT`, since Hive has no constraints).
 
 - Uploaded document: `<code>-<type>-<date>-<16-digit serial>.<ext>`
   (`storage.document_name`).
-- De-identified copy: `<code>_<modality>_<date>_<16-digit serial>.<ext>`,
-  e.g. `AA1234_MR_20190312_1790261077741000.pdf` (`deid.deid_output_name`).
+- De-identified copy: `<code>_<modality>_<date>_<16-digit serial>_<R|RR>.<ext>`,
+  e.g. `AA1234_MR_20190312_1790261077741000_R.pdf` (`deid.deid_output_name`).
+  `_R`: redacted by the pipeline (intake, De-identify). `_RR`: redacted by
+  hand -- uploaded already de-identified, or a replacement uploaded from
+  Rejections, which keeps the file's name and turns `_R` into `_RR`.
   The modality and date come from `app/document_info.py`:
   - DICOM: the `Modality` tag and the first of `StudyDate`, `SeriesDate`,
     `AcquisitionDate`, `ContentDate`, falling back to the file name.

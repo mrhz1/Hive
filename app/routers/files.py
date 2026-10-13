@@ -255,7 +255,15 @@ async def upload_deidentified_file(
             patient_id,
             extension,
             data,
-            record.deidentified_file_name or deid_output_name(patient_id, extension),
+            document_info.renamed(
+                record.deidentified_file_name or "", redaction=document_info.MANUAL
+            )
+            or deid_output_name(
+                patient_id,
+                extension,
+                document_info.find(raw_name, extension, patient_id, data),
+                document_info.MANUAL,
+            ),
         )
 
         updated = crud.update_file(
@@ -291,7 +299,7 @@ async def upload_deidentified_file(
             )
 
         info = document_info.find(raw_name, extension, patient_id, data)
-        name = deid_output_name(patient_id, extension, info)
+        name = deid_output_name(patient_id, extension, info, document_info.MANUAL)
         stored = _write_redacted(patient_id, extension, data, name)
 
         result = crud.create_file(

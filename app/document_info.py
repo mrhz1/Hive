@@ -1,7 +1,8 @@
 """The modality and date a redacted file is named by.
 
-A redacted file is named `<code>_<modality>_<date>_<16-digit serial>.<ext>`,
-e.g. `AA1234_MR_20190312_1790261077741000.pdf`.
+A redacted file is named `<code>_<modality>_<date>_<16-digit serial>_<R|RR>.<ext>`,
+e.g. `AA1234_MR_20190312_1790261077741000_R.pdf`. `R` is redacted by the
+pipeline, `RR` redacted by hand (an upload or a replacement).
 
 - DICOM: the Modality tag, and the first of StudyDate, SeriesDate,
   AcquisitionDate, ContentDate.
@@ -22,6 +23,9 @@ from pathlib import Path
 from typing import Optional, Union
 
 UNKNOWN = "UNKNOWN"
+
+AUTOMATIC = "R"
+MANUAL = "RR"
 
 # DICOM modality codes (PS3.3 C.7.3.1.1.1).
 DICOM_MODALITIES = frozenset("""
@@ -70,11 +74,12 @@ _DATE = re.compile(
 _X_RAY = re.compile(r"X[-_ ]RAY", re.IGNORECASE)
 _WORD = re.compile(r"[A-Za-z]+")
 
-# `<code>_[<modality>_]<date>_<serial><rest>`: names from before modalities
-# were added have no modality part.
+# `<code>_[<modality>_]<date>_<serial>[_<R|RR>]<extension>`: older names
+# have no modality or redaction part.
 _NAME = re.compile(
     r"^(?P<code>[A-Z0-9]+)_(?:(?P<modality>[A-Z0-9]+)_)?"
-    r"(?P<day>\d{8}|UNKNOWN)_(?P<serial>\d{16})(?P<rest>.*)$"
+    r"(?P<day>\d{8}|UNKNOWN)_(?P<serial>\d{16})"
+    r"(?:_(?P<redaction>RR?))?(?P<extension>\..*)?$"
 )
 
 
@@ -83,8 +88,9 @@ class DocumentInfo:
     modality: str = UNKNOWN
     date: str = UNKNOWN  # YYYYMMDD
 
-    def stem(self, code: str, serial: str) -> str:
-        return f"{code or 'unknown'}_{self.modality}_{self.date}_{serial}"
+    def stem(self, code: str, serial: str, redaction: Optional[str] = AUTOMATIC) -> str:
+        stem = f"{code or 'unknown'}_{self.modality}_{self.date}_{serial}"
+        return f"{stem}_{redaction}" if redaction else stem
 
 
 def clean_modality(value: Optional[str]) -> Optional[str]:
@@ -189,12 +195,22 @@ def parse_name(name: str) -> Optional[dict]:
     return match.groupdict() if match else None
 
 
-def renamed(name: str, info: DocumentInfo) -> Optional[str]:
-    """`name` with its modality and date replaced, or None if it isn't one of ours."""
+def renamed(
+    name: str, info: Optional[DocumentInfo] = None, redaction: Optional[str] = None
+) -> Optional[str]:
+    """`name` with its modality and date, or how it was redacted, replaced.
+    None if it isn't one of ours."""
     parts = parse_name(name)
     if parts is None:
         return None
-    return info.stem(parts["code"], parts["serial"]) + parts["rest"]
+    if info is None and parts["modality"]:
+        info = DocumentInfo(modality=parts["modality"], date=parts["day"])
+    elif info is None:
+        # An older name's date is when it was processed, not the document's.
+        info = DocumentInfo()
+    return info.stem(
+        parts["code"], parts["serial"], redaction or parts["redaction"]
+    ) + (parts["extension"] or "")
 
 
 def rename(path: Path, info: DocumentInfo) -> Path:
