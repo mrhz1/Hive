@@ -226,6 +226,10 @@ class Patient(_PatientFields):
     pemail: Optional[str] = None
     ptemail: Optional[str] = None
     original_file_path: Optional[str] = None
+    # Empty for patients made by intake or the bulk import until someone
+    # confirms their details; their first application waits for it.
+    details_checked_at: Optional[str] = None
+    details_checked_by: Optional[str] = None
 
 
 DEID_STATUSES = ("pending", "queued", "processing", "done", "failed")

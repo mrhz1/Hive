@@ -51,6 +51,40 @@ export const patientHooks = createCrudHooks<Patient, PatientFormValues>({
   alsoInvalidate: [queryKeys.logs.all],
 })
 
+export function useConfirmPatientDetails() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => patientsApi.confirmDetails(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.patients.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success('Patient details confirmed')
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not confirm the details'))
+    },
+  })
+}
+
+export function usePatientImport() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (variables: { file: File; apply: boolean }) =>
+      patientsApi.importFile(variables.file, variables.apply),
+    onSuccess: (result) => {
+      if (!result.applied) return
+      void queryClient.invalidateQueries({ queryKey: queryKeys.patients.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success(
+        `Imported: ${result.counts.create ?? 0} new, ${result.counts.update ?? 0} updated`
+      )
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not read the file'))
+    },
+  })
+}
+
 export const roleHooks = createCrudHooks<Role, RoleFormValues>({
   api: rolesApi,
   keys: queryKeys.roles,

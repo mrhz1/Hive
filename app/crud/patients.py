@@ -1,5 +1,5 @@
-from datetime import date, datetime
-from typing import List, Optional
+from datetime import date, datetime, timezone
+from typing import Dict, List, Optional
 
 from app.db import authoritative, execute
 from app.errors import ConflictError, NotFoundError, ValidationError
@@ -50,6 +50,10 @@ COLUMNS = (
     "dt_d",
     "original_file_path",
     "deidentified_file_path",
+    # Someone confirmed the details are right (see confirm_details). Patients
+    # made by intake or the bulk import start without it.
+    "details_checked_at",
+    "details_checked_by",
 )
 
 DATE_COLUMNS = {"dt_reg", "dt_b", "dt_d"}
@@ -127,8 +131,17 @@ def _assert_unique(cursor, values: dict, exclude_id: Optional[str] = None) -> No
             raise ConflictError(f"{label} '{value}' already exists")
 
 
-def create_patient(cursor, payload: PatientCreate) -> Patient:
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def create_patient(
+    cursor, payload: PatientCreate, checked_by: Optional[str] = None
+) -> Patient:
+    """`checked_by`: who typed the details in, so they count as checked."""
     fields = payload.model_dump()
+    fields["details_checked_at"] = _now() if checked_by else None
+    fields["details_checked_by"] = checked_by
     _assert_unique(cursor, fields)
 
     patient_id = fields["id"]
@@ -161,6 +174,57 @@ def create_empty_patient(cursor, patient_id: str) -> None:
         tuple(values),
     )
     log.info("patient_created", patient_id=patient_id, source="intake")
+
+
+def insert_many(cursor, rows: List[Dict], chunk: int = 200) -> int:
+    """Insert patients in a few statements (one INSERT per row is slow on
+    Hive). Rows are column -> value; missing columns are NULL."""
+    placeholders = "(" + ", ".join(_placeholder(c) for c in COLUMNS) + ")"
+    for start in range(0, len(rows), chunk):
+        part = rows[start : start + chunk]
+        params: list = []
+        for row in part:
+            for column in COLUMNS:
+                value = row.get(column)
+                if column in DATE_COLUMNS and isinstance(value, date):
+                    value = value.isoformat()
+                params.append(value)
+        execute(
+            cursor,
+            f"INSERT INTO `patient` ({_COLS}) VALUES " + ", ".join([placeholders] * len(part)),
+            tuple(params),
+        )
+    log.info("patients_inserted", count=len(rows))
+    return len(rows)
+
+
+def set_fields(cursor, patient_id: str, fields: Dict) -> None:
+    """Write these columns as given, without the checks of update_patient
+    (the bulk import fills empty fields of patients that may have no name)."""
+    if not fields:
+        return
+    values = {
+        column: value.isoformat() if isinstance(value, date) else value
+        for column, value in fields.items()
+    }
+    set_clause = ", ".join(f"`{c}` = {_placeholder(c)}" for c in values)
+    execute(
+        cursor,
+        f"UPDATE `patient` SET {set_clause} WHERE `id` = %s",
+        tuple(values.values()) + (patient_id,),
+    )
+
+
+def confirm_details(cursor, patient_id: str, actor_id: str) -> Patient:
+    get_patient_or_404(cursor, patient_id)
+    execute(
+        cursor,
+        "UPDATE `patient` SET `details_checked_at` = %s, `details_checked_by` = %s "
+        "WHERE `id` = %s",
+        (_now(), actor_id, patient_id),
+    )
+    log.info("patient_details_confirmed", patient_id=patient_id)
+    return get_patient_or_404(cursor, patient_id)
 
 
 def existing_ids(cursor, ids: List[str]) -> set:

@@ -211,6 +211,12 @@ def update_application(
     checklist = None
     if payload.status == "submitted" and before.status != "submitted":
         checklist = _passed_checklist(payload, actor)
+        patient = patients_crud.get_patient_or_404(cursor, before.patient_id)
+        if not patient.details_checked_at:
+            raise ValidationError(
+                f"Patient {patient.id}'s details have not been checked yet. Check "
+                "them in step 1 and confirm before submitting."
+            )
     elif payload.checklist is not None:
         raise ValidationError("The checklist is only given when submitting")
 

@@ -44,9 +44,34 @@ export const patientSchema = z.object({
 
   original_file_path: text,
   deidentified_file_path: text,
+
+  /** Empty for patients from intake or the bulk import until confirmed. */
+  details_checked_at: z.string().nullable().optional(),
+  details_checked_by: z.string().nullable().optional(),
 })
 
 export type Patient = z.infer<typeof patientSchema>
+
+// Mirrors app/patient_import.py.
+export const importRowSchema = z.object({
+  line: z.number(),
+  code: z.string().default(''),
+  action: z.enum(['create', 'update', 'unchanged', 'error']),
+  filled: z.array(z.string()).default([]),
+  conflicts: z.array(z.string()).default([]),
+  errors: z.array(z.string()).default([]),
+})
+
+export type ImportRow = z.infer<typeof importRowSchema>
+
+export const importResultSchema = z.object({
+  applied: z.boolean().default(false),
+  counts: z.record(z.string(), z.number()),
+  ignored_columns: z.array(z.string()).default([]),
+  rows: z.array(importRowSchema),
+})
+
+export type ImportResult = z.infer<typeof importResultSchema>
 
 export const patientListSchema = z.array(patientSchema)
 
