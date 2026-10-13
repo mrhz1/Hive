@@ -21,6 +21,7 @@ export const queryKeys = {
     all: ['zone2'] as const,
     releases: (status: string) => [...queryKeys.zone2.all, 'releases', status] as const,
     release: (id: string) => [...queryKeys.zone2.all, 'release', id] as const,
+    documents: (id: string) => [...queryKeys.zone2.all, 'documents', id] as const,
   },
 
   users: {

@@ -67,6 +67,7 @@ import {
   candidateListSchema,
   projectDetailSchema,
   projectListSchema,
+  releaseDocumentListSchema,
   releaseSchema,
   releaseSummaryListSchema,
   releaseSummarySchema,
@@ -457,6 +458,8 @@ export const projectsApi = {
     request(projectDetailSchema, () => api.post('/projects', values)),
   update: (id: string, values: ProjectPayload) =>
     request(projectDetailSchema, () => api.put(`/projects/${id}`, values)),
+  end: (id: string, reason: string) =>
+    request(projectDetailSchema, () => api.post(`/projects/${id}/end`, { reason })),
   setCohort: (id: string, patientIds: string[]) =>
     request(projectDetailSchema, () =>
       api.put(`/projects/${id}/cohort`, { patient_ids: patientIds })
@@ -484,6 +487,29 @@ export const zone2Api = {
   reject: (id: string, reason: string) =>
     request(releaseSummarySchema, () =>
       api.post(`/zone2/releases/${id}/reject`, { reason })
+    ),
+  documents: (id: string) =>
+    request(releaseDocumentListSchema, () => api.get(`/zone2/releases/${id}/documents`)),
+  documentContent: async (id: string, documentId: string): Promise<Blob> => {
+    try {
+      const response = await api.get(
+        `/zone2/releases/${id}/documents/${documentId}/content`,
+        { responseType: 'blob' }
+      )
+      return response.data as Blob
+    } catch (error) {
+      throw await blobError(error)
+    }
+  },
+  documentImage: (id: string, documentId: string, frame = 0) =>
+    fetchImagePreview(
+      `/zone2/releases/${id}/documents/${documentId}/image`,
+      frame,
+      false
+    ),
+  flag: (id: string, documentId: string, reason: string) =>
+    request(releaseSummarySchema, () =>
+      api.post(`/zone2/releases/${id}/documents/${documentId}/flag`, { reason })
     ),
 }
 

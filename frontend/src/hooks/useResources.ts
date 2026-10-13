@@ -881,6 +881,37 @@ export function useApproveRelease() {
   )
 }
 
+export function useReleaseDocuments(id: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.zone2.documents(id),
+    queryFn: () => zone2Api.documents(id),
+    enabled,
+  })
+}
+
+export function useFlagReleaseDocument() {
+  const queryClient = useQueryClient()
+  return useProjectMutation(
+    (variables: { id: string; documentId: string; reason: string }) =>
+      zone2Api
+        .flag(variables.id, variables.documentId, variables.reason)
+        .then((release) => {
+          void queryClient.invalidateQueries({ queryKey: queryKeys.applicationFiles.all })
+          return release
+        }),
+    'Release sent back; the document is in Rejections',
+    'Could not flag the document'
+  )
+}
+
+export function useEndProject(id: string) {
+  return useProjectMutation(
+    (reason: string) => projectsApi.end(id, reason),
+    'Project ended',
+    'Could not end the project'
+  )
+}
+
 export function useRejectRelease() {
   return useProjectMutation(
     (variables: { id: string; reason: string }) =>

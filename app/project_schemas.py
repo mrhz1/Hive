@@ -122,6 +122,15 @@ class ReleaseDecision(BaseModel):
     reason: Optional[str] = None
 
 
+class ReleaseDocument(BaseModel):
+    """A released file, as listed in the safe copy's documents.csv."""
+
+    project_document_id: str
+    project_patient_id: str
+    file_type: str = ""
+    file: str
+
+
 class ReleaseSummary(ProjectRelease):
     project_name: str = ""
     project_short_code: str = ""

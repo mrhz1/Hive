@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Check, X } from 'lucide-react'
-import { useState } from 'react'
+import { Check, Eye, Flag, Shuffle, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ReasonDialog } from '@/components/ReasonDialog'
 import { RequirePermission } from '@/components/PermissionGate'
@@ -11,11 +12,20 @@ import { LoadingBlock } from '@/components/ui/Spinner'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
   useApproveRelease,
+  useFlagReleaseDocument,
   useRejectRelease,
+  useReleaseDocuments,
   useZone2Release,
   useZone2Releases,
 } from '@/hooks/useResources'
-import { releaseTone, type ReleaseSummary } from '@/schemas/project'
+import { ApiError } from '@/lib/api/client'
+import { zone2Api } from '@/lib/api/resources'
+import {
+  randomSample,
+  releaseTone,
+  type ReleaseDocument,
+  type ReleaseSummary,
+} from '@/schemas/project'
 
 export const Route = createFileRoute('/zone2-inbox/')({
   component: () => (
@@ -209,10 +219,7 @@ function ReleaseReview({
       </div>
 
       {release.files_included ? (
-        <p className="rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--background-secondary))] p-3 text-sm">
-          This copy includes documents. Open a few from the folder above in a Cloudera
-          Session to confirm they are fully de-identified before releasing.
-        </p>
+        <ReleaseDocuments release={release} pending={pending} onFlagged={onDecided} />
       ) : null}
 
       {TABLES.map(({ key, label }) => {
@@ -283,5 +290,236 @@ function ReleaseReview({
         />
       ) : null}
     </Card>
+  )
+}
+
+const SAMPLE_SIZE = 5
+
+type Opened = { document: ReleaseDocument; kind: 'pdf' | 'image'; url: string }
+
+function ReleaseDocuments({
+  release,
+  pending,
+  onFlagged,
+}: {
+  release: ReleaseSummary
+  pending: boolean
+  onFlagged: () => void
+}) {
+  const documents = useReleaseDocuments(release.id)
+  const flag = useFlagReleaseDocument()
+  const [sample, setSample] = useState<string[] | null>(null)
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [openingId, setOpeningId] = useState<string | null>(null)
+  const [opened, setOpened] = useState<Opened | null>(null)
+  const [flagging, setFlagging] = useState<ReleaseDocument | null>(null)
+
+  const all = documents.data ?? []
+  const shown = sample ? all.filter((d) => sample.includes(d.project_document_id)) : all
+
+  async function open(document: ReleaseDocument) {
+    setOpeningId(document.project_document_id)
+    try {
+      const type = document.file_type.toLowerCase()
+      if (type === 'dcm' || type === 'dicom') {
+        const image = await zone2Api.documentImage(
+          release.id,
+          document.project_document_id
+        )
+        setOpened({ document, kind: 'image', url: image.url })
+      } else {
+        const blob = await zone2Api.documentContent(
+          release.id,
+          document.project_document_id
+        )
+        const url = URL.createObjectURL(blob)
+        if (type === 'pdf') {
+          setOpened({ document, kind: 'pdf', url })
+        } else {
+          // Word: no preview here, so hand it over to open locally.
+          const link = window.document.createElement('a')
+          link.href = url
+          link.download = document.file.split('/').pop() ?? document.project_document_id
+          link.click()
+          URL.revokeObjectURL(url)
+        }
+      }
+      setChecked((current) => new Set(current).add(document.project_document_id))
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : 'Could not open the document'
+      )
+    } finally {
+      setOpeningId(null)
+    }
+  }
+
+  function close() {
+    if (opened) URL.revokeObjectURL(opened.url)
+    setOpened(null)
+  }
+
+  const columns: Array<Column<ReleaseDocument>> = [
+    {
+      id: 'document',
+      header: 'Document',
+      cell: (d) => <span className="font-mono text-xs">{d.project_document_id}</span>,
+      sortValue: (d) => d.project_document_id,
+    },
+    {
+      id: 'patient',
+      header: 'Project patient',
+      cell: (d) => <span className="font-mono text-xs">{d.project_patient_id}</span>,
+      sortValue: (d) => d.project_patient_id,
+    },
+    {
+      id: 'type',
+      header: 'Type',
+      cell: (d) => <Badge tone="neutral">{d.file_type || 'file'}</Badge>,
+      sortValue: (d) => d.file_type,
+    },
+    {
+      id: 'checked',
+      header: 'Opened',
+      cell: (d) =>
+        checked.has(d.project_document_id) ? <Badge tone="success">opened</Badge> : null,
+    },
+  ]
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h3 className={titleClass}>Documents</h3>
+          <p className="mt-1 text-sm text-[rgb(var(--foreground-muted))]">
+            Open any document, or a random few, to check it is fully de-identified. If one
+            still identifies someone, flag it: the release is sent back and the document
+            goes to Rejections to be redacted again.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {sample ? (
+            <Button size="sm" variant="outline" onClick={() => setSample(null)}>
+              Show all {all.length}
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={all.length === 0}
+            leadingIcon={<Shuffle className="size-4" aria-hidden="true" />}
+            onClick={() =>
+              setSample(randomSample(all, SAMPLE_SIZE).map((d) => d.project_document_id))
+            }
+          >
+            Pick {SAMPLE_SIZE} at random
+          </Button>
+        </div>
+      </div>
+
+      <DataTable
+        data={shown}
+        columns={columns}
+        getRowId={(d) => d.project_document_id}
+        isLoading={documents.isLoading}
+        error={documents.error}
+        loadingLabel="Loading documents"
+        emptyMessage="This release has no document files."
+        rowActions={(d) => (
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              isLoading={openingId === d.project_document_id}
+              leadingIcon={<Eye className="size-4" aria-hidden="true" />}
+              onClick={() => void open(d)}
+            >
+              Open
+            </Button>
+            {pending ? (
+              <Button
+                size="sm"
+                variant="danger"
+                leadingIcon={<Flag className="size-4" aria-hidden="true" />}
+                onClick={() => setFlagging(d)}
+              >
+                Flag
+              </Button>
+            ) : null}
+          </div>
+        )}
+      />
+
+      {opened ? <OpenedDocument opened={opened} onClose={close} /> : null}
+
+      {flagging ? (
+        <ReasonDialog
+          title={`Flag ${flagging.project_document_id}?`}
+          description="The whole release is sent back, and the document goes to Rejections to be redacted again by hand. Prepare the project again once it is fixed."
+          confirmLabel="Flag and send back"
+          placeholder="e.g. a name is visible in the page footer"
+          isBusy={flag.isPending}
+          onCancel={() => setFlagging(null)}
+          onConfirm={(reason) =>
+            void flag
+              .mutateAsync({
+                id: release.id,
+                documentId: flagging.project_document_id,
+                reason,
+              })
+              .then(() => {
+                setFlagging(null)
+                onFlagged()
+              })
+              .catch(() => undefined)
+          }
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function OpenedDocument({ opened, onClose }: { opened: Opened; onClose: () => void }) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgb(var(--background))]/80 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label={opened.document.project_document_id}
+    >
+      <div className="flex h-[90vh] w-full max-w-5xl flex-col gap-3 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4 shadow-xl">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-mono text-sm font-bold">
+            {opened.document.project_document_id}
+          </h2>
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+        {opened.kind === 'pdf' ? (
+          <iframe
+            title={opened.document.project_document_id}
+            src={opened.url}
+            className="min-h-0 flex-1 rounded border border-[rgb(var(--border))]"
+          />
+        ) : (
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-black">
+            <img
+              src={opened.url}
+              alt={opened.document.project_document_id}
+              className="max-h-full max-w-full"
+            />
+          </div>
+        )}
+      </div>
+    </div>
   )
 }

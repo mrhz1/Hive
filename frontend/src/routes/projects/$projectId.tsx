@@ -1,9 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { PackageCheck, Save, Trash2, Users } from 'lucide-react'
+import { Archive, PackageCheck, Save, Trash2, Users } from 'lucide-react'
 import { useState } from 'react'
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { DataTable, type Column } from '@/components/DataTable'
 import { NotFoundPage } from '@/components/ErrorPages'
+import { ReasonDialog } from '@/components/ReasonDialog'
 import { Can, RequirePermission } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
 import { CheckboxField, TextAreaField, TextField } from '@/components/ui/Field'
@@ -13,6 +14,7 @@ import { usePermissions } from '@/hooks/useCurrentUser'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
   useDeleteProject,
+  useEndProject,
   usePrepareProject,
   useProject,
   useProjectCandidates,
@@ -49,7 +51,8 @@ function ProjectPage() {
   if (!query.data) return <NotFoundPage />
 
   const project = query.data
-  const locked = project.status === 'in_review'
+  const ended = project.status === 'ended'
+  const locked = project.status === 'in_review' || ended
 
   return (
     <div className="space-y-6">
@@ -62,13 +65,23 @@ function ProjectPage() {
         <Badge tone={projectTone(project.status)}>
           {PROJECT_STATUS_LABELS[project.status] ?? project.status}
         </Badge>
-        {locked ? (
+        {project.status === 'in_review' ? (
           <span className="text-sm text-[rgb(var(--foreground-muted))]">
             A safe copy is waiting in the Zone 2 inbox. The project can be changed once it
             is approved or sent back.
           </span>
         ) : null}
       </div>
+
+      {ended ? (
+        <Card className="p-4 text-sm">
+          <strong>This project has ended</strong>
+          {project.status_reason ? ` (${project.status_reason})` : ''}
+          {project.updated_at ? `, ${project.updated_at.slice(0, 10)}` : ''}. Nothing more
+          can be released. Its Zone 2 copy and archive are kept; remove the researchers'
+          access in Users and Roles.
+        </Card>
+      ) : null}
 
       {project.status === 'rejected' && project.status_reason ? (
         <Card className="border-rose-500/40 p-4 text-sm">
@@ -84,6 +97,7 @@ function ProjectPage() {
       />
       <CohortCard project={project} locked={locked} />
       <ReleaseCard project={project} />
+      <EndCard project={project} />
       <DeleteCard project={project} />
     </div>
   )
@@ -368,6 +382,7 @@ function ReleaseCard({ project }: { project: ProjectDetail }) {
   if (!project.consent_confirmed) missing.push('consent confirmed')
   if (project.cohort.length === 0) missing.push('at least one patient')
   const waiting = project.status === 'in_review'
+  const ended = project.status === 'ended'
 
   const columns: Array<Column<Release>> = [
     {
@@ -437,13 +452,15 @@ function ReleaseCard({ project }: { project: ProjectDetail }) {
         </div>
         <Can permission="zone2:prepare">
           <Button
-            disabled={waiting || missing.length > 0}
+            disabled={waiting || ended || missing.length > 0}
             title={
-              waiting
-                ? 'A release is already waiting for review'
-                : missing.length
-                  ? `Needs ${missing.join(', ')}`
-                  : undefined
+              ended
+                ? 'The project has ended'
+                : waiting
+                  ? 'A release is already waiting for review'
+                  : missing.length
+                    ? `Needs ${missing.join(', ')}`
+                    : undefined
             }
             isLoading={prepare.isPending}
             leadingIcon={<PackageCheck className="size-4" aria-hidden="true" />}
@@ -471,6 +488,46 @@ function ReleaseCard({ project }: { project: ProjectDetail }) {
         />
       </div>
     </Card>
+  )
+}
+
+function EndCard({ project }: { project: ProjectDetail }) {
+  const end = useEndProject(project.id)
+  const [confirming, setConfirming] = useState(false)
+  if (project.status === 'ended' || project.releases.length === 0) return null
+  const waiting = project.status === 'in_review'
+
+  return (
+    <Can permission="project:update">
+      <div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={waiting}
+          title={waiting ? 'Approve or send back the waiting release first' : undefined}
+          leadingIcon={<Archive className="size-3.5" aria-hidden="true" />}
+          onClick={() => setConfirming(true)}
+        >
+          End project
+        </Button>
+        {confirming ? (
+          <ReasonDialog
+            title={`End ${project.name}?`}
+            description="No more safe copies can be prepared. The Zone 2 copy and the archive stay as they are. Remove the researchers' access yourself in Users and Roles."
+            confirmLabel="End project"
+            placeholder="e.g. study closed, results published"
+            isBusy={end.isPending}
+            onCancel={() => setConfirming(false)}
+            onConfirm={(reason) =>
+              void end
+                .mutateAsync(reason)
+                .then(() => setConfirming(false))
+                .catch(() => undefined)
+            }
+          />
+        ) : null}
+      </div>
+    </Can>
   )
 }
 

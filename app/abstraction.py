@@ -111,7 +111,8 @@ def _available(cursor) -> List[Tuple[object, str]]:
     out = []
     for record in files_crud.list_files(cursor):
         patient_id = patients.get(record.application_id)
-        if not patient_id or is_deleted_file(record):
+        # deleted, or rejected and waiting to be redacted again
+        if not patient_id or is_deleted_file(record) or record.review_status == "rejected":
             continue
         if record.deid_status != "done" or not record.de_identified_file_path:
             continue

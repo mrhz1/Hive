@@ -15,6 +15,14 @@ Preparing a project (its cohort of patients, their submitted applications):
 Approving copies the safe copy to ZONE2_DIR/<project>/; rejecting sends the
 project back with the reason. Which folders researchers can open is a
 Cloudera access setting, not something this module can enforce.
+
+Reviewing: the manager can open any released document (all, or a random
+few) and flag one that still identifies someone. A flag rejects the release
+and puts the source document in Rejections; the project can't be prepared
+again with documents until it is fixed (replaced as _RR).
+
+Ending a project only marks it ended: no more releases. Its Zone 2 copy and
+archive stay; researchers' access is removed by hand (Users, Roles).
 """
 
 import csv
@@ -29,13 +37,15 @@ from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as applications_crud
 from app.crud import patients as patients_crud
 from app.crud import projects as projects_crud
-from app.errors import ValidationError
+from app.errors import NotFoundError, ValidationError
 from app.logging_setup import get_logger
 from app.project_schemas import Candidate, Project, ProjectRelease
+from app.schemas import PatientApplicationFileUpdate
 
 log = get_logger(__name__)
 
 RELEASED_STATUSES = ("submitted", "approved")
+ENDED = "ended"
 SAMPLE_ROWS = 5
 AGE_CAP = 90
 
@@ -309,11 +319,29 @@ def _copy_document(record, target_dir: Path, document_id: str, code: str, projec
     return target.name
 
 
+def _refuse_rejected_documents(cursor, cohort) -> None:
+    """A document flagged (or rejected) and not fixed yet can't be released."""
+    waiting = [
+        f"{record.deidentified_file_name or record.original_file_name}"
+        for member in cohort
+        for application in _submitted_applications(cursor, member.patient_id)
+        for record in _documents(cursor, application.id)
+        if record.review_status == "rejected"
+    ]
+    if waiting:
+        raise ValidationError(
+            f"{len(waiting)} document(s) are waiting in Rejections; replace or "
+            "delete them first: " + ", ".join(waiting[:10])
+        )
+
+
 # --- prepare ------------------------------------------------------------
 
 
 def _require_ready(project: Project, cohort) -> None:
     problems = []
+    if project.status == ENDED:
+        problems.append("the project has ended")
     if project.status == "in_review":
         problems.append("a release is already waiting for review")
     if not project.approval_reference:
@@ -330,6 +358,8 @@ def prepare(cursor, project_id: str, actor_id: str) -> ProjectRelease:
     project = projects_crud.get_project_or_404(cursor, project_id)
     cohort = projects_crud.list_cohort(cursor, project.id)
     _require_ready(project, cohort)
+    if project.documents_approved:
+        _refuse_rejected_documents(cursor, cohort)
 
     release_id = _new_release_id()
     archive = storage.projects_root() / project.short_code / release_id
@@ -523,3 +553,78 @@ def reject(cursor, release_id: str, actor_id: str, reason: Optional[str]) -> Pro
     projects_crud.set_project_status(cursor, release.project_id, "rejected", text)
     log.info("zone2_rejected", project_id=release.project_id, release_id=release.id)
     return release
+
+
+# --- spot checks and flags ----------------------------------------------
+
+
+def _release_folder(release: ProjectRelease) -> Path:
+    return Path(release.release_path or release.inbox_path or "")
+
+
+def release_documents(release: ProjectRelease) -> List[dict]:
+    """The released files: project document ID, patient ID, type, path."""
+    path = _release_folder(release) / "documents.csv"
+    if not path.is_file():
+        return []
+    return [row for row in _read_csv(path) if row.get("file")]
+
+
+def release_file(release: ProjectRelease, document_id: str) -> Path:
+    folder = _release_folder(release).resolve()
+    for row in release_documents(release):
+        if row.get("project_document_id") == document_id:
+            path = (folder / row["file"]).resolve()
+            if path.is_relative_to(folder) and path.is_file():
+                return path
+            break
+    raise NotFoundError(f"Document '{document_id}' is not in this release")
+
+
+def _source_file_id(release: ProjectRelease, document_id: str) -> str:
+    path = Path(release.archive_path or "") / "document_map.csv"
+    for row in _read_csv(path) if path.is_file() else []:
+        if row.get("project_document_id") == document_id:
+            return row["file_id"]
+    raise NotFoundError(f"Document '{document_id}' is not in this release's archive")
+
+
+def flag_document(cursor, release_id: str, document_id: str, actor_id: str, note: Optional[str]):
+    """Reject the release because of one document, and send that document to
+    Rejections to be redacted again. Returns (release, source file record)."""
+    text = (note or "").strip()
+    if not text:
+        raise ValidationError("Say what is wrong with the document")
+    release = _pending(cursor, release_id)
+    release_file(release, document_id)
+    file_id = _source_file_id(release, document_id)
+
+    record = files_crud.get_file_or_404(cursor, file_id)
+    files_crud.update_file(
+        cursor,
+        file_id,
+        PatientApplicationFileUpdate(
+            review_status="rejected",
+            review_note=f"Flagged in Zone 2 release {release.id} ({document_id}): {text}",
+        ),
+    )
+    release = reject(cursor, release.id, actor_id, f"Document {document_id} flagged: {text}")
+    log.info("zone2_document_flagged", release_id=release.id, document_id=document_id, file_id=file_id)
+    return release, record
+
+
+# --- ending a project ------------------------------------------------------
+
+
+def end_project(cursor, project_id: str, reason: Optional[str]) -> Project:
+    text = (reason or "").strip()
+    if not text:
+        raise ValidationError("A reason is required to end a project")
+    project = projects_crud.get_project_or_404(cursor, project_id)
+    if project.status == ENDED:
+        raise ValidationError("The project has already ended")
+    if project.status == "in_review":
+        raise ValidationError("A release is waiting for review; approve or reject it first")
+    project = projects_crud.set_project_status(cursor, project.id, ENDED, text)
+    log.info("project_ended", project_id=project.id)
+    return project
