@@ -417,6 +417,26 @@ de-identified documents for one person's task.
 - Table `abstraction_folders`; on an existing database run
   `python scripts/migrate_columns.py --apply`.
 
+### Zone 2 review and project end
+
+`app/zone2.py`. Reviewing a release on the Zone 2 inbox page:
+
+- **Spot checks**: when the release includes documents, the manager can open
+  any of them (PDF in the page, DICOM as an image, Word downloaded), or pick
+  5 at random. Opening one is logged in the access log
+  (`release_document`). Checking every file is not required.
+- **Flag**: a document that still identifies someone is flagged with a
+  reason. The release is sent back, the source document is marked rejected
+  so it shows in Rejections (and the intake team gets an email), and the
+  project can't be prepared again with documents until it is replaced
+  (`_RR`) or deleted. Rejected documents are also left out of abstraction
+  folders.
+- **End project** (`POST /projects/{id}/end`, with a reason): the project
+  becomes `ended` and can't be changed or prepared again. Its Zone 2 copy
+  and archive stay. Researchers' access is removed by hand in Users and
+  Roles; ethics approvals, agreements and training are tracked outside the
+  app.
+
 ### Audit log and access log
 
 | | `audit_logs` | `access_logs` |

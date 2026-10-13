@@ -18,6 +18,7 @@ from app.project_schemas import (
     ProjectDetail,
     ProjectRelease,
     ProjectUpdate,
+    ReleaseDecision,
 )
 from app.schemas import User
 from app.security import require_permission
@@ -41,6 +42,8 @@ def _audit(background, request, action, project_id, actor, old=None, new=None):
 
 
 def _editable(project: Project) -> None:
+    if project.status == zone2.ENDED:
+        raise ValidationError("This project has ended; it can no longer be changed")
     if project.status == "in_review":
         raise ValidationError(
             "A release of this project is waiting for review; it can be changed "
@@ -187,3 +190,23 @@ def prepare_project(
              "files_included": release.files_included},
     )
     return release
+
+
+@router.post("/{project_id}/end", response_model=ProjectDetail)
+def end_project(
+    project_id: str,
+    payload: ReleaseDecision,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("project:update")),
+):
+    """Mark the project ended: no more releases. Its Zone 2 copy and archive
+    stay; remove researchers' access by hand."""
+    before = crud.get_project_or_404(cursor, project_id)
+    after = zone2.end_project(cursor, project_id, payload.reason)
+    _audit(
+        background, request, "UPDATE", project_id, actor,
+        old={"status": before.status}, new={"status": after.status, "reason": after.status_reason},
+    )
+    return _detail(cursor, after)

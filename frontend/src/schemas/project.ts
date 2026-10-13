@@ -7,6 +7,7 @@ export const PROJECT_STATUS_LABELS: Record<string, string> = {
   in_review: 'waiting for review',
   released: 'released',
   rejected: 'sent back',
+  ended: 'ended',
 }
 
 export const projectSchema = z.object({
@@ -76,6 +77,32 @@ export const releaseSummarySchema = releaseSchema.extend({
 })
 
 export type ReleaseSummary = z.infer<typeof releaseSummarySchema>
+
+/** A file in a release (documents.csv), to open and spot-check. */
+export const releaseDocumentSchema = z.object({
+  project_document_id: z.string(),
+  project_patient_id: z.string(),
+  file_type: z.string().default(''),
+  file: z.string(),
+})
+
+export type ReleaseDocument = z.infer<typeof releaseDocumentSchema>
+
+export const releaseDocumentListSchema = z.array(releaseDocumentSchema)
+
+/** Up to `count` documents picked at random, for a spot check. */
+export function randomSample<T>(
+  items: readonly T[],
+  count: number,
+  random = Math.random
+): T[] {
+  const pool = [...items]
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1))
+    ;[pool[i], pool[j]] = [pool[j] as T, pool[i] as T]
+  }
+  return pool.slice(0, count)
+}
 
 export const releaseSummaryListSchema = z.array(releaseSummarySchema)
 
