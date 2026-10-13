@@ -37,9 +37,36 @@ export const patientApplicationSchema = z.object({
   reviewed_by_username: nullableText,
 
   original_file_path: nullableText,
+
+  /** The last checklist: { passed | failed: keys, by: user id, at: ISO time }. */
+  checklist: z
+    .object({
+      passed: z.array(z.string()).optional(),
+      failed: z.array(z.string()).optional(),
+      by: z.string().optional(),
+      at: z.string().optional(),
+    })
+    .nullable()
+    .optional(),
 })
 
 export type PatientApplication = z.infer<typeof patientApplicationSchema>
+
+// Mirrors ENROLLMENT_CHECKS in app/schemas.py.
+export const ENROLLMENT_CHECKS = [
+  { key: 'files_complete', label: 'All required files were submitted' },
+  { key: 'eligible', label: 'The patient is eligible' },
+  { key: 'consent', label: 'The right consent form is present' },
+  { key: 'no_identifiers', label: 'No identifiers were found' },
+] as const
+export type EnrollmentCheck = (typeof ENROLLMENT_CHECKS)[number]['key']
+
+/** A failed consent check deletes the application's documents. */
+export const CONSENT_CHECK: EnrollmentCheck = 'consent'
+
+export function checkLabel(key: string): string {
+  return ENROLLMENT_CHECKS.find((check) => check.key === key)?.label ?? key
+}
 
 export const patientApplicationListSchema = z.array(patientApplicationSchema)
 

@@ -179,6 +179,9 @@ export type ApplicationPayload = {
 
   assigned_to_id?: string | null
   original_file_path?: string | null
+
+  /** Every check ticked; required when status becomes 'submitted'. */
+  checklist?: Record<string, boolean>
 }
 
 function toApplicationPayload(values: ApplicationPayload) {
@@ -213,9 +216,9 @@ export const applicationsApi = {
       api.put(`/applications/${id}`, toApplicationPayload(values))
     ),
 
-  reject: (id: string, reason: string) =>
+  reject: (id: string, reason: string, failedChecks: string[]) =>
     request(patientApplicationSchema, () =>
-      api.post(`/applications/${id}/reject`, { reason })
+      api.post(`/applications/${id}/reject`, { reason, failed_checks: failedChecks })
     ),
 
   remove: async (id: string, reason: string): Promise<PurgeSummary> => {

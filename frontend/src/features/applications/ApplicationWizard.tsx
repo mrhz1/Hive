@@ -1,7 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { ReasonDialog } from '@/components/ReasonDialog'
 import { Button } from '@/components/ui/Button'
 import { Card, PageHeader } from '@/components/ui/Misc'
 import { PatientForm } from '@/features/patients/PatientForm'
@@ -23,6 +22,7 @@ import {
 } from '@/schemas/patientApplication'
 import { ApplicationSummary } from './ApplicationSummary'
 import { AssigneeCard } from './AssigneeField'
+import { RejectApplicationDialog, SubmitChecklistDialog } from './EnrollmentDialogs'
 import { FileReviewPanel } from './FileReviewPanel'
 import { IntakeCodePicker } from './IntakeCodePicker'
 import { IntakeFilePicker } from './IntakeFilePicker'
@@ -89,6 +89,7 @@ export function ApplicationWizard({
   const [furthest, setFurthest] = useState<StepNumber>(initialPatient ? 3 : 1)
   const [record, setRecord] = useState<PatientApplication | undefined>(application)
   const [rejecting, setRejecting] = useState(false)
+  const [checking, setChecking] = useState(false)
   const [assignedTo, setAssignedTo] = useState(application?.assigned_to_id ?? '')
 
   const [folder, setFolder] = useState(application?.original_file_path ?? '')
@@ -164,7 +165,7 @@ export function ApplicationWizard({
     }
   }
 
-  async function submitApplication() {
+  async function submitApplication(checklist: Record<string, boolean>) {
     if (!record) {
       toast.error('This application has not been created yet')
       return
@@ -172,8 +173,9 @@ export function ApplicationWizard({
     try {
       await updateApplication.mutateAsync({
         id: record.id,
-        values: { status: 'submitted' },
+        values: { status: 'submitted', checklist },
       })
+      setChecking(false)
       toast.success('Application submitted')
       await navigate({ to: '/applications' })
     } catch {
@@ -297,7 +299,7 @@ export function ApplicationWizard({
       ) : null}
 
       {rejecting && record ? (
-        <ReasonDialog
+        <RejectApplicationDialog
           title={
             record.status === 'rejected'
               ? 'Reject this application again?'
@@ -308,13 +310,11 @@ export function ApplicationWizard({
               ? 'The new reason replaces the one on the record, so say what is wrong now.'
               : 'The reason is kept on the record.'
           }
-          confirmLabel="Reject application"
-          placeholder="e.g. consent form missing"
           isBusy={reject.isPending}
           onCancel={() => setRejecting(false)}
-          onConfirm={(reason) => {
+          onConfirm={(failedChecks, reason) => {
             void reject
-              .mutateAsync({ id: record.id, reason })
+              .mutateAsync({ id: record.id, reason, failedChecks })
               .then(async (updated) => {
                 setRejecting(false)
 
@@ -324,6 +324,14 @@ export function ApplicationWizard({
               })
               .catch(() => undefined)
           }}
+        />
+      ) : null}
+
+      {checking && record ? (
+        <SubmitChecklistDialog
+          isBusy={updateApplication.isPending}
+          onCancel={() => setChecking(false)}
+          onConfirm={(checklist) => void submitApplication(checklist)}
         />
       ) : null}
 
@@ -382,7 +390,7 @@ export function ApplicationWizard({
                           ? `${rejected} document${rejected === 1 ? '' : 's'} rejected in step 2`
                           : undefined
                     }
-                    onClick={() => void submitApplication()}
+                    onClick={() => setChecking(true)}
                   >
                     Submit application
                   </Button>

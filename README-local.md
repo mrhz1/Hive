@@ -343,6 +343,23 @@ is marked `failed` on the job and the others continue (`partial`). Job
 progress is kept in memory, so after a restart `/upload-jobs/{id}` returns
 404, but the files already processed are fine.
 
+### Enrollment checklist
+
+Submitting an application asks for the four checks (all files submitted,
+patient eligible, right consent form, no identifiers left); the API refuses
+`status: submitted` unless `checklist` has all four true. Rejecting asks
+which of them failed (`failed_checks`) and a reason:
+
+- `consent` failed: the data can't be kept. The application's documents
+  (originals and de-identified copies) are deleted at once, as Delete on
+  Rejections does, and it becomes a deleted record. Needs
+  `application:delete`.
+- anything else: it is rejected, to be fixed and submitted again.
+
+The last result is in `patient_applications.checklist` (JSON: `passed` or
+`failed`, `by`, `at`). On an existing database add the column with
+`python scripts/migrate_columns.py --apply`.
+
 ### Rejections
 
 `/rejections` (needs `application:view`) shows:
