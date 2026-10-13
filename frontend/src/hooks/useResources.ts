@@ -144,12 +144,17 @@ export function useDeleteApplication() {
 export function useRejectApplication() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (variables: { id: string; reason: string }) =>
-      applicationsApi.reject(variables.id, variables.reason),
-    onSuccess: () => {
+    mutationFn: (variables: { id: string; reason: string; failedChecks: string[] }) =>
+      applicationsApi.reject(variables.id, variables.reason, variables.failedChecks),
+    onSuccess: (application) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.applications.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.applicationFiles.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
-      toast.success('Application rejected')
+      toast.success(
+        application.status === 'deleted'
+          ? 'Application rejected and its documents deleted'
+          : 'Application rejected'
+      )
     },
     onError: (error) => {
       toast.error(errorMessage(error, 'Could not reject the application'))

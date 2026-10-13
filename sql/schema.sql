@@ -80,7 +80,8 @@ CREATE TABLE `patient_applications` (
   `updated_by_id` STRING,
   `status_reason` STRING,
   `assigned_to_id` STRING,
-  `original_file_path` STRING
+  `original_file_path` STRING,
+  `checklist` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 

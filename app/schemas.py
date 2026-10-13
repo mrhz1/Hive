@@ -1,5 +1,6 @@
+import json
 from datetime import date, datetime, timezone
-from typing import Any, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from pydantic import (
     BaseModel,
@@ -434,6 +435,17 @@ APPLICATION_STATUSES = ("draft", "submitted", "approved", "rejected", "deleted")
 
 _STATUS_PATTERN = "^(draft|submitted|approved|rejected|deleted)$"
 
+# The enrollment checklist a reviewer completes before submitting an
+# application, and picks from when rejecting one. A failed consent check
+# deletes the application's documents; the others can be fixed.
+ENROLLMENT_CHECKS = {
+    "files_complete": "All required files were submitted",
+    "eligible": "The patient is eligible",
+    "consent": "The right consent form is present",
+    "no_identifiers": "No identifiers were found",
+}
+CONSENT_CHECK = "consent"
+
 
 class PatientApplicationCreate(BaseModel):
     patient_id: str = Field(min_length=1)
@@ -456,6 +468,8 @@ class PatientApplicationUpdate(BaseModel):
     status_reason: Optional[str] = None
     assigned_to_id: Optional[str] = None
     original_file_path: Optional[str] = None
+    # Required, all true, when status becomes 'submitted'; not stored as given.
+    checklist: Optional[Dict[str, bool]] = None
 
     @field_validator("assigned_to_id", "original_file_path", mode="before")
     @classmethod
@@ -465,8 +479,10 @@ class PatientApplicationUpdate(BaseModel):
         return value
 
 
-class StatusReason(BaseModel):
+class ApplicationRejection(BaseModel):
     reason: Optional[str] = None
+    # Which ENROLLMENT_CHECKS failed; at least one.
+    failed_checks: List[str] = Field(default_factory=list)
 
 
 class PatientApplication(BaseModel):
@@ -485,10 +501,22 @@ class PatientApplication(BaseModel):
     status_reason: Optional[str] = None
     assigned_to_id: Optional[str] = None
     original_file_path: Optional[str] = None
+    # The last checklist: {"passed"|"failed": [...], "by": user id, "at": iso time}
+    checklist: Optional[Dict[str, Any]] = None
     assigned_to_username: Optional[str] = None
     created_by_username: Optional[str] = None
     submitted_by_username: Optional[str] = None
     reviewed_by_username: Optional[str] = None
+
+    @field_validator("checklist", mode="before")
+    @classmethod
+    def _parse_checklist(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            try:
+                return json.loads(value) if value.strip() else None
+            except ValueError:
+                return None
+        return value
 
 
 class AuditLogCreate(BaseModel):

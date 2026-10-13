@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
@@ -14,14 +15,16 @@ from app.errors import ValidationError
 from app.logging_setup import get_logger
 from app.notifications import notify_assigned
 from app.schemas import (
+    CONSENT_CHECK,
+    ENROLLMENT_CHECKS,
+    ApplicationRejection,
     PatientApplication,
     PatientApplicationFile,
     PatientApplicationCreate,
     PatientApplicationUpdate,
-    StatusReason,
     User,
 )
-from app.security import require_permission
+from app.security import assert_permission, require_permission
 
 log = get_logger(__name__)
 
@@ -36,6 +39,30 @@ CLOSED_TO_FILES = ("submitted", "deleted")
 
 def _snapshot(application: PatientApplication) -> dict:
     return application.model_dump(mode="json")
+
+
+def _checklist_record(key: str, checks: List[str], actor: User) -> dict:
+    return {
+        key: checks,
+        "by": actor.id,
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+def _passed_checklist(payload: PatientApplicationUpdate, actor: User) -> dict:
+    """The checklist of a submission; every check must be ticked."""
+    ticked = payload.checklist or {}
+    unknown = sorted(set(ticked) - set(ENROLLMENT_CHECKS))
+    if unknown:
+        raise ValidationError(f"Unknown checklist items: {', '.join(unknown)}")
+
+    missing = [label for key, label in ENROLLMENT_CHECKS.items() if not ticked.get(key)]
+    if missing:
+        raise ValidationError(
+            "Complete the enrollment checklist before submitting. Not confirmed: "
+            + "; ".join(missing)
+        )
+    return _checklist_record("passed", list(ENROLLMENT_CHECKS), actor)
 
 
 def _notify_assignee(
@@ -181,7 +208,15 @@ def update_application(
     if "assigned_to_id" in payload.model_fields_set:
         _assert_assignee_exists(cursor, payload.assigned_to_id)
 
-    after = crud.update_application(cursor, application_id, payload, actor_id=actor.id)
+    checklist = None
+    if payload.status == "submitted" and before.status != "submitted":
+        checklist = _passed_checklist(payload, actor)
+    elif payload.checklist is not None:
+        raise ValidationError("The checklist is only given when submitting")
+
+    after = crud.update_application(
+        cursor, application_id, payload, actor_id=actor.id, checklist=checklist
+    )
 
     if after.assigned_to_id and after.assigned_to_id != before.assigned_to_id:
         _notify_assignee(background, cursor, after.assigned_to_id, application_id, actor)
@@ -209,12 +244,18 @@ def update_application(
 @router.post("/{application_id}/reject", response_model=PatientApplication)
 def reject_application(
     application_id: str,
-    payload: StatusReason,
+    payload: ApplicationRejection,
     background: BackgroundTasks,
     request: Request,
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:update")),
 ):
+    """Reject with the checklist items that failed and a reason.
+
+    A failed consent check means the data may not be kept: the application's
+    documents are deleted at once (as Delete on Rejections does) and it is
+    left as a deleted record. Any other failure leaves it rejected, to fix.
+    """
     before = crud.get_application_or_404(cursor, application_id)
 
     if before.status not in REJECTABLE:
@@ -226,11 +267,23 @@ def reject_application(
     if not reason:
         raise ValidationError("A reason is required when rejecting an application")
 
+    failed = list(dict.fromkeys(payload.failed_checks))
+    if not failed:
+        raise ValidationError("Pick which checklist item failed")
+    unknown = sorted(set(failed) - set(ENROLLMENT_CHECKS))
+    if unknown:
+        raise ValidationError(f"Unknown checklist items: {', '.join(unknown)}")
+
+    purge_all = CONSENT_CHECK in failed
+    if purge_all:
+        assert_permission(actor, "application:delete")
+
     after = crud.update_application(
         cursor,
         application_id,
         PatientApplicationUpdate(status="rejected", status_reason=reason),
         actor_id=actor.id,
+        checklist=_checklist_record("failed", failed, actor),
     )
 
     background.add_task(
@@ -243,6 +296,22 @@ def reject_application(
         new_values=_snapshot(after),
         request_id=request.headers.get("X-Request-ID"),
     )
+
+    if purge_all:
+        rejected = after
+        _, after, summary = purge.purge_rejected_application(
+            cursor, application_id, f"No consent: {reason}", actor.id
+        )
+        background.add_task(
+            record_audit,
+            action="DELETE",
+            entity_type="patient_application",
+            entity_id=application_id,
+            user_id=actor.id,
+            old_values=_snapshot(rejected),
+            new_values=dict(_snapshot(after), **summary),
+            request_id=request.headers.get("X-Request-ID"),
+        )
     return after
 
 

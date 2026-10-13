@@ -1,3 +1,4 @@
+import json
 import uuid
 from typing import Any, List, Optional
 
@@ -28,6 +29,7 @@ COLUMNS = (
     "status_reason",
     "assigned_to_id",
     "original_file_path",
+    "checklist",
 )
 
 TIMESTAMP_COLUMNS = {"submitted_at", "created_at", "updated_at", "reviewed_at"}
@@ -119,6 +121,7 @@ def create_application(
         "status_reason": None,
         "assigned_to_id": payload.assigned_to_id,
         "original_file_path": payload.original_file_path,
+        "checklist": None,
     }
 
     values, params = [], []
@@ -144,11 +147,18 @@ def create_application(
 
 
 def update_application(
-    cursor, application_id: str, payload: PatientApplicationUpdate, actor_id: str
+    cursor,
+    application_id: str,
+    payload: PatientApplicationUpdate,
+    actor_id: str,
+    checklist: Optional[dict] = None,
 ) -> PatientApplication:
+    """`checklist` is stored as given (JSON); the payload's own is ignored."""
     existing = get_application_or_404(cursor, application_id)
 
-    fields = payload.model_dump(exclude_unset=True)
+    fields = payload.model_dump(exclude_unset=True, exclude={"checklist"})
+    if checklist is not None:
+        fields["checklist"] = json.dumps(checklist)
 
     fields["updated_by_id"] = actor_id
     fields["updated_at"] = NOW

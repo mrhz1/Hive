@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useCallback, useMemo, useState } from 'react'
 import { DataTable, type Column } from '@/components/DataTable'
-import { ReasonDialog } from '@/components/ReasonDialog'
 import { Can, RequirePermission } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/Field'
@@ -9,6 +8,7 @@ import { Badge, PageHeader } from '@/components/ui/Misc'
 import { usePermissions } from '@/hooks/useCurrentUser'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { patientHooks, useApplications, useRejectApplication } from '@/hooks/useResources'
+import { RejectApplicationDialog } from '@/features/applications/EnrollmentDialogs'
 import { patientName, type Patient } from '@/schemas/patient'
 import {
   applicationTone,
@@ -190,16 +190,14 @@ function ApplicationsList() {
       />
 
       {rejecting ? (
-        <ReasonDialog
+        <RejectApplicationDialog
           title={`Reject the application for ${labelFor(rejecting)}?`}
           description="The reason is kept on the record."
-          confirmLabel="Reject application"
-          placeholder="e.g. consent form missing"
           isBusy={reject.isPending}
           onCancel={() => setRejecting(null)}
-          onConfirm={(reason) => {
+          onConfirm={(failedChecks, reason) => {
             void reject
-              .mutateAsync({ id: rejecting.id, reason })
+              .mutateAsync({ id: rejecting.id, reason, failedChecks })
               .then(() => setRejecting(null))
               .catch(() => undefined)
           }}

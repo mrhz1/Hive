@@ -31,6 +31,7 @@ MIGRATIONS = (
     ("patient_applications", "status_reason", "STRING"),
     ("patient_applications", "assigned_to_id", "STRING"),
     ("patient_applications", "original_file_path", "STRING"),
+    ("patient_applications", "checklist", "STRING"),
 )
 
 NEW_TABLES = ("projects", "project_patients", "project_releases")
