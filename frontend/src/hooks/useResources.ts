@@ -184,6 +184,27 @@ export function useReviewApplicationFile(applicationId: string) {
   })
 }
 
+export function useSetDocumentInfo(applicationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (variables: { fileId: string; modality: string; documentDate: string }) =>
+      applicationFilesApi.setDocumentInfo(
+        variables.fileId,
+        variables.modality,
+        variables.documentDate
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.applicationFiles.list(applicationId),
+      })
+      toast.success('File renamed')
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not rename the file'))
+    },
+  })
+}
+
 export function useReviewRejectedFile() {
   const queryClient = useQueryClient()
   return useMutation({

@@ -31,7 +31,49 @@ export const applicationFileSchema = z.object({
   de_identified_file_path: z.string().nullable().optional(),
   review_status: z.string().default('pending'),
   review_note: z.string().nullable().optional(),
+  /** Read from the de-identified file name; 'UNKNOWN' until found or set. */
+  modality: z.string().nullable().optional(),
+  /** YYYYMMDD or 'UNKNOWN'. */
+  document_date: z.string().nullable().optional(),
 })
+
+export const UNKNOWN = 'UNKNOWN'
+
+// DICOM modality codes (app/document_info.py), the common ones first.
+const COMMON_MODALITIES = [
+  'CT',
+  'MR',
+  'US',
+  'DX',
+  'CR',
+  'XA',
+  'NM',
+  'PT',
+  'MG',
+  'RF',
+  'ECG',
+  'OCT',
+  'BMD',
+]
+const OTHER_MODALITIES =
+  `AR ASMT AU BDUS BI CTPROTOCOL DG DOC EEG EMG EOG EPS ES FID GM HC HD IO
+  IOL IVOCT IVUS KER KO LEN LS M3D OAM OP OPM OPT OPTBSV OPTENF OPV OSS OT PLAN POS PR PX REG
+  RESP RG RTDOSE RTIMAGE RTINTENT RTPLAN RTRAD RTRECORD RTSEGANN RTSTRUCT RWV SEG SM SMR SR SRF
+  STAIN TEXTUREMAP TG VA XAPROTOCOL XC`.split(/\s+/)
+
+export const MODALITY_OPTIONS = [
+  { value: UNKNOWN, label: 'Unknown' },
+  ...[...COMMON_MODALITIES, ...OTHER_MODALITIES].map((code) => ({
+    value: code,
+    label: code,
+  })),
+]
+
+/** '20190312' -> '2019-03-12'; anything else -> null. */
+export function isoDocumentDate(value?: string | null): string | null {
+  const match = /^(\d{4})(\d{2})(\d{2})$/.exec(value ?? '')
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : null
+}
 
 export const REVIEW_STATUSES = ['pending', 'approved', 'rejected'] as const
 export type ReviewStatus = (typeof REVIEW_STATUSES)[number]
@@ -53,10 +95,12 @@ export function fileSearchText(file: {
   description?: string | null
   review_status: string
   deid_status: string
+  modality?: string | null
 }): string {
   return [
     file.original_file_name,
     file.file_extension,
+    file.modality ?? '',
     file.description ?? '',
     file.review_status,
     file.deid_status,

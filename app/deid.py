@@ -4,7 +4,6 @@ import os
 import signal
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -16,12 +15,13 @@ from app import deid_queue
 from app.crud import patient_application_files as crud
 from app.crud import patient_applications as applications_crud
 from app.db import hive_cursor
+from app.document_info import DocumentInfo
+from app.document_info import find as find_document_info
 from app.embed import embed_metadata, generated_facts
 from app.ids import new_document_serial
 from app.logging_setup import get_logger
 from app.schemas import PatientApplicationFileUpdate
 from app.storage import (
-    DATE_FORMAT,
     delete_file as remove_from_disk,
     prune_empty_dirs,
     resolve_stored_path,
@@ -71,24 +71,30 @@ def deid_output_extension(extension: str) -> str:
 NAME_ATTEMPTS = 5
 
 
-def deid_output_stem(patient_id: str) -> str:
-    day = datetime.now(timezone.utc).strftime(DATE_FORMAT)
-    return f"{patient_id or 'unknown'}_{day}_{new_document_serial()}"
+def deid_output_stem(patient_id: str, info: Optional[DocumentInfo] = None) -> str:
+    return (info or DocumentInfo()).stem(patient_id, new_document_serial())
 
 
-def deid_output_name(patient_id: str, extension: str) -> str:
+def deid_output_name(
+    patient_id: str, extension: str, info: Optional[DocumentInfo] = None
+) -> str:
     suffix = (extension or "").lower().lstrip(".")
-    stem = deid_output_stem(patient_id)
+    stem = deid_output_stem(patient_id, info)
     return f"{stem}.{suffix}" if suffix else stem
 
 
-def unique_output_stem(directory: Path, patient_id: str, extension: str) -> str:
-    stem = deid_output_stem(patient_id)
+def unique_output_stem(
+    directory: Path,
+    patient_id: str,
+    extension: str,
+    info: Optional[DocumentInfo] = None,
+) -> str:
+    stem = deid_output_stem(patient_id, info)
 
     for _ in range(NAME_ATTEMPTS):
         if not any(directory.glob(f"{stem}*")):
             return stem
-        stem = deid_output_stem(patient_id)
+        stem = deid_output_stem(patient_id, info)
 
     log.warning("deid_output_stem_contested", stem=stem, directory=str(directory))
     return stem
@@ -350,9 +356,11 @@ def _get_patient_id(record) -> str:
         return ""
 
 
-def _rename_outputs(produced: Path, patient_id: str) -> Path:
+def _rename_outputs(
+    produced: Path, patient_id: str, info: Optional[DocumentInfo] = None
+) -> Path:
     old_stem = produced.stem
-    new_stem = unique_output_stem(produced.parent, patient_id, produced.suffix)
+    new_stem = unique_output_stem(produced.parent, patient_id, produced.suffix, info)
     if new_stem == old_stem:
         return produced
 
@@ -431,7 +439,10 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
         produced = _run_pipeline(source, source.parent / DEID_SUBFOLDER, file_id)
 
         patient_id = _get_patient_id(record)
-        produced = _rename_outputs(produced, patient_id)
+        info = find_document_info(
+            record.original_file_name, record.file_extension, patient_id, source
+        )
+        produced = _rename_outputs(produced, patient_id, info)
 
         _set_status(
             file_id,

@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from app import deid, intake
+from app import deid, document_info, intake
 from app.audit import record_audit
 from app.crud import patients as patients_crud
 from app.db import authoritative, hive_cursor
@@ -484,7 +484,8 @@ def finish(task, result):
         / intake.deidentified_subfolder(task.relative_path, task.code)
     )
     target_dir.mkdir(parents=True, exist_ok=True)
-    stem = deid.unique_output_stem(target_dir, task.code, result.suffix)
+    info = document_info.find(task.name, task.extension, task.code, task.path)
+    stem = deid.unique_output_stem(target_dir, task.code, result.suffix, info)
     final = target_dir / f"{stem}{result.suffix}"
     partial = Path(str(final) + intake.PARTIAL_SUFFIX)
     original = intake.original_root() / task.relative_path
