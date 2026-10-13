@@ -35,6 +35,8 @@ export const applicationFileSchema = z.object({
   modality: z.string().nullable().optional(),
   /** YYYYMMDD or 'UNKNOWN'. */
   document_date: z.string().nullable().optional(),
+  /** 'R': redacted by the pipeline, 'RR': by hand. */
+  redaction: z.string().nullable().optional(),
 })
 
 export const UNKNOWN = 'UNKNOWN'

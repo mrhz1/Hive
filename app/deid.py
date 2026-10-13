@@ -15,7 +15,7 @@ from app import deid_queue
 from app.crud import patient_application_files as crud
 from app.crud import patient_applications as applications_crud
 from app.db import hive_cursor
-from app.document_info import DocumentInfo
+from app.document_info import AUTOMATIC, DocumentInfo
 from app.document_info import find as find_document_info
 from app.embed import embed_metadata, generated_facts
 from app.ids import new_document_serial
@@ -71,15 +71,20 @@ def deid_output_extension(extension: str) -> str:
 NAME_ATTEMPTS = 5
 
 
-def deid_output_stem(patient_id: str, info: Optional[DocumentInfo] = None) -> str:
-    return (info or DocumentInfo()).stem(patient_id, new_document_serial())
+def deid_output_stem(
+    patient_id: str, info: Optional[DocumentInfo] = None, redaction: str = AUTOMATIC
+) -> str:
+    return (info or DocumentInfo()).stem(patient_id, new_document_serial(), redaction)
 
 
 def deid_output_name(
-    patient_id: str, extension: str, info: Optional[DocumentInfo] = None
+    patient_id: str,
+    extension: str,
+    info: Optional[DocumentInfo] = None,
+    redaction: str = AUTOMATIC,
 ) -> str:
     suffix = (extension or "").lower().lstrip(".")
-    stem = deid_output_stem(patient_id, info)
+    stem = deid_output_stem(patient_id, info, redaction)
     return f"{stem}.{suffix}" if suffix else stem
 
 

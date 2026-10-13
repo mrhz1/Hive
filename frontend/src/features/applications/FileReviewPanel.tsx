@@ -303,6 +303,7 @@ export function FileReviewPanel({
           ) : (
             <Badge tone="warning">contains PII</Badge>
           )}
+          {file.redaction === 'RR' ? <Badge tone="neutral">by hand</Badge> : null}
         </div>
       ),
       sortValue: (file) => file.deid_status,

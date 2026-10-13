@@ -260,6 +260,13 @@ class PatientApplicationFile(BaseModel):
         parts = parse_document_name(self.deidentified_file_name or "")
         return parts and parts["day"]
 
+    @computed_field
+    @property
+    def redaction(self) -> Optional[str]:
+        """R: redacted by the pipeline, RR: by hand."""
+        parts = parse_document_name(self.deidentified_file_name or "")
+        return parts and parts["redaction"]
+
 
 class DocumentInfoUpdate(BaseModel):
     """Modality code (or an alias like MRI) and date (YYYY-MM-DD or YYYYMMDD);
