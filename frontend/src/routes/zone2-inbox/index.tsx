@@ -18,6 +18,7 @@ import {
   useZone2Release,
   useZone2Releases,
 } from '@/hooks/useResources'
+import { PdfViewer } from '@/features/patients/PdfViewer'
 import { ApiError } from '@/lib/api/client'
 import { zone2Api } from '@/lib/api/resources'
 import {
@@ -505,11 +506,9 @@ function OpenedDocument({ opened, onClose }: { opened: Opened; onClose: () => vo
           </Button>
         </div>
         {opened.kind === 'pdf' ? (
-          <iframe
-            title={opened.document.project_document_id}
-            src={opened.url}
-            className="min-h-0 flex-1 rounded border border-[rgb(var(--border))]"
-          />
+          <div className="min-h-0 flex-1 overflow-hidden rounded border border-[rgb(var(--border))]">
+            <PdfViewer url={opened.url} name={opened.document.project_document_id} />
+          </div>
         ) : (
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-black">
             <img

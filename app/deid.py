@@ -290,9 +290,17 @@ def boxes_applied(produced: Path) -> Optional[int]:
     it writes next to it; None if there is no report."""
     report = produced.with_name(produced.stem + ".report.json")
     try:
-        return int(json.loads(report.read_text()).get("total_boxes"))
-    except (OSError, ValueError, TypeError):
+        data = json.loads(report.read_text())
+    except (OSError, ValueError):
         return None
+    # The report (stage_nlp) says total_boxes_applied; total_boxes is the
+    # in-memory name, kept for older reports.
+    for key in ("total_boxes_applied", "total_boxes"):
+        try:
+            return int(data[key])
+        except (KeyError, TypeError, ValueError):
+            continue
+    return None
 
 
 @dataclass
