@@ -7,6 +7,7 @@ export const MODELS = [
   'log',
   'application',
   'project',
+  'abstraction',
 ] as const
 export const ACTIONS = ['view', 'create', 'update', 'delete'] as const
 

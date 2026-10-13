@@ -2,6 +2,14 @@ import axios from 'axios'
 import { apiErrorSchema } from '@/schemas/common'
 import type { z } from 'zod'
 import { ApiError, api, toApiError } from './client'
+import {
+  abstractionDocumentListSchema,
+  abstractionFolderListSchema,
+  abstractionFolderSchema,
+  abstractionPreviewSchema,
+  regeneratedSchema,
+  type AbstractionCriteria,
+} from '@/schemas/abstraction'
 import { accessLogListSchema, type AccessLogFilters } from '@/schemas/accessLog'
 import {
   auditLogListSchema,
@@ -417,6 +425,28 @@ export const fileMetadataApi = {
       throw toApiError(error)
     }
   },
+}
+
+export const abstractionApi = {
+  list: () => request(abstractionFolderListSchema, () => api.get('/abstraction-folders')),
+  preview: (criteria: AbstractionCriteria) =>
+    request(abstractionPreviewSchema, () =>
+      api.post('/abstraction-folders/preview', criteria)
+    ),
+  create: (values: { name: string; purpose: string; criteria: AbstractionCriteria }) =>
+    request(abstractionFolderSchema, () => api.post('/abstraction-folders', values)),
+  documents: (id: string) =>
+    request(abstractionDocumentListSchema, () =>
+      api.get(`/abstraction-folders/${id}/documents`)
+    ),
+  extend: (id: string) =>
+    request(abstractionFolderSchema, () => api.post(`/abstraction-folders/${id}/extend`)),
+  regenerate: (id: string) =>
+    request(regeneratedSchema, () => api.post(`/abstraction-folders/${id}/regenerate`)),
+  remove: (id: string, reason: string) =>
+    request(abstractionFolderSchema, () =>
+      api.post(`/abstraction-folders/${id}/delete`, { reason })
+    ),
 }
 
 export const projectsApi = {

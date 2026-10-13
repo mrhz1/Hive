@@ -4,6 +4,7 @@ import {
   FileCheck2,
   FileStack,
   FileWarning,
+  FolderDown,
   FolderKanban,
   Inbox,
   LayoutDashboard,
@@ -63,6 +64,12 @@ export const NAV_ITEMS: NavItem[] = [
     to: '/metadata',
     icon: Table2,
     permission: 'application:view',
+  },
+  {
+    label: 'Abstraction folders',
+    to: '/abstraction',
+    icon: FolderDown,
+    permission: 'abstraction:view',
   },
   {
     label: 'Projects',

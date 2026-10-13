@@ -24,6 +24,9 @@ MODEL_ACTIONS["deidentifier"] = ("view", "run", "notify")
 # Research projects, and the Zone 2 safe copies made for them.
 MODEL_ACTIONS["project"] = PERMISSION_ACTIONS
 MODEL_ACTIONS["zone2"] = ("prepare", "review")
+# Temporary abstraction folders (app/abstraction.py): view and update your
+# own, create them; delete covers everyone's (the application specialist).
+MODEL_ACTIONS["abstraction"] = PERMISSION_ACTIONS
 MODEL_ACTIONS["files"] = (
     "read",
     "upload",

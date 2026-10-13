@@ -392,6 +392,31 @@ Uploading a replacement (`/files-library` with `replaces_file_id`) sets
 `review_status` back to `pending` and clears the note. The old note is kept
 in the audit log (`REPLACE` action).
 
+### Abstraction folders
+
+`/abstraction` (`app/abstraction.py`): temporary, read-only copies of
+de-identified documents for one person's task.
+
+- **Pick by metadata**: patient codes, modality, document date range, file
+  type, and text in the file name or the metadata read from the file. Only
+  documents of submitted applications are offered. *Find documents* shows
+  what matches before anything is copied.
+- **On disk**: `ABSTRACTION_DIR/<username>/<id8>-<name>/<CODE>/<file>` plus
+  `MANIFEST.csv` (file, patient, modality, date, type, file id). Files and
+  folders are made read-only so nothing new is added; on Cloudera also set
+  the folder ACLs so only the owner can read their folder.
+- **Expiry**: `ABSTRACTION_EXPIRY_DAYS` (90) from making or extending it.
+  `scripts/abstraction_cleanup.py`, run daily as a scheduled Job, deletes
+  the expired ones. *Make again* copies the same documents again (those
+  still available) with a fresh 90 days. At most `ABSTRACTION_MAX_FILES`
+  (5000) per folder.
+- **Permissions** (`abstraction:*`): `view` and `update` your own folders,
+  `create` new ones, `delete` = see and manage everyone's (the application
+  specialist). Making a folder is logged in the access log as an export, and
+  every change in the audit log.
+- Table `abstraction_folders`; on an existing database run
+  `python scripts/migrate_columns.py --apply`.
+
 ### Audit log and access log
 
 | | `audit_logs` | `access_logs` |

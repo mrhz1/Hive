@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as AbstractionIndexRouteImport } from './routes/abstraction/index'
 import { Route as AccessLogsIndexRouteImport } from './routes/access-logs/index'
 import { Route as ApplicationsIndexRouteImport } from './routes/applications/index'
 import { Route as ApplicationsApplicationIdRouteImport } from './routes/applications/$applicationId'
@@ -42,6 +43,11 @@ const IndexRoute = IndexRouteImport.update({
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AbstractionIndexRoute = AbstractionIndexRouteImport.update({
+  id: '/abstraction/',
+  path: '/abstraction/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AccessLogsIndexRoute = AccessLogsIndexRouteImport.update({
@@ -165,6 +171,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
+  '/abstraction/': typeof AbstractionIndexRoute
   '/access-logs/': typeof AccessLogsIndexRoute
   '/applications/': typeof ApplicationsIndexRoute
   '/de-identifier/': typeof DeIdentifierIndexRoute
@@ -191,6 +198,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
+  '/abstraction': typeof AbstractionIndexRoute
   '/access-logs': typeof AccessLogsIndexRoute
   '/applications': typeof ApplicationsIndexRoute
   '/de-identifier': typeof DeIdentifierIndexRoute
@@ -218,6 +226,7 @@ export interface FileRoutesById {
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/roles/new': typeof RolesNewRoute
   '/users/new': typeof UsersNewRoute
+  '/abstraction/': typeof AbstractionIndexRoute
   '/access-logs/': typeof AccessLogsIndexRoute
   '/applications/': typeof ApplicationsIndexRoute
   '/de-identifier/': typeof DeIdentifierIndexRoute
@@ -246,6 +255,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/roles/new'
     | '/users/new'
+    | '/abstraction/'
     | '/access-logs/'
     | '/applications/'
     | '/de-identifier/'
@@ -272,6 +282,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/roles/new'
     | '/users/new'
+    | '/abstraction'
     | '/access-logs'
     | '/applications'
     | '/de-identifier'
@@ -298,6 +309,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/roles/new'
     | '/users/new'
+    | '/abstraction/'
     | '/access-logs/'
     | '/applications/'
     | '/de-identifier/'
@@ -325,6 +337,7 @@ export interface RootRouteChildren {
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
   RolesNewRoute: typeof RolesNewRoute
   UsersNewRoute: typeof UsersNewRoute
+  AbstractionIndexRoute: typeof AbstractionIndexRoute
   AccessLogsIndexRoute: typeof AccessLogsIndexRoute
   ApplicationsIndexRoute: typeof ApplicationsIndexRoute
   DeIdentifierIndexRoute: typeof DeIdentifierIndexRoute
@@ -357,6 +370,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/abstraction/': {
+      id: '/abstraction/'
+      path: '/abstraction'
+      fullPath: '/abstraction/'
+      preLoaderRoute: typeof AbstractionIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/access-logs/': {
@@ -525,6 +545,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProjectsProjectIdRoute: ProjectsProjectIdRoute,
   RolesNewRoute: RolesNewRoute,
   UsersNewRoute: UsersNewRoute,
+  AbstractionIndexRoute: AbstractionIndexRoute,
   AccessLogsIndexRoute: AccessLogsIndexRoute,
   ApplicationsIndexRoute: ApplicationsIndexRoute,
   DeIdentifierIndexRoute: DeIdentifierIndexRoute,

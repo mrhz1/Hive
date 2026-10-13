@@ -74,6 +74,11 @@ def zone2_root() -> Path:
     return _configured_dir("ZONE2_DIR", "storage/zone2")
 
 
+def abstraction_root() -> Path:
+    """Temporary read-only abstraction folders, one per task. Zone 1."""
+    return _configured_dir("ABSTRACTION_DIR", "storage/abstraction")
+
+
 def submitted_dir_for(patient_id: str) -> Path:
     return submitted_root() / safe_path_segment(patient_id)
 
