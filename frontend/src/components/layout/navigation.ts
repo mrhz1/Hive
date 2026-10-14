@@ -1,4 +1,5 @@
 import {
+  ClipboardCheck,
   ClipboardList,
   Eye,
   FileCheck2,
@@ -71,6 +72,12 @@ export const NAV_ITEMS: NavItem[] = [
     to: '/abstraction',
     icon: FolderDown,
     permission: 'abstraction:view',
+  },
+  {
+    label: 'Consent matrix',
+    to: '/consents',
+    icon: ClipboardCheck,
+    permission: 'consent:view',
   },
   {
     label: 'Projects',

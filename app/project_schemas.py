@@ -1,6 +1,6 @@
 """Models for research projects and their Zone 2 releases."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -63,6 +63,11 @@ class Project(BaseModel):
     created_by_id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # The Zone 1X workspace: the cohort's tables and documents (9.2.1). It is
+    # deleted after 90 days unless extended (9.2.2); ISO times in UTC.
+    workspace_path: Optional[str] = None
+    workspace_built_at: Optional[str] = None
+    workspace_expires_at: Optional[str] = None
 
 
 class ProjectPatient(BaseModel):
@@ -107,6 +112,8 @@ class Candidate(BaseModel):
     patient_id: str
     applications: int
     documents: int
+    # Why the consent matrix keeps this patient out of the project, if it does.
+    excluded_reason: Optional[str] = None
 
 
 class ProjectDetail(Project):
@@ -136,3 +143,94 @@ class ReleaseSummary(ProjectRelease):
     project_short_code: str = ""
     columns: dict = Field(default_factory=dict)
     samples: dict = Field(default_factory=dict)
+
+
+# --- consent matrix (9.2.1) ----------------------------------------------
+
+# research: the patient's data may be used in research projects.
+# documents: their PDFs and images may be too (projects approved for documents).
+CONSENT_TYPES = ("research", "documents")
+CONSENT_STATUSES = ("granted", "refused", "withdrawn")
+
+
+class ConsentCreate(BaseModel):
+    patient_id: str
+    consent_type: str = Field(pattern="^(research|documents)$")
+    status: str = Field(pattern="^(granted|refused|withdrawn)$")
+    version: Optional[str] = None
+    consent_date: Optional[date] = None
+    note: Optional[str] = None
+
+    @field_validator("patient_id", mode="before")
+    @classmethod
+    def _code(cls, value):
+        return (value or "").strip().upper()
+
+    @field_validator("version", "note", mode="before")
+    @classmethod
+    def _blank_to_null(cls, value):
+        return _clean(value)
+
+
+class Consent(ConsentCreate):
+    id: str
+    source: Optional[str] = None
+    recorded_by_id: Optional[str] = None
+    recorded_at: Optional[str] = None
+
+
+class ConsentImportRow(BaseModel):
+    line: int
+    code: str = ""
+    consent_type: str = ""
+    status: str = ""
+    action: str  # add, unchanged, error
+    errors: List[str] = Field(default_factory=list)
+
+
+class ConsentImportResult(BaseModel):
+    applied: bool = False
+    counts: dict
+    rows: List[ConsentImportRow]
+
+
+# --- cohort by criteria (9.2.1) ------------------------------------------
+
+
+class CohortCriteria(BaseModel):
+    """Every filter given must match; empty ones are ignored."""
+
+    prefixes: List[str] = Field(default_factory=list)
+    registered_from: Optional[date] = None
+    registered_to: Optional[date] = None
+    age_min: Optional[int] = Field(default=None, ge=0)
+    age_max: Optional[int] = Field(default=None, ge=0)
+    countries: List[str] = Field(default_factory=list)
+    states: List[str] = Field(default_factory=list)
+    institution_codes: List[str] = Field(default_factory=list)
+    alive_only: bool = False
+    modalities: List[str] = Field(default_factory=list)
+    document_from: Optional[date] = None
+    document_to: Optional[date] = None
+    exclude_codes: List[str] = Field(default_factory=list)
+
+
+class CohortSearchResult(BaseModel):
+    matches: List[str]
+    # Matched, but left out by the consent matrix: code -> why.
+    excluded: dict = Field(default_factory=dict)
+
+
+# --- the project's Zone 1X workspace (9.2.1, 9.2.2) ----------------------
+
+
+class WorkspaceBuild(BaseModel):
+    include_documents: bool = True
+
+
+class WorkspaceExtend(BaseModel):
+    reason: str = Field(min_length=1)
+
+
+class WorkspaceDelete(BaseModel):
+    reason: Optional[str] = None

@@ -177,6 +177,10 @@ class _PatientFields(BaseModel):
     original_file_path: Optional[str] = Field(default=None, min_length=1)
     deidentified_file_path: Optional[str] = None
 
+    # The site does not share records or contact details (9.1.2): the code
+    # is all there is, so no name is needed and nothing is asked for.
+    no_records: Optional[bool] = None
+
     @field_validator(*_PATIENT_OPTIONAL_FIELDS, mode="before")
     @classmethod
     def _blank_to_null(cls, value: Any) -> Any:
@@ -211,7 +215,7 @@ class PatientCreate(_PatientFields):
 
     @model_validator(mode="after")
     def _require_an_identifier(self) -> "PatientCreate":
-        if not patient_has_identity(self.model_dump()):
+        if not self.no_records and not patient_has_identity(self.model_dump()):
             raise ValueError(PATIENT_IDENTITY_REQUIRED)
         return self
 
@@ -253,6 +257,7 @@ class PatientApplicationFile(BaseModel):
     review_status: str = "pending"
     review_note: Optional[str] = None
     redaction_boxes: Optional[int] = None
+    leaded_phi: bool = False
 
     @computed_field
     @property
@@ -283,6 +288,10 @@ class DocumentInfoUpdate(BaseModel):
 
 
 REVIEW_STATUSES = ("pending", "approved", "rejected")
+
+
+class LeadedMark(BaseModel):
+    leaded_phi: bool
 
 
 class FileReview(BaseModel):
@@ -332,6 +341,7 @@ class PatientApplicationFileUpdate(BaseModel):
     de_identified_file_path: Optional[str] = None
     sanitized_file_name: Optional[str] = None
     redaction_boxes: Optional[int] = None
+    leaded_phi: Optional[bool] = None
     review_status: Optional[str] = Field(
         default=None, pattern="^(pending|approved|rejected|deleted)$"
     )

@@ -61,7 +61,8 @@ CREATE TABLE `patient` (
   `original_file_path` STRING,
   `deidentified_file_path` STRING,
   `details_checked_at` STRING,
-  `details_checked_by` STRING
+  `details_checked_by` STRING,
+  `no_records` BOOLEAN
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
@@ -106,7 +107,8 @@ CREATE TABLE `patient_application_files` (
   `de_identified_file_path` STRING,
   `review_status` STRING,
   `review_note` STRING,
-  `redaction_boxes` INT
+  `redaction_boxes` INT,
+  `leaded_phi` BOOLEAN
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
@@ -180,7 +182,28 @@ CREATE TABLE `projects` (
   `status_reason` STRING,
   `created_by_id` STRING,
   `created_at` TIMESTAMP,
-  `updated_at` TIMESTAMP
+  `updated_at` TIMESTAMP,
+  `workspace_path` STRING,
+  `workspace_built_at` STRING,
+  `workspace_expires_at` STRING
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
+-- The patient consent matrix (app/consent.py): one row per recorded decision,
+-- never changed, so the history stays. The latest per patient and type counts.
+DROP TABLE IF EXISTS `patient_consents`;
+
+CREATE TABLE `patient_consents` (
+  `id` STRING,
+  `patient_id` STRING,
+  `consent_type` STRING,
+  `status` STRING,
+  `version` STRING,
+  `consent_date` STRING,
+  `note` STRING,
+  `source` STRING,
+  `recorded_by_id` STRING,
+  `recorded_at` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 

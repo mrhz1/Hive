@@ -37,6 +37,7 @@ from app.schemas import (
     DocumentInfoUpdate,
     FileMetadata,
     FileReview,
+    LeadedMark,
     PatientApplicationFile,
     PatientApplicationFileUpdate,
     RejectedFile,
@@ -825,6 +826,39 @@ def review_application_file(
             actor=actor,
             note=note,
         )
+    return updated
+
+
+@router.put("/files/{file_id}/leaded", response_model=PatientApplicationFile)
+def mark_leaded(
+    file_id: str,
+    payload: LeadedMark,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("files:reject")),
+):
+    """Mark (or clear) an image whose identifiers are lead letters burned into
+    the picture (9.1.9). A marked file stays in Zones 1 and 1X; Zone 2
+    releases refuse it until it is scrubbed by hand and the mark cleared."""
+    record = crud.get_file_or_404(cursor, file_id)
+    purge.refuse_if_deleted(record)
+    if record.leaded_phi == payload.leaded_phi:
+        return record
+
+    updated = crud.update_file(
+        cursor, file_id, PatientApplicationFileUpdate(leaded_phi=payload.leaded_phi)
+    )
+    background.add_task(
+        record_audit,
+        action="UPDATE",
+        entity_type="application_file",
+        entity_id=file_id,
+        user_id=actor.id,
+        old_values={"leaded_phi": record.leaded_phi},
+        new_values={"leaded_phi": payload.leaded_phi},
+        request_id=request.headers.get("X-Request-ID"),
+    )
     return updated
 
 

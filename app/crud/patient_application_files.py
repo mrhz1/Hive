@@ -28,6 +28,9 @@ COLUMNS = (
     # How many areas redaction covered; for an image, text burned into the
     # picture (7.9). NULL when not known.
     "redaction_boxes",
+    # An image with identifiers in lead letters burned into it (9.1.9): it
+    # stays in Zones 1 and 1X and can't be released to Zone 2.
+    "leaded_phi",
 )
 
 _COLS = ", ".join(f"`{c}`" for c in COLUMNS)
@@ -39,6 +42,7 @@ def _row_to_file(row) -> PatientApplicationFile:
     values["is_deidentified"] = bool(values["is_deidentified"])
     boxes = values.get("redaction_boxes")
     values["redaction_boxes"] = int(boxes) if boxes not in (None, "") else None
+    values["leaded_phi"] = bool(values.get("leaded_phi"))
     return PatientApplicationFile(**values)
 
 
@@ -81,6 +85,7 @@ def create_file(
             "approved",
             None,
             None,
+            False,
         ),
     )
     log.info(

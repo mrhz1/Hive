@@ -371,10 +371,18 @@ progress is kept in memory, so after a restart `/upload-jobs/{id}` returns
   covered in picture (N)" on such images and can show only them. Checking
   them is optional; if an identifier still shows, **Reject** the image: it
   goes to Rejections and stays out of Zone 2 until replaced (`_RR`).
+- **Leaded images (9.1.9)**: an image with identifiers in lead letters that
+  can only be scrubbed by hand gets **Mark as leaded** (file actions, needs
+  `files:reject`, also on submitted applications;
+  `PUT /files/{id}/leaded`, `patient_application_files.leaded_phi`). It
+  stays where it is and usable in Zones 1 and 1X, but preparing a Zone 2
+  release with documents is refused while a cohort patient has one, and
+  approving is refused if one was marked after preparing. Clear the mark
+  once the image is scrubbed and replaced. Marking and clearing are audited.
 - **Bulk corrections**: `scripts/update_file_metadata.py corrections.xlsx`
   (add `--apply` to make the changes, `--user` for the audit log). Columns:
-  File (redacted name or file id), Modality, Document date, Reject reason;
-  blank keeps what is there. Renames files of any application except
+  File (redacted name or file id), Modality, Document date, Reject reason,
+  Leaded (yes/no); blank keeps what is there. Renames files of any application except
   deleted ones (`app/file_corrections.py`).
 - New column: run `python scripts/migrate_columns.py --apply`.
 
@@ -400,6 +408,13 @@ in step 1 (`POST /patients/{id}/confirm-details`). Patients typed in by hand
 count as checked. Patients already in the database before this column
 start unchecked too. Add the columns with
 `python scripts/migrate_columns.py --apply`.
+
+**Sites that share no records (9.1.2)** (`patient.no_records`): some sites
+only ask for a code and enter their data themselves. Ticking *Site does not
+share records or contact details* on the patient lets it be saved with the
+code only (no name or email), and its applications don't wait for the
+details check. The patient shows as "No records (site)". Changes are in the
+patient's audit entries.
 
 ### Enrollment checklist
 
@@ -454,6 +469,39 @@ de-identified documents for one person's task.
   specialist). Making a folder is logged in the access log as an export, and
   every change in the audit log.
 - Table `abstraction_folders`; on an existing database run
+  `python scripts/migrate_columns.py --apply`.
+
+### Zone 1X: consent, cohort criteria, workspace (spec 9.2)
+
+- **Consent matrix** (`/consents`, `app/consent.py`, table
+  `patient_consents`, needs `consent:view` / `consent:update`): one row per
+  decision (research, or documents = PDFs and images; granted, refused or
+  withdrawn; form version and date), recorded by hand or imported from a
+  spreadsheet. Rows are never changed; the latest per patient and type
+  counts. A refused or withdrawn research consent keeps the patient out of
+  every project; for a project approved for documents, so does the
+  documents consent. It is checked when the cohort is saved, when the
+  workspace is built and when a safe copy is prepared. A patient with no
+  row is covered by the project's *Patient consent confirmed* box. REDCap
+  can fill the same table later.
+- **Cohort by criteria** (*Find by criteria* in *Choose patients*,
+  `app/cohort.py`): code prefix, registration date, age at registration,
+  country/state, institution, living only, modality and date of documents,
+  codes to exclude. Patients the consent matrix keeps out are listed apart.
+  Clinical criteria come with REDCap.
+- **Workspace** (`app/workspace.py`): *Build workspace* writes
+  `PROJECTS_DIR/<code>/workspace/` with `patients.csv`, `applications.csv`,
+  `documents.csv` (CHSS codes kept, names and contacts left out), the
+  de-identified PDFs and images under `documents/<CODE>/`, and
+  `cleaning_log.csv`. Read-only. Deleted `WORKSPACE_EXPIRY_DAYS` (90) after
+  it was first built unless *Extend 90 days* is used with a reason (audited);
+  rebuilding keeps the date. `scripts/workspace_cleanup.py`, run daily,
+  deletes expired ones. Release archives are separate and stay.
+- **Cleanup rules** (`cleaning/`, `app/cleaning.py`): Python files applied
+  to the tables at every build: `instrument/<table>.py`,
+  `instrument/<MODALITY>.py`, `cohort/<PREFIX>.py`. See `cleaning/README.md`.
+  A failing rule stops the build and keeps the old workspace.
+- New columns and the `patient_consents` table:
   `python scripts/migrate_columns.py --apply`.
 
 ### Zone 2 review and project end

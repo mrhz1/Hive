@@ -32,7 +32,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from app import data_dictionary, storage
+from app import consent, data_dictionary, storage
 from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as applications_crud
 from app.crud import patients as patients_crud
@@ -336,6 +336,24 @@ def _refuse_rejected_documents(cursor, cohort) -> None:
         )
 
 
+def _refuse_leaded_documents(cursor, cohort) -> None:
+    """Images with identifiers in lead letters stay in Zones 1 and 1X (9.1.9)."""
+    leaded = [
+        f"{member.patient_id}: {record.deidentified_file_name or record.original_file_name}"
+        for member in cohort
+        for application in _submitted_applications(cursor, member.patient_id)
+        for record in _documents(cursor, application.id)
+        if record.leaded_phi
+    ]
+    if leaded:
+        raise ValidationError(
+            f"{len(leaded)} image(s) are marked as having leaded identifiers and "
+            "can't go to Zone 2. Scrub them by hand and replace them, then clear "
+            "the mark, or take their patients out of the cohort: "
+            + ", ".join(leaded[:10])
+        )
+
+
 # --- prepare ------------------------------------------------------------
 
 
@@ -359,8 +377,10 @@ def prepare(cursor, project_id: str, actor_id: str) -> ProjectRelease:
     project = projects_crud.get_project_or_404(cursor, project_id)
     cohort = projects_crud.list_cohort(cursor, project.id)
     _require_ready(project, cohort)
+    consent.refuse_excluded(cursor, project, [m.patient_id for m in cohort])
     if project.documents_approved:
         _refuse_rejected_documents(cursor, cohort)
+        _refuse_leaded_documents(cursor, cohort)
 
     release_id = _new_release_id()
     archive = storage.projects_root() / project.short_code / release_id
@@ -530,12 +550,32 @@ def _pending(cursor, release_id: str) -> ProjectRelease:
     return release
 
 
+def _refuse_leaded_since_prepared(cursor, release: ProjectRelease) -> None:
+    """An image marked as leaded after the safe copy was made."""
+    if not release.files_included:
+        return
+    path = Path(release.archive_path or "") / "document_map.csv"
+    released = {row["file_id"] for row in _read_csv(path)} if path.is_file() else set()
+    leaded = [
+        record.deidentified_file_name or record.original_file_name
+        for record in files_crud.list_files(cursor)
+        if record.id in released and record.leaded_phi
+    ]
+    if leaded:
+        raise ValidationError(
+            f"{len(leaded)} image(s) in this release were marked as having leaded "
+            "identifiers after it was prepared; reject it and prepare again: "
+            + ", ".join(leaded[:10])
+        )
+
+
 def approve(cursor, release_id: str, actor_id: str) -> ProjectRelease:
     release = _pending(cursor, release_id)
     project = projects_crud.get_project_or_404(cursor, release.project_id)
     inbox = Path(release.inbox_path or "")
     if not inbox.is_dir():
         raise ValidationError("The safe copy is no longer in the inbox; prepare the project again")
+    _refuse_leaded_since_prepared(cursor, release)
 
     target = storage.zone2_root() / project.short_code / release.id
     target.parent.mkdir(parents=True, exist_ok=True)

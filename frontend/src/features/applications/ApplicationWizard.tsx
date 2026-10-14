@@ -193,7 +193,7 @@ export function ApplicationWizard({
   const rejected = rejectedCount(files.data ?? [])
 
   const locked = isReadOnly(record?.status)
-  const unchecked = Boolean(patient && !patient.details_checked_at)
+  const unchecked = Boolean(patient && !patient.details_checked_at && !patient.no_records)
 
   function confirmPatientDetails() {
     if (!patient) return

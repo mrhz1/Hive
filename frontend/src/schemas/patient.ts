@@ -48,6 +48,9 @@ export const patientSchema = z.object({
   /** Empty for patients from intake or the bulk import until confirmed. */
   details_checked_at: z.string().nullable().optional(),
   details_checked_by: z.string().nullable().optional(),
+
+  /** The site shares no records or contact details (spec 9.1.2). */
+  no_records: z.boolean().nullable().optional(),
 })
 
 export type Patient = z.infer<typeof patientSchema>
@@ -142,11 +145,14 @@ const patientFormFields = z.object({
 
   original_file_path: optionalText(512),
   deidentified_file_path: optionalText(512),
+
+  no_records: z.boolean(),
 })
 
 export const PATIENT_IDENTIFIERS = ['fstname', 'lstname', 'ptemail'] as const
 
 export const patientFormSchema = patientFormFields.superRefine((values, ctx) => {
+  if (values.no_records) return
   if (PATIENT_IDENTIFIERS.some((name) => values[name].trim() !== '')) return
 
   ctx.addIssue({
@@ -197,20 +203,27 @@ export const EMPTY_PATIENT_FORM: PatientFormValues = {
   dt_d: '',
   original_file_path: '',
   deidentified_file_path: '',
+  no_records: false,
 }
 
 export function toPatientFormValues(patient: Patient): PatientFormValues {
   const values: PatientFormValues = { ...EMPTY_PATIENT_FORM }
   for (const name of PATIENT_FIELD_NAMES) {
+    if (name === 'no_records') continue
     const value = patient[name]
     values[name] = typeof value === 'string' ? value : ''
   }
+  values.no_records = Boolean(patient.no_records)
   return values
 }
 
 export function patientName(patient: Patient): string {
   const name = [patient.fstname, patient.lstname].filter(Boolean).join(' ').trim()
-  return name || patient.ptemail || 'No details yet'
+  return (
+    name ||
+    patient.ptemail ||
+    (patient.no_records ? 'No records (site)' : 'No details yet')
+  )
 }
 
 export function patientMatches(patient: Patient, query: string): boolean {

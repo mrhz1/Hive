@@ -30,6 +30,7 @@ PROJECT_COLUMNS = (
     "id", "short_code", "name", "description", "approval_reference",
     "consent_confirmed", "documents_approved", "status", "status_reason",
     "created_by_id", "created_at", "updated_at",
+    "workspace_path", "workspace_built_at", "workspace_expires_at",
 )
 PATIENT_COLUMNS = (
     "id", "project_id", "patient_id", "project_patient_id", "date_shift_days", "added_at",
@@ -162,6 +163,11 @@ def update_project(cursor, project_id: str, payload: ProjectUpdate) -> Project:
         fields.pop("name")
     fields["updated_at"] = NOW
     _update(cursor, "projects", project_id, fields)
+    return get_project_or_404(cursor, project_id)
+
+
+def update_project_fields(cursor, project_id: str, fields: dict) -> Project:
+    _update(cursor, "projects", project_id, dict(fields, updated_at=NOW))
     return get_project_or_404(cursor, project_id)
 
 

@@ -9,6 +9,9 @@ The spreadsheet's first row names the columns:
     Reject reason   if set, the file is rejected with this reason: it goes to
                     Rejections, e.g. an identifier is still visible in the
                     picture, and stays out of Zone 2 until replaced
+    Leaded          yes: the image has identifiers in lead letters (9.1.9); it
+                    stays where it is but out of Zone 2. no: clears the mark
+                    after the image was scrubbed. Blank keeps it
 
 The script renames files of any application except deleted ones, including
 submitted ones; the review screen can't rename submitted files.
@@ -39,7 +42,26 @@ COLUMNS = {
     "date": "date",
     "rejectreason": "reject",
     "reject": "reject",
+    "leaded": "leaded",
+    "leadedphi": "leaded",
 }
+
+_YES = {"yes", "y", "true", "1", "x"}
+_NO = {"no", "n", "false", "0"}
+
+
+def _yes_no(raw) -> Optional[bool]:
+    """True, False, None for blank; raises ValueError for anything else."""
+    if isinstance(raw, bool):
+        return raw
+    text = (_text(raw) or "").lower()
+    if not text:
+        return None
+    if text in _YES:
+        return True
+    if text in _NO:
+        return False
+    raise ValueError(text)
 
 
 def rename_document(
@@ -79,7 +101,7 @@ def rename_document(
 class CorrectionRow(BaseModel):
     line: int
     file: str = ""
-    action: str  # rename, reject, unchanged, error
+    action: str  # rename, reject, leaded, unleaded joined by "+"; unchanged; error
     old_name: Optional[str] = None
     new_name: Optional[str] = None
     errors: List[str] = Field(default_factory=list)
@@ -145,6 +167,11 @@ def correct(cursor, name: str, data: bytes, apply: bool) -> List[CorrectionRow]:
                 row.errors.append(f"'{typed_day}' is not a date (use YYYY-MM-DD)")
 
         reason = _text(values.get("reject"))
+        try:
+            leaded = _yes_no(values.get("leaded"))
+        except ValueError as e:
+            leaded = None
+            row.errors.append(f"Leaded must be yes or no, not '{e}'")
         if row.errors:
             row.action = "error"
             continue
@@ -154,10 +181,15 @@ def correct(cursor, name: str, data: bytes, apply: bool) -> List[CorrectionRow]:
         if new_name is None:
             row.action, row.errors = "error", ["Not named like a redacted file"]
             continue
+        steps = []
         if new_name != record.deidentified_file_name:
-            row.action, row.new_name = "rename", new_name
+            steps.append("rename")
+            row.new_name = new_name
         if reason and record.review_status != "rejected":
-            row.action = "reject" if row.action == "unchanged" else "rename+reject"
+            steps.append("reject")
+        if leaded is not None and leaded != record.leaded_phi:
+            steps.append("leaded" if leaded else "unleaded")
+        row.action = "+".join(steps) or "unchanged"
 
         if not apply or row.action == "unchanged":
             continue
@@ -165,10 +197,14 @@ def correct(cursor, name: str, data: bytes, apply: bool) -> List[CorrectionRow]:
             if new_name != record.deidentified_file_name:
                 record, _old, row.new_name = rename_document(cursor, record, info)
             if reason and record.review_status != "rejected":
-                crud.update_file(
+                record = crud.update_file(
                     cursor,
                     record.id,
                     PatientApplicationFileUpdate(review_status="rejected", review_note=reason),
+                )
+            if leaded is not None and leaded != record.leaded_phi:
+                crud.update_file(
+                    cursor, record.id, PatientApplicationFileUpdate(leaded_phi=leaded)
                 )
         except ValidationError as e:
             row.action, row.errors = "error", [str(e)]

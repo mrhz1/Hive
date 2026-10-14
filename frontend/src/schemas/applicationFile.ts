@@ -39,6 +39,8 @@ export const applicationFileSchema = z.object({
   redaction: z.string().nullable().optional(),
   /** Areas redaction covered; for an image, text burned into the picture. */
   redaction_boxes: z.number().nullable().optional(),
+  /** Identifiers in lead letters burned into the image: kept out of Zone 2. */
+  leaded_phi: z.boolean().default(false),
 })
 
 export const UNKNOWN = 'UNKNOWN'

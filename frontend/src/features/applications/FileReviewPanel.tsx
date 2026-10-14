@@ -1,4 +1,4 @@
-import { Eye, FileJson, FileSearch, ShieldCheck, Tag, X } from 'lucide-react'
+import { Eye, FileJson, FileSearch, Lock, ShieldCheck, Tag, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
@@ -13,6 +13,7 @@ import { usePermissions } from '@/hooks/useCurrentUser'
 import {
   useApplicationFiles,
   useBackgroundUpload,
+  useMarkLeaded,
   useReviewApplicationFile,
   useSetDocumentInfo,
 } from '@/hooks/useResources'
@@ -62,6 +63,7 @@ export function FileReviewPanel({
   const { can } = usePermissions()
   const filesQuery = useApplicationFiles(applicationId)
   const review = useReviewApplicationFile(applicationId)
+  const markLeaded = useMarkLeaded(applicationId)
   const setDocumentInfo = useSetDocumentInfo(applicationId)
 
   const onJobFinished = useCallback(
@@ -192,6 +194,22 @@ export function FileReviewPanel({
         onSelect: () => setShowingMetadata({ file, deidentified: true }),
       })
     }
+    // Also on submitted applications: a leaded image may only be noticed later.
+    if (can('files:reject') && previewKind(file.file_extension) === 'image') {
+      actions.push({
+        id: 'leaded',
+        separatorBefore: actions.length > 0,
+        label: file.leaded_phi ? 'Clear leaded mark' : 'Mark as leaded',
+        icon: <Lock className="size-4" aria-hidden="true" />,
+        disabled: !hasCopy || markLeaded.isPending,
+        title: !hasCopy
+          ? noCopy
+          : file.leaded_phi
+            ? 'Only once the image has been scrubbed by hand and replaced'
+            : 'Identifiers in lead letters in the picture: the image stays out of Zone 2',
+        onSelect: () => markLeaded.mutate({ fileId: file.id, leaded: !file.leaded_phi }),
+      })
+    }
     if (readOnly) return actions
 
     if (can('application:update')) {
@@ -310,6 +328,7 @@ export function FileReviewPanel({
           {hasCoveredImageText(file) ? (
             <Badge tone="warning">text covered in picture ({file.redaction_boxes})</Badge>
           ) : null}
+          {file.leaded_phi ? <Badge tone="danger">leaded · not for Zone 2</Badge> : null}
         </div>
       ),
       sortValue: (file) => file.deid_status,

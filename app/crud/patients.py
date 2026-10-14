@@ -54,6 +54,7 @@ COLUMNS = (
     # made by intake or the bulk import start without it.
     "details_checked_at",
     "details_checked_by",
+    "no_records",
 )
 
 DATE_COLUMNS = {"dt_reg", "dt_b", "dt_d"}
@@ -247,7 +248,7 @@ def update_patient(cursor, patient_id: str, payload: PatientUpdate) -> Patient:
         return existing
 
     merged = {**existing.model_dump(), **fields}
-    if not patient_has_identity(merged):
+    if not merged.get("no_records") and not patient_has_identity(merged):
         raise ValidationError(PATIENT_IDENTITY_REQUIRED)
 
     changed = {

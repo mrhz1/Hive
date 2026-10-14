@@ -15,6 +15,7 @@ from app.routers import (
     abstraction as abstraction_router,
     access_log as access_log_router,
     audit_log,
+    consents as consents_router,
     file_metadata,
     files,
     intake as intake_router,
@@ -149,6 +150,7 @@ async def validation_error_handler(request, exc: RequestValidationError):
 
 app.include_router(me.router)
 app.include_router(projects_router.router)
+app.include_router(consents_router.router)
 app.include_router(zone2_router.router)
 app.include_router(abstraction_router.router)
 app.include_router(security_router.router)

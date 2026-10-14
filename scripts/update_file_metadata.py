@@ -1,8 +1,8 @@
-"""Correct redacted files' modality and date in bulk, and reject the ones
-that still show an identifier (protocol 7.9).
+"""Correct redacted files' modality and date in bulk, reject the ones that
+still show an identifier (protocol 7.9) and mark leaded images (9.1.9).
 
 The file is a spreadsheet (.xlsx or .csv) with the columns File, Modality,
-Document date and Reject reason; see app/file_corrections.py. Without
+Document date, Reject reason and Leaded; see app/file_corrections.py. Without
 --apply it only shows what it would do.
 
     python scripts/update_file_metadata.py corrections.xlsx

@@ -13,6 +13,7 @@ import {
   fileMetadataApi,
   patientsApi,
   logsApi,
+  consentsApi,
   projectsApi,
   rolesApi,
   usersApi,
@@ -35,7 +36,7 @@ import type { ApplicationFile } from '@/schemas/applicationFile'
 import type { PatientFormValues } from '@/schemas/patient'
 import type { RoleFormValues } from '@/schemas/role'
 import type { UserFormValues } from '@/schemas/user'
-import type { ProjectPayload } from '@/schemas/project'
+import type { CohortCriteria, ConsentPayload, ProjectPayload } from '@/schemas/project'
 import type { Patient, Role, User } from '@/lib/api/resources'
 
 export const userHooks = createCrudHooks<User, UserFormValues>({
@@ -221,6 +222,25 @@ export function useReviewApplicationFile(applicationId: string) {
     },
     onError: (error) => {
       toast.error(errorMessage(error, 'Could not record the review'))
+    },
+  })
+}
+
+export function useMarkLeaded(applicationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (variables: { fileId: string; leaded: boolean }) =>
+      applicationFilesApi.markLeaded(variables.fileId, variables.leaded),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.applicationFiles.list(applicationId),
+      })
+      toast.success(
+        variables.leaded ? 'Marked as leaded; kept out of Zone 2' : 'Leaded mark cleared'
+      )
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not change the leaded mark'))
     },
   })
 }
@@ -911,11 +931,21 @@ export function useProject(id: string) {
   })
 }
 
-export function useProjectCandidates(enabled = true) {
+export function useProjectCandidates(projectId: string, enabled = true) {
   return useQuery({
-    queryKey: queryKeys.projects.candidates(),
-    queryFn: () => projectsApi.candidates(),
+    queryKey: queryKeys.projects.candidates(projectId),
+    queryFn: () => projectsApi.candidates(projectId),
     enabled,
+  })
+}
+
+export function useCohortSearch(projectId: string) {
+  return useMutation({
+    mutationFn: (criteria: CohortCriteria) =>
+      projectsApi.searchCohort(projectId, criteria),
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not search'))
+    },
   })
 }
 
@@ -1025,6 +1055,53 @@ export function useFlagReleaseDocument() {
     'Release sent back; the document is in Rejections',
     'Could not flag the document'
   )
+}
+
+export function useBuildWorkspace(id: string) {
+  return useProjectMutation(
+    (includeDocuments: boolean) => projectsApi.buildWorkspace(id, includeDocuments),
+    'Workspace built',
+    'Could not build the workspace'
+  )
+}
+
+export function useExtendWorkspace(id: string) {
+  return useProjectMutation(
+    (reason: string) => projectsApi.extendWorkspace(id, reason),
+    (project) =>
+      `Workspace kept until ${(project.workspace_expires_at ?? '').slice(0, 10)}`,
+    'Could not extend the workspace'
+  )
+}
+
+export function useDeleteWorkspace(id: string) {
+  return useProjectMutation(
+    (reason: string) => projectsApi.deleteWorkspace(id, reason),
+    'Workspace deleted',
+    'Could not delete the workspace'
+  )
+}
+
+export function useConsents(patientId?: string) {
+  return useQuery({
+    queryKey: queryKeys.consents.list(patientId),
+    queryFn: () => consentsApi.list(patientId),
+  })
+}
+
+export function useRecordConsent() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (values: ConsentPayload) => consentsApi.record(values),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.consents.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.all })
+      toast.success('Consent recorded')
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not record the consent'))
+    },
+  })
 }
 
 export function useEndProject(id: string) {
