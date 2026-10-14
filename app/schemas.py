@@ -384,6 +384,13 @@ METADATA_EXTENSIONS = {
     "dicom": "dicom",
     "doc": "word",
     "docx": "word",
+    "jpg": "image",
+    "jpeg": "image",
+    "png": "image",
+    "tif": "image",
+    "tiff": "image",
+    "bmp": "image",
+    "gif": "image",
 }
 
 

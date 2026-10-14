@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from app import deid, document_info, intake
+from app import deid, document_info, image_convert, intake
 from app.audit import record_audit
 from app.crud import patients as patients_crud
 from app.db import authoritative, hive_cursor
@@ -392,7 +392,10 @@ class Task:
 
 
 def is_dicom(task):
-    return (task.extension or "").lower() in ("dcm", "dicom")
+    """DICOM, or an image that goes in as one."""
+    return (task.extension or "").lower() in ("dcm", "dicom") or image_convert.is_image(
+        task.extension
+    )
 
 
 def split_into_runs(tasks, workers=1):
@@ -426,8 +429,16 @@ def run_pipeline(tasks, ocr_batch, workdir):
         if not task.path.is_file():
             results[n] = deid.DeidError("the file is no longer in the incoming folder")
             continue
-        link = input_dir / f"f{n:05d}.{(task.extension or 'bin').lower()}"
-        link.symlink_to(task.path.resolve())
+        if image_convert.is_image(task.extension):
+            # JPG/PNG/... go in as a DICOM made from them (9.1.8)
+            try:
+                link = deid.pipeline_input(task.path, input_dir, task.code, f"f{n:05d}")
+            except deid.DeidError as e:
+                results[n] = e
+                continue
+        else:
+            link = input_dir / f"f{n:05d}.{(task.extension or 'bin').lower()}"
+            link.symlink_to(task.path.resolve())
         links[str(link)] = n
 
     if links:

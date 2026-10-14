@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 import os
 import signal
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -9,7 +10,7 @@ from typing import Dict, List, Optional
 
 import structlog
 
-from app import deid_notices
+from app import deid_notices, image_convert
 from app import deid_progress
 from app import deid_queue
 from app.crud import patient_application_files as crud
@@ -50,9 +51,11 @@ DEID_OUTPUT_EXTENSIONS = {
     ".dicom": ".dcm",
     ".doc": ".docx",
     ".docx": ".docx",
+    # converted to DICOM first (app/image_convert.py)
+    **{f".{ext}": ".dcm" for ext in image_convert.IMAGE_EXTENSIONS},
 }
 
-DEIDENTIFIABLE_LABEL = "PDF, DICOM, Word"
+DEIDENTIFIABLE_LABEL = "PDF, DICOM, Word, JPG/PNG/TIFF/BMP images"
 
 RUNTIME_NOT_FOUND = (
     f"De-identification runtime not found at '{DEID_PYTHON}'. "
@@ -225,13 +228,40 @@ def _set_status(file_id: str, **fields) -> None:
         log.error("deid_status_write_failed", file_id=file_id, error=str(e))
 
 
+def pipeline_input(source: Path, folder: Path, code: str = "", name: str = "") -> Path:
+    """What the pipeline reads for `source`: the file itself, or for an
+    image, a DICOM made from it in `folder` (named `name`, default the
+    source's stem)."""
+    if not image_convert.is_image(source.suffix):
+        return source
+    target = folder / f"{name or source.stem}.dcm"
+    try:
+        return image_convert.to_dicom(source, target, code)
+    except image_convert.ConversionError as e:
+        raise DeidError(str(e)) from e
+
+
 def _run_pipeline(
     source: Path,
     output_dir: Path,
     file_id: str = "",
     env: Optional[Dict[str, str]] = None,
+    code: str = "",
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
+    converted = output_dir / ".converted"
+    try:
+        return _run_one(pipeline_input(source, converted, code), output_dir, file_id, env)
+    finally:
+        shutil.rmtree(converted, ignore_errors=True)
+
+
+def _run_one(
+    source: Path,
+    output_dir: Path,
+    file_id: str = "",
+    env: Optional[Dict[str, str]] = None,
+) -> Path:
 
     command = [
         DEID_PYTHON,
@@ -459,10 +489,12 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
         if not source.is_file():
             raise DeidError("The stored file is missing from disk")
 
-        produced = _run_pipeline(source, source.parent / DEID_SUBFOLDER, file_id)
+        patient_id = _get_patient_id(record)
+        produced = _run_pipeline(
+            source, source.parent / DEID_SUBFOLDER, file_id, code=patient_id
+        )
         boxes = boxes_applied(produced)
 
-        patient_id = _get_patient_id(record)
         info = find_document_info(
             record.original_file_name, record.file_extension, patient_id, source
         )

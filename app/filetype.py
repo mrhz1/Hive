@@ -15,6 +15,14 @@ OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
 ZIP_MAGIC = b"PK\x03\x04"
 
+IMAGE_MAGIC = (
+    (b"\xff\xd8\xff", "jpg"),
+    (b"\x89PNG\r\n\x1a\n", "png"),
+    (b"II*\x00", "tif"),
+    (b"MM\x00*", "tif"),
+    (b"BM", "bmp"),
+)
+
 SNIFF_BYTES = 4096
 
 KNOWN_EXTENSIONS = set(METADATA_EXTENSIONS)
@@ -47,6 +55,10 @@ def sniff_extension(head: bytes) -> Optional[str]:
 
     if head.startswith(ZIP_MAGIC) and b"word/" in head:
         return "docx"
+
+    for magic, extension in IMAGE_MAGIC:
+        if head.startswith(magic):
+            return extension
 
     return None
 

@@ -362,6 +362,19 @@ is marked `failed` on the job and the others continue (`partial`). Job
 progress is kept in memory, so after a restart `/upload-jobs/{id}` returns
 404, but the files already processed are fine.
 
+### JPG/PNG/TIFF images (9.1.8)
+
+Images in other formats (jpg, jpeg, png, tif, tiff, bmp, gif; also found by
+their content when the name has no extension) are accepted by the intake
+and the upload. Before de-identification each is converted to a DICOM
+Secondary Capture (`app/image_convert.py`): PatientID = the code, Modality
+from the file name (`xray` -> DX, else OT), StudyDate from the file name,
+new UIDs, SeriesDescription "Converted from JPG". Nothing from the source
+(EXIF, GPS, the file name) goes into the DICOM; the original's EXIF is
+shown in its metadata. It then goes through the DICOM pipeline (burned-in
+text found and covered) and is stored and named as a `.dcm`. Multi-page
+TIFF: first page only. Needs Pillow and numpy (in `requirements-dev.txt`).
+
 ### Document type from the file name (9.1.2)
 
 Redacted files are named `<code>_<type>_<date>_<serial>_<R|RR>`. For PDF,

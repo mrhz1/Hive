@@ -256,6 +256,9 @@ def find(
     (path or bytes), read for DICOM tags only.
     """
     day = date_from_name(name, code)
+    if (extension or "").lower().lstrip(".") in IMAGE_EXTENSIONS:
+        # converted to DICOM (app/image_convert.py), so named by modality
+        return DocumentInfo(modality=modality_from_name(name, code), date=day)
     if not is_dicom_extension(extension):
         kind = type_from_name(name, extension, code)
         if kind == UNKNOWN:

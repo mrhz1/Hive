@@ -237,13 +237,30 @@ export function formatFileSize(bytes: number): string {
 export const METADATA_STATUSES = ['ok', 'unsupported', 'failed'] as const
 export type MetadataStatus = (typeof METADATA_STATUSES)[number]
 
-const METADATA_EXTENSIONS = new Set(['pdf', 'dcm', 'dicom', 'doc', 'docx'])
+// JPG/PNG/... are converted to DICOM when de-identified (app/image_convert.py).
+export const PLAIN_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'bmp', 'gif']
+
+const METADATA_EXTENSIONS = new Set([
+  'pdf',
+  'dcm',
+  'dicom',
+  'doc',
+  'docx',
+  ...PLAIN_IMAGE_EXTENSIONS,
+])
 
 export function hasExtractableMetadata(extension: string): boolean {
   return METADATA_EXTENSIONS.has(extension.toLowerCase())
 }
 
-const DEIDENTIFIABLE_EXTENSIONS = new Set(['pdf', 'dcm', 'dicom', 'doc', 'docx'])
+const DEIDENTIFIABLE_EXTENSIONS = new Set([
+  'pdf',
+  'dcm',
+  'dicom',
+  'doc',
+  'docx',
+  ...PLAIN_IMAGE_EXTENSIONS,
+])
 
 export function canDeidentify(extension: string): boolean {
   return DEIDENTIFIABLE_EXTENSIONS.has(extension.toLowerCase())

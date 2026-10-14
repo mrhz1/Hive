@@ -1,6 +1,6 @@
 import { canDeidentify } from '@/schemas/applicationFile'
 
-export const SUPPORTED_FORMATS_LABEL = 'DICOM, PDF, or Word'
+export const SUPPORTED_FORMATS_LABEL = 'DICOM, PDF, Word, or JPG/PNG/TIFF/BMP images'
 
 const DICOM_PREAMBLE_BYTES = 128
 const DICOM_MAGIC = 'DICM'
@@ -48,6 +48,12 @@ function sniffExtension(head: Uint8Array): string | null {
     const text = new TextDecoder('latin1').decode(head)
     if (text.includes('word/')) return 'docx'
   }
+
+  if (startsWithBytes(head, [0xff, 0xd8, 0xff])) return 'jpg'
+  if (startsWithBytes(head, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    return 'png'
+  if (startsWithAscii(head, 'II*\0') || startsWithAscii(head, 'MM\0*')) return 'tif'
+  if (startsWithAscii(head, 'BM')) return 'bmp'
 
   return null
 }
