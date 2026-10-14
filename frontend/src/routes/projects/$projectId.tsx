@@ -597,8 +597,8 @@ function CriteriaSearch({
           onChange={field('states')}
         />
         <TextField
-          label="Has documents of modality"
-          placeholder="ECHO, MR"
+          label="Has documents of type or modality"
+          placeholder="ECHO_REPORT, MR"
           value={form.modalities}
           onChange={field('modalities')}
         />

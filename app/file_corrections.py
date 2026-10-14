@@ -157,7 +157,7 @@ def correct(cursor, name: str, data: bytes, apply: bool) -> List[CorrectionRow]:
         if typed:
             modality = document_info.clean_modality(typed)
             if modality is None:
-                row.errors.append(f"'{typed}' is not a known modality")
+                row.errors.append(f"'{typed}' is not a known document type or modality")
 
         day = parts.get("day") if parts.get("modality") else document_info.UNKNOWN
         typed_day = _date_value(values.get("date"))

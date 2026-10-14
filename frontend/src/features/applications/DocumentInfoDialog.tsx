@@ -8,7 +8,7 @@ import {
   type ApplicationFile,
 } from '@/schemas/applicationFile'
 
-/** Set the modality and date a redacted file is named by. */
+/** Set the document type (or modality) and date a redacted file is named by. */
 export function DocumentInfoDialog({
   file,
   isBusy,
@@ -48,11 +48,11 @@ export function DocumentInfoDialog({
       className="fixed inset-0 z-50 flex items-center justify-center bg-[rgb(var(--background))]/80 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label={`Modality and date of ${file.original_file_name}`}
+      aria-label={`Type and date of ${file.original_file_name}`}
     >
       <div className="w-full max-w-lg space-y-4 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-5 shadow-xl">
         <div>
-          <h2 className="text-sm font-bold">Modality and date</h2>
+          <h2 className="text-sm font-bold">Document type and date</h2>
           <p className="mt-1 text-xs break-all text-[rgb(var(--foreground-muted))]">
             The de-identified copy is renamed to match:{' '}
             {file.deidentified_file_name ?? file.original_file_name}
@@ -60,7 +60,8 @@ export function DocumentInfoDialog({
         </div>
 
         <SelectField
-          label="Modality"
+          label="Document type / modality"
+          hint="Reports and forms get a document type; DICOM images their modality."
           value={modality}
           options={MODALITY_OPTIONS}
           onChange={(event) => setModality(event.target.value)}

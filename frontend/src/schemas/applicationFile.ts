@@ -75,11 +75,32 @@ const OTHER_MODALITIES =
   RESP RG RTDOSE RTIMAGE RTINTENT RTPLAN RTRAD RTRECORD RTSEGANN RTSTRUCT RWV SEG SM SMR SR SRF
   STAIN TEXTUREMAP TG VA XAPROTOCOL XC`.split(/\s+/)
 
+// Document types for reports and forms (app/document_info.py DOCUMENT_TYPES);
+// DICOM files are named by their modality instead.
+export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  ENROLLMENT: 'Enrollment form',
+  CONTACT: 'Contact form',
+  CONSENT: 'Consent form',
+  OPERATIVE: 'Operative report',
+  DISCHARGE: 'Discharge summary',
+  ECHO_REPORT: 'Echocardiogram report',
+  ANGIO_REPORT: 'Angiography report',
+  MRI_REPORT: 'MRI report',
+  ECG_REPORT: 'ECG report',
+  IMAGE: 'Image',
+  STS_EXTRACT: 'STS extract',
+  OTHER: 'Other',
+}
+
 export const MODALITY_OPTIONS = [
   { value: UNKNOWN, label: 'Unknown' },
+  ...Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => ({
+    value,
+    label: `${label} (${value})`,
+  })),
   ...[...COMMON_MODALITIES, ...OTHER_MODALITIES].map((code) => ({
     value: code,
-    label: code,
+    label: `${code} (DICOM modality)`,
   })),
 ]
 

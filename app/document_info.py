@@ -1,26 +1,32 @@
-"""The modality and date a redacted file is named by.
+"""The document type (or modality) and date a redacted file is named by.
 
-A redacted file is named `<code>_<modality>_<date>_<16-digit serial>_<R|RR>.<ext>`,
-e.g. `AA1234_MR_20190312_1790261077741000_R.pdf`. `R` is redacted by the
-pipeline, `RR` redacted by hand (an upload or a replacement).
+A redacted file is named `<code>_<type>_<date>_<16-digit serial>_<R|RR>.<ext>`,
+e.g. `AA1234_DISCHARGE_20190312_1790261077741000_R.pdf` or
+`AA1234_MR_20190312_1790261077741000_R.dcm`. `R` is redacted by the
+pipeline, `RR` redacted by hand (an upload or a replacement). The type part
+is called "modality" in the code and the API, where it started.
 
-- DICOM: the Modality tag, and the first of StudyDate, SeriesDate,
-  AcquisitionDate, ContentDate.
-- PDF and Word: from the file name the site gave it, e.g.
-  `AA1234_MRI_2019-03-12.pdf`. The modality is a whole word of the name
-  (`MRI`, `CT`, ...), the date is `YYYYMMDD` or `YYYY-MM-DD` (also with `_`,
-  `.` or a space).
+- DICOM: the Modality tag (MR, CT, US, ...), and the first of StudyDate,
+  SeriesDate, AcquisitionDate, ContentDate.
+- PDF, Word and other files: the document type, read from the file name
+  the site gave it only, never from the content (spec 9.1.2): e.g.
+  `AA1234_discharge_2019-03-12.pdf` is DISCHARGE (see TYPE_KEYWORDS). A
+  name that names no type but a modality (`AA1234_CT_...pdf`) keeps the
+  modality. The date is `YYYYMMDD` or `YYYY-MM-DD` (also with `_`, `.` or a
+  space).
 
 Anything not found is `UNKNOWN`, and staff set it on the review screen
 (`rename`).
 """
 
 import io
+import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 UNKNOWN = "UNKNOWN"
 
@@ -66,6 +72,35 @@ ALIASES = {
     "DXA": "BMD",
 }
 
+# Document types (spec 9.1.2). A DICOM file is named by its modality instead.
+DOCUMENT_TYPES = (
+    "ENROLLMENT", "CONTACT", "CONSENT", "OPERATIVE", "DISCHARGE",
+    "ECHO_REPORT", "ANGIO_REPORT", "MRI_REPORT", "ECG_REPORT",
+    "IMAGE", "STS_EXTRACT", "OTHER",
+)
+
+# Words in a file name that give its type, checked in this order (the
+# first type with a match wins, so "consent for echo" is CONSENT). Matched
+# as whole words, case-insensitive, with _ - . treated as spaces. More can
+# be added in a JSON file named by DOCUMENT_TYPES_FILE: {"TYPE": ["words"]}.
+TYPE_KEYWORDS: List[Tuple[str, Tuple[str, ...]]] = [
+    ("CONSENT", ("consent", "consent form", "assent")),
+    ("CONTACT", ("contact form", "contact information", "contact info",
+                 "change of contact", "contact update", "contact")),
+    ("ENROLLMENT", ("enrollment", "enrolment", "enroll", "enrol", "registration form")),
+    ("OPERATIVE", ("operative", "op note", "op report", "operation", "surgical report",
+                   "surgery report", "operative report")),
+    ("DISCHARGE", ("discharge", "discharge summary", "dc summary", "d c summary")),
+    ("ECHO_REPORT", ("echo", "echocardiogram", "echocardiography", "tte", "tee")),
+    ("ANGIO_REPORT", ("angio", "angiogram", "angiography", "cath", "catheterization",
+                      "catheterisation")),
+    ("MRI_REPORT", ("mri", "cmr", "cardiac mri", "magnetic resonance")),
+    ("ECG_REPORT", ("ecg", "ekg", "electrocardiogram", "electrocardiography")),
+]
+
+IMAGE_EXTENSIONS = ("jpg", "jpeg", "png", "tif", "tiff", "bmp", "gif")
+SPREADSHEET_EXTENSIONS = ("xlsx", "xls", "csv")
+
 DICOM_DATE_TAGS = ("StudyDate", "SeriesDate", "AcquisitionDate", "ContentDate")
 
 _DATE = re.compile(
@@ -74,10 +109,10 @@ _DATE = re.compile(
 _X_RAY = re.compile(r"X[-_ ]RAY", re.IGNORECASE)
 _WORD = re.compile(r"[A-Za-z]+")
 
-# `<code>_[<modality>_]<date>_<serial>[_<R|RR>]<extension>`: older names
-# have no modality or redaction part.
+# `<code>_[<type>_]<date>_<serial>[_<R|RR>]<extension>`: older names have no
+# type or redaction part. A type can have an underscore (ECHO_REPORT).
 _NAME = re.compile(
-    r"^(?P<code>[A-Z0-9]+)_(?:(?P<modality>[A-Z0-9]+)_)?"
+    r"^(?P<code>[A-Z0-9]+)_(?:(?P<modality>[A-Z0-9]+(?:_[A-Z0-9]+)*?)_)?"
     r"(?P<day>\d{8}|UNKNOWN)_(?P<serial>\d{16})"
     r"(?:_(?P<redaction>RR?))?(?P<extension>\..*)?$"
 )
@@ -93,8 +128,17 @@ class DocumentInfo:
         return f"{stem}_{redaction}" if redaction else stem
 
 
+def clean_type(value: Optional[str]) -> Optional[str]:
+    """A known document type for `value` ("echo report", "ECHO-REPORT"), or None."""
+    word = re.sub(r"[\s\-]+", "_", (value or "").strip().upper())
+    return word if word in DOCUMENT_TYPES else None
+
+
 def clean_modality(value: Optional[str]) -> Optional[str]:
-    """A known modality code for `value`, or None."""
+    """A known document type or modality code for `value`, or None."""
+    typed = clean_type(value)
+    if typed:
+        return typed
     word = (value or "").strip().upper().replace("-", "").replace(" ", "")
     if word == UNKNOWN:
         return UNKNOWN
@@ -131,6 +175,38 @@ def modality_from_name(name: str, code: str = "") -> str:
         modality = ALIASES.get(word, word)
         if modality in NAME_MODALITIES:
             return modality
+    return UNKNOWN
+
+
+def _keywords() -> List[Tuple[str, Tuple[str, ...]]]:
+    path = os.environ.get("DOCUMENT_TYPES_FILE")
+    if not path:
+        return TYPE_KEYWORDS
+    try:
+        extra: Dict[str, List[str]] = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return TYPE_KEYWORDS
+    merged = [(kind, words + tuple(extra.get(kind, ()))) for kind, words in TYPE_KEYWORDS]
+    known = {kind for kind, _ in TYPE_KEYWORDS}
+    merged += [
+        (kind, tuple(words)) for kind, words in extra.items()
+        if kind in DOCUMENT_TYPES and kind not in known
+    ]
+    return merged
+
+
+def type_from_name(name: str, extension: str = "", code: str = "") -> str:
+    """The document type the file name gives, or UNKNOWN. Only the name is
+    read, never the content."""
+    extension = (extension or Path(name).suffix).lower().lstrip(".")
+    if extension in IMAGE_EXTENSIONS:
+        return "IMAGE"
+    text = " " + " ".join(re.split(r"[^a-z0-9]+", _without_code(name, code).lower())) + " "
+    if extension in SPREADSHEET_EXTENSIONS and " sts " in text:
+        return "STS_EXTRACT"
+    for kind, words in _keywords():
+        if any(f" {' '.join(word.lower().split())} " in text for word in words):
+            return kind
     return UNKNOWN
 
 
@@ -172,15 +248,22 @@ def find(
     code: str = "",
     source: Union[Path, bytes, None] = None,
 ) -> DocumentInfo:
-    """The modality and date of a file the site sent as `name`.
+    """The type (or modality) and date of a file the site sent as `name`.
 
-    `source` is the file itself (path or bytes), read for DICOM tags. A DICOM
-    file whose tags don't say falls back to its name.
+    A DICOM file is named by its modality: its tags, then its name. Any
+    other file by the document type its name gives, else a modality its
+    name gives (`..._CT_...pdf`), else UNKNOWN. `source` is the file itself
+    (path or bytes), read for DICOM tags only.
     """
-    from_name = DocumentInfo(
-        modality=modality_from_name(name, code), date=date_from_name(name, code)
-    )
-    if source is None or not is_dicom_extension(extension):
+    day = date_from_name(name, code)
+    if not is_dicom_extension(extension):
+        kind = type_from_name(name, extension, code)
+        if kind == UNKNOWN:
+            kind = modality_from_name(name, code)
+        return DocumentInfo(modality=kind, date=day)
+
+    from_name = DocumentInfo(modality=modality_from_name(name, code), date=day)
+    if source is None:
         return from_name
 
     tags = from_dicom(source)

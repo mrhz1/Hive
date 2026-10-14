@@ -887,7 +887,7 @@ def set_document_info(
 
     modality = document_info.clean_modality(payload.modality)
     if modality is None:
-        raise ValidationError(f"'{payload.modality}' is not a known modality")
+        raise ValidationError(f"'{payload.modality}' is not a known document type or modality")
     day = document_info.clean_date(payload.document_date)
     if day is None:
         raise ValidationError(

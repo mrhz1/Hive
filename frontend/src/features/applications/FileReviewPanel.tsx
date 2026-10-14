@@ -216,7 +216,7 @@ export function FileReviewPanel({
       actions.push({
         id: 'document-info',
         separatorBefore: actions.length > 0,
-        label: 'Set modality & date',
+        label: 'Set type & date',
         icon: <Tag className="size-4" aria-hidden="true" />,
         disabled: !hasCopy,
         title: hasCopy ? 'Renames the de-identified copy' : noCopy,
@@ -265,12 +265,12 @@ export function FileReviewPanel({
     },
     {
       id: 'modality',
-      header: 'Modality / date',
+      header: 'Type / date',
       cell: (file) =>
         file.modality ? (
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge tone={file.modality === UNKNOWN ? 'warning' : 'neutral'}>
-              {file.modality === UNKNOWN ? 'modality?' : file.modality}
+              {file.modality === UNKNOWN ? 'type?' : file.modality}
             </Badge>
             {isoDocumentDate(file.document_date) ? (
               <span className="text-xs tabular-nums">

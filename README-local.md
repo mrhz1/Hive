@@ -362,6 +362,20 @@ is marked `failed` on the job and the others continue (`partial`). Job
 progress is kept in memory, so after a restart `/upload-jobs/{id}` returns
 404, but the files already processed are fine.
 
+### Document type from the file name (9.1.2)
+
+Redacted files are named `<code>_<type>_<date>_<serial>_<R|RR>`. For PDF,
+Word and other files the type comes from the file name the site gave it,
+never from the content (`app/document_info.py`, `TYPE_KEYWORDS`): e.g.
+`discharge` -> DISCHARGE, `op note` -> OPERATIVE, `consent` -> CONSENT,
+`echo`/`TTE` -> ECHO_REPORT, `MRI` -> MRI_REPORT, `EKG` -> ECG_REPORT; JPG/PNG
+-> IMAGE; an Excel/CSV with `sts` -> STS_EXTRACT. Words are matched whole,
+first type wins. A name with only a modality (`..._CT_...pdf`) keeps it;
+anything else is UNKNOWN and staff set it with *Set type & date*. DICOM
+files are still named by their Modality tag. More words per type can be
+added in a JSON file named by `DOCUMENT_TYPES_FILE`:
+`{"DISCHARGE": ["clinic letter"]}`. Files already processed keep their names.
+
 ### Text in images and bulk file corrections (7.9)
 
 - **Burned-in text**: redaction already finds and covers text inside DICOM
