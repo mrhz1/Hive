@@ -41,7 +41,6 @@ const LEVEL_OPTIONS = LEVELS.map((level) => ({ value: level, label: level }))
 const titleClass =
   'text-[11px] font-bold tracking-widest text-[rgb(var(--foreground-muted))] uppercase'
 
-/** Now, as the value of a datetime-local input. */
 function localNow(): string {
   const now = new Date()
   now.setMinutes(now.getMinutes() - now.getTimezoneOffset())

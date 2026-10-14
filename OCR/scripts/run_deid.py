@@ -8,17 +8,17 @@ from typing import List
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from deid.pipeline import (  # noqa: E402
+from deid.pipeline import (
     describe_environment,
     preflight,
     run_pipeline,
 )
-from deid.documents import (  # noqa: E402
+from deid.documents import (
     EXTENSIONS,
     is_supported,
     supported_globs,
 )
-from deid.results import exit_code, summarize  # noqa: E402
+from deid.results import exit_code, summarize
 
 
 def configure_logging(level: str) -> None:

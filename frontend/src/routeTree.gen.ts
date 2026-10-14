@@ -15,6 +15,7 @@ import { Route as AbstractionIndexRouteImport } from './routes/abstraction/index
 import { Route as AccessLogsIndexRouteImport } from './routes/access-logs/index'
 import { Route as ApplicationsIndexRouteImport } from './routes/applications/index'
 import { Route as ApplicationsApplicationIdRouteImport } from './routes/applications/$applicationId'
+import { Route as ConsentsIndexRouteImport } from './routes/consents/index'
 import { Route as DeIdentifierIndexRouteImport } from './routes/de-identifier/index'
 import { Route as FilesIndexRouteImport } from './routes/files/index'
 import { Route as IntakeIndexRouteImport } from './routes/intake/index'
@@ -68,6 +69,11 @@ const ApplicationsApplicationIdRoute =
     path: '/applications/$applicationId',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ConsentsIndexRoute = ConsentsIndexRouteImport.update({
+  id: '/consents/',
+  path: '/consents/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DeIdentifierIndexRoute = DeIdentifierIndexRouteImport.update({
   id: '/de-identifier/',
   path: '/de-identifier/',
@@ -187,6 +193,7 @@ export interface FileRoutesByFullPath {
   '/abstraction/': typeof AbstractionIndexRoute
   '/access-logs/': typeof AccessLogsIndexRoute
   '/applications/': typeof ApplicationsIndexRoute
+  '/consents/': typeof ConsentsIndexRoute
   '/de-identifier/': typeof DeIdentifierIndexRoute
   '/files/': typeof FilesIndexRoute
   '/intake/': typeof IntakeIndexRoute
@@ -216,6 +223,7 @@ export interface FileRoutesByTo {
   '/abstraction': typeof AbstractionIndexRoute
   '/access-logs': typeof AccessLogsIndexRoute
   '/applications': typeof ApplicationsIndexRoute
+  '/consents': typeof ConsentsIndexRoute
   '/de-identifier': typeof DeIdentifierIndexRoute
   '/files': typeof FilesIndexRoute
   '/intake': typeof IntakeIndexRoute
@@ -246,6 +254,7 @@ export interface FileRoutesById {
   '/abstraction/': typeof AbstractionIndexRoute
   '/access-logs/': typeof AccessLogsIndexRoute
   '/applications/': typeof ApplicationsIndexRoute
+  '/consents/': typeof ConsentsIndexRoute
   '/de-identifier/': typeof DeIdentifierIndexRoute
   '/files/': typeof FilesIndexRoute
   '/intake/': typeof IntakeIndexRoute
@@ -277,6 +286,7 @@ export interface FileRouteTypes {
     | '/abstraction/'
     | '/access-logs/'
     | '/applications/'
+    | '/consents/'
     | '/de-identifier/'
     | '/files/'
     | '/intake/'
@@ -306,6 +316,7 @@ export interface FileRouteTypes {
     | '/abstraction'
     | '/access-logs'
     | '/applications'
+    | '/consents'
     | '/de-identifier'
     | '/files'
     | '/intake'
@@ -335,6 +346,7 @@ export interface FileRouteTypes {
     | '/abstraction/'
     | '/access-logs/'
     | '/applications/'
+    | '/consents/'
     | '/de-identifier/'
     | '/files/'
     | '/intake/'
@@ -365,6 +377,7 @@ export interface RootRouteChildren {
   AbstractionIndexRoute: typeof AbstractionIndexRoute
   AccessLogsIndexRoute: typeof AccessLogsIndexRoute
   ApplicationsIndexRoute: typeof ApplicationsIndexRoute
+  ConsentsIndexRoute: typeof ConsentsIndexRoute
   DeIdentifierIndexRoute: typeof DeIdentifierIndexRoute
   FilesIndexRoute: typeof FilesIndexRoute
   IntakeIndexRoute: typeof IntakeIndexRoute
@@ -424,6 +437,13 @@ declare module '@tanstack/react-router' {
       path: '/applications/$applicationId'
       fullPath: '/applications/$applicationId'
       preLoaderRoute: typeof ApplicationsApplicationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/consents/': {
+      id: '/consents/'
+      path: '/consents'
+      fullPath: '/consents/'
+      preLoaderRoute: typeof ConsentsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/de-identifier/': {
@@ -589,6 +609,7 @@ const rootRouteChildren: RootRouteChildren = {
   AbstractionIndexRoute: AbstractionIndexRoute,
   AccessLogsIndexRoute: AccessLogsIndexRoute,
   ApplicationsIndexRoute: ApplicationsIndexRoute,
+  ConsentsIndexRoute: ConsentsIndexRoute,
   DeIdentifierIndexRoute: DeIdentifierIndexRoute,
   FilesIndexRoute: FilesIndexRoute,
   IntakeIndexRoute: IntakeIndexRoute,

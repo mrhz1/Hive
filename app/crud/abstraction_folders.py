@@ -1,5 +1,3 @@
-"""Hive access for temporary abstraction folders."""
-
 import json
 import uuid
 from typing import Any, List, Optional

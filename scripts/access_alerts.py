@@ -24,12 +24,12 @@ def _repo_root():
 
 sys.path.insert(0, str(_repo_root()))
 
-from app.access_log import AUTH_FAILURE, DENIED, DOWNLOAD, EXPORT  # noqa: E402
-from app.crud import access_log as crud  # noqa: E402
-from app.db import hive_cursor  # noqa: E402
-from app.logging_setup import configure_logging, get_logger  # noqa: E402
-from app import lockdown  # noqa: E402
-from app.mailer import send_email  # noqa: E402
+from app.access_log import AUTH_FAILURE, DENIED, DOWNLOAD, EXPORT
+from app.crud import access_log as crud
+from app.db import hive_cursor
+from app.logging_setup import configure_logging, get_logger
+from app import lockdown
+from app.mailer import send_email
 
 log = get_logger(__name__)
 
@@ -91,15 +91,10 @@ LEVELS = ("low", "high", "critical")
 
 
 def recipients(level="high"):
-    """low -> ALERT_EMAIL_LOW_TO (the application specialist; falls back to
-    ALERT_EMAIL_TO), high and critical -> ALERT_EMAIL_TO (Program Manager,
-    application specialist, Host IT)."""
     return lockdown.contacts(level)
 
 
 def level_for(rule, hits):
-    """The rule's level, raised to critical once hits reach
-    ALERT_CRITICAL_FACTOR (3) times its limit."""
     factor = _threshold("ALERT_CRITICAL_FACTOR", 3)
     if factor > 0 and hits >= factor * rule["limit"]:
         return "critical"
@@ -107,8 +102,6 @@ def level_for(rule, hits):
 
 
 def lockdown_level():
-    """At or above this level the app is locked at once (ALERT_LOCKDOWN_LEVEL:
-    high, critical (default) or none)."""
     value = (os.environ.get("ALERT_LOCKDOWN_LEVEL") or "critical").strip().lower()
     return value if value in LEVELS else None
 

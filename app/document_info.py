@@ -1,33 +1,17 @@
-"""The modality and date a redacted file is named by.
-
-A redacted file is named `<code>_<modality>_<date>_<16-digit serial>_<R|RR>.<ext>`,
-e.g. `AA1234_MR_20190312_1790261077741000_R.pdf`. `R` is redacted by the
-pipeline, `RR` redacted by hand (an upload or a replacement).
-
-- DICOM: the Modality tag, and the first of StudyDate, SeriesDate,
-  AcquisitionDate, ContentDate.
-- PDF and Word: from the file name the site gave it, e.g.
-  `AA1234_MRI_2019-03-12.pdf`. The modality is a whole word of the name
-  (`MRI`, `CT`, ...), the date is `YYYYMMDD` or `YYYY-MM-DD` (also with `_`,
-  `.` or a space).
-
-Anything not found is `UNKNOWN`, and staff set it on the review screen
-(`rename`).
-"""
-
 import io
+import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 UNKNOWN = "UNKNOWN"
 
 AUTOMATIC = "R"
 MANUAL = "RR"
 
-# DICOM modality codes (PS3.3 C.7.3.1.1.1).
 DICOM_MODALITIES = frozenset("""
     AR ASMT AU BDUS BI BMD CR CT CTPROTOCOL DG DOC DX ECG EEG EMG EOG EPS ES
     FID GM HC HD IO IOL IVOCT IVUS KER KO LEN LS M3D MG MR NM OAM OCT OP OPM
@@ -36,14 +20,11 @@ DICOM_MODALITIES = frozenset("""
     SRF STAIN TEXTUREMAP TG US VA XA XAPROTOCOL XC
 """.split())
 
-# Codes that are also ordinary words or abbreviations in file names (DOC,
-# PLAN, REG, ...) only count when they come from a DICOM tag or a person.
 NAME_MODALITIES = frozenset("""
     BDUS BMD CR CT DX ECG EEG EMG EPS IVOCT IVUS MG MR NM OCT PT PX RF RG US
     XA XC
 """.split())
 
-# Other ways modalities are written in file names.
 ALIASES = {
     "MRI": "MR",
     "MRA": "MR",
@@ -66,6 +47,30 @@ ALIASES = {
     "DXA": "BMD",
 }
 
+DOCUMENT_TYPES = (
+    "ENROLLMENT", "CONTACT", "CONSENT", "OPERATIVE", "DISCHARGE",
+    "ECHO_REPORT", "ANGIO_REPORT", "MRI_REPORT", "ECG_REPORT",
+    "IMAGE", "STS_EXTRACT", "OTHER",
+)
+
+TYPE_KEYWORDS: List[Tuple[str, Tuple[str, ...]]] = [
+    ("CONSENT", ("consent", "consent form", "assent")),
+    ("CONTACT", ("contact form", "contact information", "contact info",
+                 "change of contact", "contact update", "contact")),
+    ("ENROLLMENT", ("enrollment", "enrolment", "enroll", "enrol", "registration form")),
+    ("OPERATIVE", ("operative", "op note", "op report", "operation", "surgical report",
+                   "surgery report", "operative report")),
+    ("DISCHARGE", ("discharge", "discharge summary", "dc summary", "d c summary")),
+    ("ECHO_REPORT", ("echo", "echocardiogram", "echocardiography", "tte", "tee")),
+    ("ANGIO_REPORT", ("angio", "angiogram", "angiography", "cath", "catheterization",
+                      "catheterisation")),
+    ("MRI_REPORT", ("mri", "cmr", "cardiac mri", "magnetic resonance")),
+    ("ECG_REPORT", ("ecg", "ekg", "electrocardiogram", "electrocardiography")),
+]
+
+IMAGE_EXTENSIONS = ("jpg", "jpeg", "png", "tif", "tiff", "bmp", "gif")
+SPREADSHEET_EXTENSIONS = ("xlsx", "xls", "csv")
+
 DICOM_DATE_TAGS = ("StudyDate", "SeriesDate", "AcquisitionDate", "ContentDate")
 
 _DATE = re.compile(
@@ -74,10 +79,8 @@ _DATE = re.compile(
 _X_RAY = re.compile(r"X[-_ ]RAY", re.IGNORECASE)
 _WORD = re.compile(r"[A-Za-z]+")
 
-# `<code>_[<modality>_]<date>_<serial>[_<R|RR>]<extension>`: older names
-# have no modality or redaction part.
 _NAME = re.compile(
-    r"^(?P<code>[A-Z0-9]+)_(?:(?P<modality>[A-Z0-9]+)_)?"
+    r"^(?P<code>[A-Z0-9]+)_(?:(?P<modality>[A-Z0-9]+(?:_[A-Z0-9]+)*?)_)?"
     r"(?P<day>\d{8}|UNKNOWN)_(?P<serial>\d{16})"
     r"(?:_(?P<redaction>RR?))?(?P<extension>\..*)?$"
 )
@@ -86,15 +89,22 @@ _NAME = re.compile(
 @dataclass(frozen=True)
 class DocumentInfo:
     modality: str = UNKNOWN
-    date: str = UNKNOWN  # YYYYMMDD
+    date: str = UNKNOWN
 
     def stem(self, code: str, serial: str, redaction: Optional[str] = AUTOMATIC) -> str:
         stem = f"{code or 'unknown'}_{self.modality}_{self.date}_{serial}"
         return f"{stem}_{redaction}" if redaction else stem
 
 
+def clean_type(value: Optional[str]) -> Optional[str]:
+    word = re.sub(r"[\s\-]+", "_", (value or "").strip().upper())
+    return word if word in DOCUMENT_TYPES else None
+
+
 def clean_modality(value: Optional[str]) -> Optional[str]:
-    """A known modality code for `value`, or None."""
+    typed = clean_type(value)
+    if typed:
+        return typed
     word = (value or "").strip().upper().replace("-", "").replace(" ", "")
     if word == UNKNOWN:
         return UNKNOWN
@@ -103,7 +113,6 @@ def clean_modality(value: Optional[str]) -> Optional[str]:
 
 
 def clean_date(value: Optional[str]) -> Optional[str]:
-    """`value` (YYYYMMDD or YYYY-MM-DD) as YYYYMMDD, or None if not a real date."""
     text = (value or "").strip()
     if text.upper() == UNKNOWN:
         return UNKNOWN
@@ -131,6 +140,36 @@ def modality_from_name(name: str, code: str = "") -> str:
         modality = ALIASES.get(word, word)
         if modality in NAME_MODALITIES:
             return modality
+    return UNKNOWN
+
+
+def _keywords() -> List[Tuple[str, Tuple[str, ...]]]:
+    path = os.environ.get("DOCUMENT_TYPES_FILE")
+    if not path:
+        return TYPE_KEYWORDS
+    try:
+        extra: Dict[str, List[str]] = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return TYPE_KEYWORDS
+    merged = [(kind, words + tuple(extra.get(kind, ()))) for kind, words in TYPE_KEYWORDS]
+    known = {kind for kind, _ in TYPE_KEYWORDS}
+    merged += [
+        (kind, tuple(words)) for kind, words in extra.items()
+        if kind in DOCUMENT_TYPES and kind not in known
+    ]
+    return merged
+
+
+def type_from_name(name: str, extension: str = "", code: str = "") -> str:
+    extension = (extension or Path(name).suffix).lower().lstrip(".")
+    if extension in IMAGE_EXTENSIONS:
+        return "IMAGE"
+    text = " " + " ".join(re.split(r"[^a-z0-9]+", _without_code(name, code).lower())) + " "
+    if extension in SPREADSHEET_EXTENSIONS and " sts " in text:
+        return "STS_EXTRACT"
+    for kind, words in _keywords():
+        if any(f" {' '.join(word.lower().split())} " in text for word in words):
+            return kind
     return UNKNOWN
 
 
@@ -172,15 +211,17 @@ def find(
     code: str = "",
     source: Union[Path, bytes, None] = None,
 ) -> DocumentInfo:
-    """The modality and date of a file the site sent as `name`.
+    day = date_from_name(name, code)
+    if (extension or "").lower().lstrip(".") in IMAGE_EXTENSIONS:
+        return DocumentInfo(modality=modality_from_name(name, code), date=day)
+    if not is_dicom_extension(extension):
+        kind = type_from_name(name, extension, code)
+        if kind == UNKNOWN:
+            kind = modality_from_name(name, code)
+        return DocumentInfo(modality=kind, date=day)
 
-    `source` is the file itself (path or bytes), read for DICOM tags. A DICOM
-    file whose tags don't say falls back to its name.
-    """
-    from_name = DocumentInfo(
-        modality=modality_from_name(name, code), date=date_from_name(name, code)
-    )
-    if source is None or not is_dicom_extension(extension):
+    from_name = DocumentInfo(modality=modality_from_name(name, code), date=day)
+    if source is None:
         return from_name
 
     tags = from_dicom(source)
@@ -198,15 +239,12 @@ def parse_name(name: str) -> Optional[dict]:
 def renamed(
     name: str, info: Optional[DocumentInfo] = None, redaction: Optional[str] = None
 ) -> Optional[str]:
-    """`name` with its modality and date, or how it was redacted, replaced.
-    None if it isn't one of ours."""
     parts = parse_name(name)
     if parts is None:
         return None
     if info is None and parts["modality"]:
         info = DocumentInfo(modality=parts["modality"], date=parts["day"])
     elif info is None:
-        # An older name's date is when it was processed, not the document's.
         info = DocumentInfo()
     return info.stem(
         parts["code"], parts["serial"], redaction or parts["redaction"]
@@ -214,8 +252,6 @@ def renamed(
 
 
 def rename(path: Path, info: DocumentInfo) -> Path:
-    """Rename a redacted file and every file next to it that shares its stem
-    (the intake `.json` sidecar). Returns the new path."""
     new_name = renamed(path.name, info)
     if new_name is None:
         raise ValueError(f"'{path.name}' is not a redacted file name")

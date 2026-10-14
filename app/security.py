@@ -17,19 +17,12 @@ PERMISSION_ACTIONS = ("view", "create", "update", "delete")
 MODEL_ACTIONS = {
     model: PERMISSION_ACTIONS for model in PERMISSION_MODELS if model != "files"
 }
-# Only the roles that handle rejections see them.
 MODEL_ACTIONS["rejection"] = ("view",)
-# The De-Identifier page: seeing its status and lists, and running it.
-# notify: gets the intake emails (app/intake_notices.py).
 MODEL_ACTIONS["deidentifier"] = ("view", "run", "notify")
-# Research projects, and the Zone 2 safe copies made for them.
 MODEL_ACTIONS["project"] = PERMISSION_ACTIONS
 MODEL_ACTIONS["zone2"] = ("prepare", "review")
-# Temporary abstraction folders (app/abstraction.py): view and update your
-# own, create them; delete covers everyone's (the application specialist).
+MODEL_ACTIONS["consent"] = ("view", "update")
 MODEL_ACTIONS["abstraction"] = PERMISSION_ACTIONS
-# Section 4: view incidents and the lock; manage = lock/unlock the app (and
-# keep using it while locked) and record incidents.
 MODEL_ACTIONS["security"] = ("view", "manage")
 MODEL_ACTIONS["files"] = (
     "read",
@@ -43,8 +36,6 @@ MODEL_ACTIONS["files"] = (
     "deid_metadata",
 )
 
-# Seeing a document is read-only; taking it away (download), rejecting or
-# deleting it are granted separately.
 FILE_VIEW_PERMISSIONS = (
     "files:view_original",
     "files:view_deidentified",
@@ -92,7 +83,6 @@ def get_current_user(
         raise AuthError(f"User '{username}' is inactive")
 
     structlog.contextvars.bind_contextvars(actor_id=user.id, actor_role=user.role_name)
-    # The route's own path, not the URL: behind a proxy the URL has a prefix.
     route = request.scope.get("route")
     lockdown.refuse_if_locked(user.permissions, getattr(route, "path", request.url.path))
     return user

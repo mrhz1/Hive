@@ -53,7 +53,6 @@ def progress():
     for hb in heartbeats:
         last_seen = float(hb.get("last_seen") or 0)
         alive = intake_worker.is_alive(hb)
-        # A worker that stopped cleanly marks itself idle; one that died did not.
         clean = hb.get("status") == "idle"
         if alive:
             status = hb.get("status")
@@ -84,7 +83,6 @@ def progress():
     running = intake_run.is_running()
     stalled = False
     for w in workers:
-        # A crash older than the last finished run was already recovered from.
         if w["crashed_after_last_run"] and not running and w["current"]:
             stalled = True
     for w in workers:

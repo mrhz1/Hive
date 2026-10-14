@@ -47,10 +47,10 @@ REPO_ROOT = _repo_root()
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.crud import patient_application_files as crud  # noqa: E402
-from app.db import hive_cursor  # noqa: E402
-from app.deid import run_deidentification  # noqa: E402
-from app.logging_setup import configure_logging, get_logger  # noqa: E402
+from app.crud import patient_application_files as crud
+from app.db import hive_cursor
+from app.deid import run_deidentification
+from app.logging_setup import configure_logging, get_logger
 
 log = get_logger("deid_worker")
 

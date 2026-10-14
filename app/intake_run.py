@@ -65,11 +65,6 @@ def clear_start_request():
 
 
 def pending_start():
-    """The start someone asked for that no run has picked up yet, if any.
-
-    Between clicking Start and a worker taking the lock there is nothing
-    running to show -- a Cloudera job can take a minute or two to boot.
-    """
     request = intake.read_json(intake.state_dir() / START_REQUEST_FILE)
     requested_at = request.get("requested_at") if request else None
     if not requested_at or time.time() - requested_at > START_TIMEOUT_SECONDS:

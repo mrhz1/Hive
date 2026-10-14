@@ -55,3 +55,9 @@ def configure_logging(level: int = logging.INFO) -> None:
 
 def get_logger(name: str):
     return structlog.get_logger(name)
+
+
+def ref(path) -> str:
+    import hashlib
+
+    return hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:12]

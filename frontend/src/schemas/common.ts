@@ -26,12 +26,12 @@ export const FILE_REVIEW_ACTIONS = [
 
 export const REJECTION_ACTIONS = ['view'] as const
 
-// notify: gets the intake emails (new files waiting, runs, rejections).
 export const DEIDENTIFIER_ACTIONS = ['view', 'run', 'notify'] as const
 
 export const ZONE2_ACTIONS = ['prepare', 'review'] as const
 
-// manage: lock/unlock the app (and keep using it while locked), record incidents.
+export const CONSENT_ACTIONS = ['view', 'update'] as const
+
 export const SECURITY_ACTIONS = ['view', 'manage'] as const
 
 export type FilesAction =
@@ -43,6 +43,7 @@ export type Permission =
   | `rejection:${(typeof REJECTION_ACTIONS)[number]}`
   | `deidentifier:${(typeof DEIDENTIFIER_ACTIONS)[number]}`
   | `zone2:${(typeof ZONE2_ACTIONS)[number]}`
+  | `consent:${(typeof CONSENT_ACTIONS)[number]}`
   | `security:${(typeof SECURITY_ACTIONS)[number]}`
 
 export const ALL_PERMISSIONS: Permission[] = [
@@ -54,6 +55,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   ...REJECTION_ACTIONS.map((action) => `rejection:${action}` as Permission),
   ...DEIDENTIFIER_ACTIONS.map((action) => `deidentifier:${action}` as Permission),
   ...ZONE2_ACTIONS.map((action) => `zone2:${action}` as Permission),
+  ...CONSENT_ACTIONS.map((action) => `consent:${action}` as Permission),
   ...SECURITY_ACTIONS.map((action) => `security:${action}` as Permission),
 ]
 
@@ -72,6 +74,7 @@ export const PERMISSION_GROUPS: ReadonlyArray<{
     rowLabel: 'de-identifier',
   },
   { models: ['zone2'], actions: ZONE2_ACTIONS, rowLabel: 'zone 2' },
+  { models: ['consent'], actions: CONSENT_ACTIONS, rowLabel: 'consent' },
   { models: ['security'], actions: SECURITY_ACTIONS, rowLabel: 'security' },
 ]
 

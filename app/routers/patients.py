@@ -27,7 +27,6 @@ def create_patient(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("patient:create")),
 ):
-    # Typed in by a person, so the details count as checked.
     patient = crud.create_patient(cursor, payload, checked_by=actor.id)
     background.add_task(
         record_audit,
@@ -47,7 +46,6 @@ MAX_IMPORT_BYTES = 10 * 1024 * 1024
 
 @router.get("/import/template")
 def import_template(_actor: User = Depends(require_permission("patient:create"))):
-    """An empty CSV with the columns the bulk import reads."""
     return Response(
         content=patient_import.template_csv(),
         media_type="text/csv",
@@ -70,7 +68,6 @@ async def preview_import(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("patient:create")),
 ):
-    """What importing the file would do, row by row. Changes nothing."""
     assert_permission(actor, "patient:update")
     data = await _read_import(file)
     result, _new, _fills = patient_import.plan(cursor, file.filename or "", data)
@@ -85,8 +82,6 @@ async def run_import(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("patient:create")),
 ):
-    """Create new patients and fill existing ones' empty fields; rows with
-    problems are skipped. Imported patients' details count as not checked."""
     assert_permission(actor, "patient:update")
     data = await _read_import(file)
     result = patient_import.run(cursor, file.filename or "", data)
@@ -142,9 +137,6 @@ def confirm_patient_details(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("patient:update")),
 ):
-    """Someone checked this patient's details (name, date of birth, contact)
-    are right. Patients from intake or the bulk import need it once before
-    their first application can be submitted."""
     before = crud.get_patient_or_404(cursor, patient_id)
     after = crud.confirm_details(cursor, patient_id, actor.id)
     background.add_task(

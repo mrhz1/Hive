@@ -10,7 +10,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from content import HANDWRITTEN_PHI, handwritten_pages  # noqa: E402
+from content import HANDWRITTEN_PHI, handwritten_pages
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FONTDIR = os.path.join(os.path.dirname(HERE), "fonts")

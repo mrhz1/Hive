@@ -1,7 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { type ReactNode } from 'react'
 import { FormLayout, FullWidth } from '@/components/FormLayout'
-import { TextField } from '@/components/ui/Field'
+import { CheckboxField, TextField } from '@/components/ui/Field'
 import { applyServerErrors, useApiForm } from '@/hooks/useApiForm'
 import { patientHooks } from '@/hooks/useResources'
 import {
@@ -65,8 +65,13 @@ export function PatientForm({
     register,
     handleSubmit,
     setError,
+    watch,
     formState: { errors },
   } = form
+
+  const identityHint = watch('no_records')
+    ? 'The site shares no records, so only the code is needed.'
+    : 'At least one of first name, last name or email is required.'
 
   const isSubmitting = create.isPending || update.isPending
   const codeLocked = Boolean(patient) || Boolean(code)
@@ -106,13 +111,18 @@ export function PatientForm({
           ? `${patient ? patientName(patient) : 'This patient'}'s details, as they stand. They cannot be changed from here.`
           : patient
             ? `Editing ${patientName(patient)}`
-            : 'At least one of first name, last name or email is required. The patient email and phone must be unique.'
+            : `${identityHint} The patient email and phone must be unique.`
       }
     >
-      <Section
-        title="Patient"
-        hint="At least one of first name, last name or email is required. Everything else is optional."
-      />
+      <Section title="Patient" hint={`${identityHint} Everything else is optional.`} />
+      <FullWidth>
+        <CheckboxField
+          label="Site does not share records or contact details"
+          description="Some sites only ask for a code and enter their data themselves. The patient needs no name, and their applications don't wait for a details check."
+          disabled={readOnly}
+          {...register('no_records')}
+        />
+      </FullWidth>
       <TextField
         label="Patient code"
         placeholder="AA0001"

@@ -1,13 +1,3 @@
-"""Security incidents and breach reports (protocol section 4).
-
-An incident records what the breach report needs: when it was detected,
-the data affected, the risk, what was done to contain it and who is
-affected. The preliminary report is due 24 hours after detection and the
-full report 72 hours after; marking each as sent stops its reminders
-(scripts/incident_reminders.py, run hourly). High and critical incidents
-are emailed to ALERT_EMAIL_TO when recorded.
-"""
-
 import io
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -55,9 +45,6 @@ def _parse(value: Optional[str]) -> Optional[datetime]:
     except ValueError:
         return None
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
-
-
-# --- models ------------------------------------------------------------------------
 
 
 class IncidentFields(BaseModel):
@@ -121,9 +108,6 @@ class Incident(BaseModel):
     def full_due(self) -> Optional[str]:
         due = self._due(FULL_HOURS)
         return _iso(due) if due else None
-
-
-# --- storage -------------------------------------------------------------------------
 
 
 def _row(row) -> Incident:
@@ -227,9 +211,6 @@ def close(cursor, incident_id: str) -> Incident:
     return _update(cursor, incident_id, {"status": CLOSED, "closed_at": _iso(_now())})
 
 
-# --- emails ---------------------------------------------------------------------------
-
-
 def _announce(incident: Incident) -> None:
     send_email(
         lockdown.contacts(incident.level),
@@ -252,8 +233,6 @@ def _announce(incident: Incident) -> None:
 
 
 def due_reminders(cursor, now: Optional[datetime] = None) -> List[str]:
-    """Email about reports due within REMIND_BEFORE_HOURS (or overdue), once
-    per report. Returns what was sent, e.g. ['<id>:preliminary']."""
     now = now or _now()
     sent = []
     for incident in list_incidents(cursor):
@@ -289,9 +268,6 @@ def due_reminders(cursor, now: Optional[datetime] = None) -> List[str]:
             )
             sent.append(f"{incident.id}:{report}")
     return sent
-
-
-# --- the report document ----------------------------------------------------------------
 
 
 def report_docx(incident: Incident) -> bytes:

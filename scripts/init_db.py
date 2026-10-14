@@ -10,7 +10,7 @@ load_dotenv(".env.local")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.security import FILE_VIEW_PERMISSIONS, KNOWN_PERMISSIONS, MODEL_ACTIONS  # noqa: E402
+from app.security import FILE_VIEW_PERMISSIONS, KNOWN_PERMISSIONS, MODEL_ACTIONS
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "sql" / "schema.sql"
 
@@ -19,7 +19,7 @@ ALL_PERMISSIONS = sorted(KNOWN_PERMISSIONS)
 READONLY_PERMISSIONS = [
     f"{model}:{'read' if 'read' in actions else 'view'}"
     for model, actions in MODEL_ACTIONS.items()
-    if model not in ("rejection", "deidentifier", "project", "zone2", "security")  # granted to specific roles only
+    if model not in ("rejection", "deidentifier", "project", "zone2", "security")
 ] + list(FILE_VIEW_PERMISSIONS)
 
 ADMIN_ROLE_ID = str(uuid.uuid4())

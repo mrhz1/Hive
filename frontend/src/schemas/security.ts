@@ -1,7 +1,5 @@
 import { z } from 'zod'
 
-// Mirrors app/lockdown.py and app/incidents.py.
-
 export const LEVELS = ['low', 'high', 'critical'] as const
 export type Level = (typeof LEVELS)[number]
 
@@ -54,7 +52,6 @@ export function levelTone(level: string): 'neutral' | 'warning' | 'danger' {
   return 'neutral'
 }
 
-/** 'sent 2026-10-02 08:10', 'OVERDUE', or 'due in 5 h'. */
 export function deadline(
   due: string | null | undefined,
   sent: string | null | undefined,

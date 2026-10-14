@@ -1,23 +1,7 @@
-"""Loading patients in bulk from a spreadsheet (Excel .xlsx or CSV).
-
-The first row names the columns: the template's labels ("First name",
-"Date of birth", ...) or the database names (fstname, dt_b, ...). Only
-"Patient code" is required.
-
-- a code not in the system: the patient is created;
-- a code already there: only its empty fields are filled; a value that
-  differs from what is stored is reported as a conflict and left alone;
-- rows with problems (bad code, bad date, bad email, a code twice, an email
-  or phone of another patient) are skipped and reported.
-
-Dates are real Excel dates or YYYY-MM-DD; 03/12/1980 could be either day or
-month first, so it is refused. Imported patients' details count as not
-checked: their first application waits until someone confirms them.
-"""
-
 import csv
 import io
 import re
+from itertools import islice
 from datetime import date, datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -34,8 +18,6 @@ log = get_logger(__name__)
 
 MAX_ROWS = 20000
 
-# (column, label) in template order. Patient fields first, then the
-# provider's (the clinic/physician).
 FIELDS: List[Tuple[str, str]] = [
     ("id", "Patient code"),
     ("fstname", "First name"),
@@ -96,8 +78,6 @@ def _key(header: str) -> str:
     return re.sub(r"[^a-z0-9]", "", str(header or "").lower())
 
 
-# Labels win over column names: "City" is the patient's (ptcity), though the
-# provider's column is called city.
 _HEADERS = {_key(column): column for column, _ in FIELDS}
 _HEADERS.update({_key(label): column for column, label in FIELDS})
 _HEADERS.update({_key("code"): "id", _key("patient id"): "id", _key("dob"): "dt_b"})
@@ -109,10 +89,8 @@ def template_csv() -> bytes:
     return ("﻿" + ",".join(label for _, label in FIELDS) + "\r\n").encode("utf-8")
 
 
-# --- reading the file -------------------------------------------------------
-
-
-def _read_rows(name: str, data: bytes) -> List[List[object]]:
+def _read_rows(name: str, data: bytes, max_rows: Optional[int] = None) -> List[List[object]]:
+    limit = None if max_rows is None else max_rows + 2
     if (name or "").lower().endswith((".xlsx", ".xlsm")):
         from openpyxl import load_workbook
 
@@ -121,7 +99,7 @@ def _read_rows(name: str, data: bytes) -> List[List[object]]:
         except Exception as e:
             raise ValidationError(f"Could not read the Excel file: {e}")
         sheet = book.worksheets[0]
-        return [list(row) for row in sheet.iter_rows(values_only=True)]
+        return [list(row) for row in islice(sheet.iter_rows(values_only=True), limit)]
 
     try:
         text = data.decode("utf-8-sig")
@@ -131,7 +109,7 @@ def _read_rows(name: str, data: bytes) -> List[List[object]]:
         dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
     except csv.Error:
         dialect = csv.excel
-    return [list(row) for row in csv.reader(io.StringIO(text), dialect)]
+    return [list(row) for row in islice(csv.reader(io.StringIO(text), dialect), limit)]
 
 
 def _text(value) -> Optional[str]:
@@ -190,16 +168,12 @@ def _parse(row: List[object], columns: List[Optional[str]]) -> Tuple[Dict, List[
     return dict(values, id=code), errors
 
 
-# --- planning ---------------------------------------------------------------------
-
-
 def _same(a, b) -> bool:
     return str(a).strip().lower() == str(b).strip().lower()
 
 
 def plan(cursor, name: str, data: bytes):
-    """What importing would do, row by row: (result, new rows, fills)."""
-    rows = _read_rows(name, data)
+    rows = _read_rows(name, data, MAX_ROWS)
     while rows and not any(_text(v) for v in rows[0]):
         rows.pop(0)
     if not rows:
@@ -213,7 +187,10 @@ def plan(cursor, name: str, data: bytes):
 
     body = [(n, r) for n, r in enumerate(rows[1:], start=2) if any(_text(v) for v in r)]
     if len(body) > MAX_ROWS:
-        raise ValidationError(f"{len(body)} rows; at most {MAX_ROWS} at a time")
+        raise ValidationError(
+            f"The file has more than {MAX_ROWS} rows; split it into smaller "
+            "files and import them one by one"
+        )
 
     existing = {p.id: p for p in crud.list_patients(cursor)}
     owners: Dict[Tuple[str, str], str] = {}
@@ -288,8 +265,6 @@ def plan(cursor, name: str, data: bytes):
 
 
 def run(cursor, name: str, data: bytes) -> ImportResult:
-    """Create the new patients and fill the existing ones' empty fields;
-    rows with errors are skipped."""
     result, new_rows, fills = plan(cursor, name, data)
     if new_rows:
         crud.insert_many(cursor, new_rows)

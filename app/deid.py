@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 import os
 import signal
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -9,7 +10,7 @@ from typing import Dict, List, Optional
 
 import structlog
 
-from app import deid_notices
+from app import deid_notices, image_convert
 from app import deid_progress
 from app import deid_queue
 from app.crud import patient_application_files as crud
@@ -50,9 +51,10 @@ DEID_OUTPUT_EXTENSIONS = {
     ".dicom": ".dcm",
     ".doc": ".docx",
     ".docx": ".docx",
+    **{f".{ext}": ".dcm" for ext in image_convert.IMAGE_EXTENSIONS},
 }
 
-DEIDENTIFIABLE_LABEL = "PDF, DICOM, Word"
+DEIDENTIFIABLE_LABEL = "PDF, DICOM, Word, JPG/PNG/TIFF/BMP images"
 
 RUNTIME_NOT_FOUND = (
     f"De-identification runtime not found at '{DEID_PYTHON}'. "
@@ -225,13 +227,37 @@ def _set_status(file_id: str, **fields) -> None:
         log.error("deid_status_write_failed", file_id=file_id, error=str(e))
 
 
+def pipeline_input(source: Path, folder: Path, code: str = "", name: str = "") -> Path:
+    if not image_convert.is_image(source.suffix):
+        return source
+    target = folder / f"{name or source.stem}.dcm"
+    try:
+        return image_convert.to_dicom(source, target, code)
+    except image_convert.ConversionError as e:
+        raise DeidError(str(e)) from e
+
+
 def _run_pipeline(
     source: Path,
     output_dir: Path,
     file_id: str = "",
     env: Optional[Dict[str, str]] = None,
+    code: str = "",
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
+    converted = output_dir / ".converted"
+    try:
+        return _run_one(pipeline_input(source, converted, code), output_dir, file_id, env)
+    finally:
+        shutil.rmtree(converted, ignore_errors=True)
+
+
+def _run_one(
+    source: Path,
+    output_dir: Path,
+    file_id: str = "",
+    env: Optional[Dict[str, str]] = None,
+) -> Path:
 
     command = [
         DEID_PYTHON,
@@ -286,15 +312,11 @@ def _run_pipeline(
 
 
 def boxes_applied(produced: Path) -> Optional[int]:
-    """How many areas the pipeline covered in `produced`, from the report
-    it writes next to it; None if there is no report."""
     report = produced.with_name(produced.stem + ".report.json")
     try:
         data = json.loads(report.read_text())
     except (OSError, ValueError):
         return None
-    # The report (stage_nlp) says total_boxes_applied; total_boxes is the
-    # in-memory name, kept for older reports.
     for key in ("total_boxes_applied", "total_boxes"):
         try:
             return int(data[key])
@@ -409,7 +431,7 @@ def _rename_outputs(
                 "deid_sidecar_rename_failed", source=str(path), error=str(e)
             )
 
-    log.info("deid_output_named", name=target.name, produced_as=produced.name)
+    log.info("deid_output_named", name=target.name)
     return target
 
 
@@ -443,7 +465,7 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
         log.error("deid_lookup_failed", file_id=file_id, error=str(e))
         return
 
-    log.info("deid_started", file_id=file_id, name=record.sanitized_file_name)
+    log.info("deid_started", file_id=file_id)
 
     if record.deid_status != "processing":
         _set_status(file_id, deid_status="processing")
@@ -459,10 +481,12 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
         if not source.is_file():
             raise DeidError("The stored file is missing from disk")
 
-        produced = _run_pipeline(source, source.parent / DEID_SUBFOLDER, file_id)
+        patient_id = _get_patient_id(record)
+        produced = _run_pipeline(
+            source, source.parent / DEID_SUBFOLDER, file_id, code=patient_id
+        )
         boxes = boxes_applied(produced)
 
-        patient_id = _get_patient_id(record)
         info = find_document_info(
             record.original_file_name, record.file_extension, patient_id, source
         )

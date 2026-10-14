@@ -362,6 +362,33 @@ is marked `failed` on the job and the others continue (`partial`). Job
 progress is kept in memory, so after a restart `/upload-jobs/{id}` returns
 404, but the files already processed are fine.
 
+### JPG/PNG/TIFF images (9.1.8)
+
+Images in other formats (jpg, jpeg, png, tif, tiff, bmp, gif; also found by
+their content when the name has no extension) are accepted by the intake
+and the upload. Before de-identification each is converted to a DICOM
+Secondary Capture (`app/image_convert.py`): PatientID = the code, Modality
+from the file name (`xray` -> DX, else OT), StudyDate from the file name,
+new UIDs, SeriesDescription "Converted from JPG". Nothing from the source
+(EXIF, GPS, the file name) goes into the DICOM; the original's EXIF is
+shown in its metadata. It then goes through the DICOM pipeline (burned-in
+text found and covered) and is stored and named as a `.dcm`. Multi-page
+TIFF: first page only. Needs Pillow and numpy (in `requirements-dev.txt`).
+
+### Document type from the file name (9.1.2)
+
+Redacted files are named `<code>_<type>_<date>_<serial>_<R|RR>`. For PDF,
+Word and other files the type comes from the file name the site gave it,
+never from the content (`app/document_info.py`, `TYPE_KEYWORDS`): e.g.
+`discharge` -> DISCHARGE, `op note` -> OPERATIVE, `consent` -> CONSENT,
+`echo`/`TTE` -> ECHO_REPORT, `MRI` -> MRI_REPORT, `EKG` -> ECG_REPORT; JPG/PNG
+-> IMAGE; an Excel/CSV with `sts` -> STS_EXTRACT. Words are matched whole,
+first type wins. A name with only a modality (`..._CT_...pdf`) keeps it;
+anything else is UNKNOWN and staff set it with *Set type & date*. DICOM
+files are still named by their Modality tag. More words per type can be
+added in a JSON file named by `DOCUMENT_TYPES_FILE`:
+`{"DISCHARGE": ["clinic letter"]}`. Files already processed keep their names.
+
 ### Text in images and bulk file corrections (7.9)
 
 - **Burned-in text**: redaction already finds and covers text inside DICOM
@@ -371,10 +398,18 @@ progress is kept in memory, so after a restart `/upload-jobs/{id}` returns
   covered in picture (N)" on such images and can show only them. Checking
   them is optional; if an identifier still shows, **Reject** the image: it
   goes to Rejections and stays out of Zone 2 until replaced (`_RR`).
+- **Leaded images (9.1.9)**: an image with identifiers in lead letters that
+  can only be scrubbed by hand gets **Mark as leaded** (file actions, needs
+  `files:reject`, also on submitted applications;
+  `PUT /files/{id}/leaded`, `patient_application_files.leaded_phi`). It
+  stays where it is and usable in Zones 1 and 1X, but preparing a Zone 2
+  release with documents is refused while a cohort patient has one, and
+  approving is refused if one was marked after preparing. Clear the mark
+  once the image is scrubbed and replaced. Marking and clearing are audited.
 - **Bulk corrections**: `scripts/update_file_metadata.py corrections.xlsx`
   (add `--apply` to make the changes, `--user` for the audit log). Columns:
-  File (redacted name or file id), Modality, Document date, Reject reason;
-  blank keeps what is there. Renames files of any application except
+  File (redacted name or file id), Modality, Document date, Reject reason,
+  Leaded (yes/no); blank keeps what is there. Renames files of any application except
   deleted ones (`app/file_corrections.py`).
 - New column: run `python scripts/migrate_columns.py --apply`.
 
@@ -400,6 +435,13 @@ in step 1 (`POST /patients/{id}/confirm-details`). Patients typed in by hand
 count as checked. Patients already in the database before this column
 start unchecked too. Add the columns with
 `python scripts/migrate_columns.py --apply`.
+
+**Sites that share no records (9.1.2)** (`patient.no_records`): some sites
+only ask for a code and enter their data themselves. Ticking *Site does not
+share records or contact details* on the patient lets it be saved with the
+code only (no name or email), and its applications don't wait for the
+details check. The patient shows as "No records (site)". Changes are in the
+patient's audit entries.
 
 ### Enrollment checklist
 
@@ -455,6 +497,87 @@ de-identified documents for one person's task.
   every change in the audit log.
 - Table `abstraction_folders`; on an existing database run
   `python scripts/migrate_columns.py --apply`.
+
+### Zone 1X: consent, cohort criteria, workspace (spec 9.2)
+
+- **Consent matrix** (`/consents`, `app/consent.py`, table
+  `patient_consents`, needs `consent:view` / `consent:update`): one row per
+  decision (research, or documents = PDFs and images; granted, refused or
+  withdrawn; form version and date), recorded by hand or imported from a
+  spreadsheet. Rows are never changed; the latest per patient and type
+  counts. A refused or withdrawn research consent keeps the patient out of
+  every project; for a project approved for documents, so does the
+  documents consent. It is checked when the cohort is saved, when the
+  workspace is built and when a safe copy is prepared. A patient with no
+  row is covered by the project's *Patient consent confirmed* box. REDCap
+  can fill the same table later.
+- **Cohort by criteria** (*Find by criteria* in *Choose patients*,
+  `app/cohort.py`): code prefix, registration date, age at registration,
+  country/state, institution, living only, modality and date of documents,
+  codes to exclude. Patients the consent matrix keeps out are listed apart.
+  Clinical criteria come with REDCap.
+- **Workspace** (`app/workspace.py`): *Build workspace* writes
+  `PROJECTS_DIR/<code>/workspace/` with `patients.csv`, `applications.csv`,
+  `documents.csv` (CHSS codes kept, names and contacts left out), the
+  de-identified PDFs and images under `documents/<CODE>/`, and
+  `cleaning_log.csv`. Read-only. Deleted `WORKSPACE_EXPIRY_DAYS` (90) after
+  it was first built unless *Extend 90 days* is used with a reason (audited);
+  rebuilding keeps the date. `scripts/workspace_cleanup.py`, run daily,
+  deletes expired ones. Release archives are separate and stay.
+- **Cleanup rules** (`cleaning/`, `app/cleaning.py`): Python files applied
+  to the tables at every build: `instrument/<table>.py`,
+  `instrument/<MODALITY>.py`, `cohort/<PREFIX>.py`. See `cleaning/README.md`.
+  A failing rule stops the build and keeps the old workspace.
+- New columns and the `patient_consents` table:
+  `python scripts/migrate_columns.py --apply`.
+
+### Metadata, uploads and logs (security review, 2026-10-14)
+
+- **Metadata of de-identified files** keeps the same fields as the original,
+  with identifying values redacted: DICOM (identifying tags become
+  `<REMOVED>`, dates blanked, free text through the name detector, private
+  tags removed, every non-standard UID replaced with a new one keyed by
+  `DEID_UID_SALT`), PDF (Info fields and XMP values through the detector,
+  authors `<REMOVED>`), Word (core properties the same way). The name the
+  site gave the file is no longer written into it. Zone 2 copies of DICOM
+  files get project-own UIDs on top.
+- **Uploads** (originals, de-identified files, replacements) each leave an
+  audit entry (who, stored name, uploaded-as name, size, SHA-256; for a
+  replacement also the fingerprint of the file replaced) and an access log
+  entry `upload` (time, IP, request id).
+- **Exports** (Excel, CSV reports, MANIFEST) put an apostrophe before text
+  starting with `= + - @` so it can't run as a formula. Workspace and Zone 2
+  data tables are left as they are.
+- **Logs** hold `file_ref` (see DEPLOYMENT.md) instead of file names and
+  paths, and validation errors log the field, not what was typed. Database
+  errors show users a plain message; the details stay in the log.
+- **Profile** is read-only; administrators change names and emails on the
+  Users page (audited).
+
+### Migration report, data quality check, workspace profile
+
+- **Migration report** (`scripts/migration_report.py`, `app/migration_report.py`):
+  files waiting, de-identified (pending/submitted), failed and needing
+  attention by reason, document types, documents in applications
+  (rejected, leaded, images with covered text), patients not checked and
+  without consent, applications by status. Reads folders and the database
+  only (names, never contents), streams rows, so it suits millions of
+  files. Output in `REPORTS_DIR/migration-<time>/`: `migration-report.xlsx`
+  (summary + lists capped at 50,000 rows, `--cap`) and every list in full
+  as CSV.
+- **Data quality check** (`scripts/qc_check.py`, `app/qc.py`): rules P01-P07
+  (patients: missing birth date, impossible or future dates, age over 100,
+  no name), A01-A02 (submitted applications without documents or
+  checklist), D01-D06 (documents: UNKNOWN type/date, dated before birth,
+  after death or in the future, failed de-identification), C01-C02 (no
+  research consent; withdrawn consent in an active project). Accepted
+  issues go in `QC_SUPPRESSIONS_FILE` (rule, record, reason, by, date) and
+  are listed apart. Excel, PDF and CSV in `REPORTS_DIR/qc-<time>/`; the
+  email to `QC_EMAIL_TO` gives counts only.
+- **Workspace profile**: every workspace build also writes `profile.xlsx`
+  (`app/profiling.py`): per column filled/missing/distinct and range,
+  frequency tables, outliers (IQR for numbers, dates before 1900 or in the
+  future).
 
 ### Zone 2 review and project end
 

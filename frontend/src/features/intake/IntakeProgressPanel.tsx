@@ -98,7 +98,6 @@ function runSummary(run: IntakeRun): string {
   return summary
 }
 
-/** Tell whoever is watching when a run ends, not only when it starts. */
 function useFinishedRunToast(active: boolean, runs: IntakeRun[] | undefined) {
   const queryClient = useQueryClient()
   const wasActive = useRef(active)

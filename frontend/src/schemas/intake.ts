@@ -19,7 +19,6 @@ export const problemFileListSchema = z.array(problemFileSchema)
 
 export type ProblemList = 'failed' | 'attention'
 
-/** The code the API files problem files under when they have none. */
 export const NO_CODE = '-'
 
 export const problemCodeListSchema = z.array(

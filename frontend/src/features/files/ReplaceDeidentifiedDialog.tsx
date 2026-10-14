@@ -33,7 +33,7 @@ export function ReplaceDeidentifiedDialog({ file, onClose, onReplaced }: Props) 
       if (onReplaced) onReplaced()
       onClose()
     } catch {
-      // error toast comes from the hook
+      return
     }
   }
 

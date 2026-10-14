@@ -5,9 +5,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from deid.config import load_config  # noqa: E402
-from deid.ocr_engine import OcrEngine  # noqa: E402
-from deid.pdf_io import open_pdf, render_pages  # noqa: E402
+from deid.config import load_config
+from deid.ocr_engine import OcrEngine
+from deid.pdf_io import open_pdf, render_pages
 
 SAMPLE_SECRETS = [
     "Jonathan Michael Reyes",

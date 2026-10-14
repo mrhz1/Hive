@@ -38,7 +38,6 @@ export const patientApplicationSchema = z.object({
 
   original_file_path: nullableText,
 
-  /** The last checklist: { passed | failed: keys, by: user id, at: ISO time }. */
   checklist: z
     .object({
       passed: z.array(z.string()).optional(),
@@ -52,7 +51,6 @@ export const patientApplicationSchema = z.object({
 
 export type PatientApplication = z.infer<typeof patientApplicationSchema>
 
-// Mirrors ENROLLMENT_CHECKS in app/schemas.py.
 export const ENROLLMENT_CHECKS = [
   { key: 'files_complete', label: 'All required files were submitted' },
   { key: 'eligible', label: 'The patient is eligible' },
@@ -61,7 +59,6 @@ export const ENROLLMENT_CHECKS = [
 ] as const
 export type EnrollmentCheck = (typeof ENROLLMENT_CHECKS)[number]['key']
 
-/** A failed consent check deletes the application's documents. */
 export const CONSENT_CHECK: EnrollmentCheck = 'consent'
 
 export function checkLabel(key: string): string {
@@ -79,8 +76,6 @@ export function applicationTone(
   return 'neutral'
 }
 
-// Mirrors REJECTABLE in app/routers/patient_applications.py: submitted and
-// deleted applications are final.
 const REJECTABLE = ['draft', 'approved', 'rejected']
 
 export function canReject(status: string): boolean {
@@ -95,7 +90,6 @@ export function isDeleted(status: string): boolean {
   return status === 'deleted'
 }
 
-/** Only a rejected application's documents can be deleted, from Rejections. */
 export function canDelete(status: string): boolean {
   return status === 'rejected'
 }

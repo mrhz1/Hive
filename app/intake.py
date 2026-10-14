@@ -16,7 +16,7 @@ from app.crud import patients as patients_crud
 from app.deid import DEIDENTIFIABLE_LABEL, is_deidentifiable
 from app.filetype import read_header, resolve_extension
 from app.ids import clean_patient_code, code_formats, describe_code_formats, is_patient_code
-from app.logging_setup import get_logger
+from app.logging_setup import get_logger, ref
 from app.schemas import PatientApplicationCreate, PatientApplicationFileUpdate
 
 log = get_logger(__name__)
@@ -81,7 +81,6 @@ def settle_seconds():
 
 
 def settle_wait_seconds():
-    """How long one run waits for files still being copied before leaving them."""
     try:
         return float(os.environ.get("INTAKE_SETTLE_WAIT_SECONDS", "300"))
     except ValueError:
@@ -108,7 +107,6 @@ def _is_under(path, root):
 
 
 def is_data_file(path):
-    """A De-Identifier file, pending or submitted -- never one of the old uploads."""
     return _is_under(path, data_root()) or _is_under(path, submitted_data_root())
 
 
@@ -117,11 +115,6 @@ def is_pending_data_file(path):
 
 
 def move_to_submitted(path):
-    """Move a pending data file to the same place under submitted_data.
-
-    A name already taken there gets a _2, _3... suffix rather than being
-    overwritten. Copies across disks if the two folders are on different ones.
-    """
     path = Path(path)
     target = submitted_data_root() / path.resolve().relative_to(data_root().resolve())
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -196,13 +189,6 @@ def code_in_path(relative_path):
 
 
 def deidentified_subfolder(relative_path, code):
-    """Where under de_identified/<code>/ a file's copy goes.
-
-    The folders after the code folder, so AA0001/scan.pdf lands in
-    de_identified/AA0001/ and X/AA0001/mri/a.dcm in de_identified/AA0001/mri/,
-    not under a second AA0001. With the code only in the file name, the whole
-    incoming folder path is kept.
-    """
     folders = Path(relative_path).parts[:-1]
     for index in range(len(folders) - 1, -1, -1):
         if clean_patient_code(folders[index]) == code:
@@ -350,7 +336,6 @@ def checksum(path, chunk_size=1024 * 1024):
 
 
 def is_duplicate(candidate):
-    """The same bytes already de-identified at this path, pending or submitted."""
     for root in (original_root(), submitted_data_root() / "original"):
         existing = root / candidate.relative_path
         try:
@@ -416,7 +401,7 @@ def set_aside(candidate, root, reason, detail=None):
             "moved_at": time.time(),
         },
     )
-    log.info("intake_file_set_aside", path=candidate.relative_path, reason=reason)
+    log.info("intake_file_set_aside", file_ref=ref(candidate.relative_path), reason=reason)
     return target
 
 
@@ -471,11 +456,6 @@ def filter_by_code(files, code):
 
 
 def codes_in(files):
-    """Each code in a problem list and how many of its files are there.
-
-    A file whose path and name disagree counts under both codes, and files
-    with no code at all are grouped under NO_CODE.
-    """
     counts = {}
     for f in files:
         for code in file_codes(f):
@@ -502,9 +482,8 @@ def send_back(kind, relative):
     original_relative = info.get("relative_path") or relative
     target = move_file(path, intake_root() / original_relative)
     Path(str(path) + REASON_SUFFIX).unlink(missing_ok=True)
-    # Only now is the folder empty: the reason file had to go first.
     storage.prune_empty_dirs(path.parent)
-    log.info("intake_file_sent_back", path=original_relative, source=kind)
+    log.info("intake_file_sent_back", file_ref=ref(original_relative), source=kind)
     return target.relative_to(intake_root()).as_posix()
 
 
@@ -513,25 +492,18 @@ def retry_failed(relative):
 
 
 def retry_all_failed(code=None):
-    """Send every failed file (or every one for a code) back to incoming."""
     moved = 0
     for item in filter_by_code(list_problem_files("failed"), code):
         try:
             send_back("failed", item["path"])
             moved += 1
         except (ValueError, OSError) as e:
-            log.warning("intake_retry_failed", path=item["path"], error=str(e))
+            log.warning("intake_retry_failed", file_ref=ref(item["path"]), error=str(e))
     log.info("intake_retry_all", code=code, moved=moved)
     return moved
 
 
 def remove_orphaned_sidecars():
-    """Delete sidecar and reason files whose document is gone.
-
-    A .json next to a de-identified copy, or a .reason.json next to a failed
-    or excluded file, only means something while that file is there; one left
-    behind (a killed run, an older version's submit) is noise in pending_data.
-    """
     removed = 0
     places = (
         (deidentified_root(), SIDECAR_SUFFIX),
@@ -557,7 +529,6 @@ def remove_orphaned_sidecars():
 
 
 def prune_data_folders():
-    """Remove orphaned sidecars, then empty folders, anywhere in DATA_DIR."""
     remove_orphaned_sidecars()
     removed = 0
     for root in (original_root(), deidentified_root(), failed_root(), attention_root()):
@@ -623,8 +594,6 @@ def available_codes(cursor):
         free = [p for p in files if str(p) not in attached]
         if not free:
             continue
-        # The incoming path is in each file's sidecar; the de-identified
-        # layout under the code folder no longer mirrors it.
         relative_dirs = [
             read_json(str(p) + SIDECAR_SUFFIX).get("relative_path")
             or p.relative_to(root / code).as_posix()
@@ -742,13 +711,6 @@ INTAKE_ACTOR = "intake"
 
 
 def attach_to_draft(cursor, code):
-    """Put every de-identified file waiting under a code on its draft application.
-
-    The patient's newest draft is used, or a new draft is made for it. A
-    submitted or rejected application is never added to.
-    Returns (application, created, attached count), or (None, False, 0) when
-    nothing is waiting.
-    """
     files = files_for_code(cursor, code)
     if not files:
         return None, False, 0

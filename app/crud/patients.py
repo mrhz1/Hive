@@ -50,10 +50,9 @@ COLUMNS = (
     "dt_d",
     "original_file_path",
     "deidentified_file_path",
-    # Someone confirmed the details are right (see confirm_details). Patients
-    # made by intake or the bulk import start without it.
     "details_checked_at",
     "details_checked_by",
+    "no_records",
 )
 
 DATE_COLUMNS = {"dt_reg", "dt_b", "dt_d"}
@@ -138,7 +137,6 @@ def _now() -> str:
 def create_patient(
     cursor, payload: PatientCreate, checked_by: Optional[str] = None
 ) -> Patient:
-    """`checked_by`: who typed the details in, so they count as checked."""
     fields = payload.model_dump()
     fields["details_checked_at"] = _now() if checked_by else None
     fields["details_checked_by"] = checked_by
@@ -177,8 +175,6 @@ def create_empty_patient(cursor, patient_id: str) -> None:
 
 
 def insert_many(cursor, rows: List[Dict], chunk: int = 200) -> int:
-    """Insert patients in a few statements (one INSERT per row is slow on
-    Hive). Rows are column -> value; missing columns are NULL."""
     placeholders = "(" + ", ".join(_placeholder(c) for c in COLUMNS) + ")"
     for start in range(0, len(rows), chunk):
         part = rows[start : start + chunk]
@@ -199,8 +195,6 @@ def insert_many(cursor, rows: List[Dict], chunk: int = 200) -> int:
 
 
 def set_fields(cursor, patient_id: str, fields: Dict) -> None:
-    """Write these columns as given, without the checks of update_patient
-    (the bulk import fills empty fields of patients that may have no name)."""
     if not fields:
         return
     values = {
@@ -247,7 +241,7 @@ def update_patient(cursor, patient_id: str, payload: PatientUpdate) -> Patient:
         return existing
 
     merged = {**existing.model_dump(), **fields}
-    if not patient_has_identity(merged):
+    if not merged.get("no_records") and not patient_has_identity(merged):
         raise ValidationError(PATIENT_IDENTITY_REQUIRED)
 
     changed = {

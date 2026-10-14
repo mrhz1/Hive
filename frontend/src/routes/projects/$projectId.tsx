@@ -1,5 +1,14 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Archive, PackageCheck, Save, Trash2, Users } from 'lucide-react'
+import {
+  Archive,
+  CalendarPlus,
+  FolderSync,
+  PackageCheck,
+  Save,
+  Search,
+  Trash2,
+  Users,
+} from 'lucide-react'
 import { useState } from 'react'
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { DataTable, type Column } from '@/components/DataTable'
@@ -13,8 +22,12 @@ import { LoadingBlock } from '@/components/ui/Spinner'
 import { usePermissions } from '@/hooks/useCurrentUser'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
+  useBuildWorkspace,
+  useCohortSearch,
   useDeleteProject,
+  useDeleteWorkspace,
   useEndProject,
+  useExtendWorkspace,
   usePrepareProject,
   useProject,
   useProjectCandidates,
@@ -22,11 +35,14 @@ import {
   useUpdateProject,
 } from '@/hooks/useResources'
 import { ApiError } from '@/lib/api/client'
+import { daysLeft } from '@/schemas/abstraction'
 import {
   PROJECT_STATUS_LABELS,
   groupByPrefix,
   projectTone,
   releaseTone,
+  type CohortCriteria,
+  type CohortSearchResult,
   type ProjectDetail,
   type Release,
 } from '@/schemas/project'
@@ -97,6 +113,7 @@ function ProjectPage() {
         locked={locked}
       />
       <CohortCard project={project} locked={locked} />
+      <WorkspaceCard project={project} />
       <ReleaseCard project={project} />
       <EndCard project={project} />
       <DeleteCard project={project} />
@@ -155,7 +172,7 @@ function DetailsCard({ project, locked }: { project: ProjectDetail; locked: bool
         </div>
         <CheckboxField
           label="Patient consent confirmed"
-          description="Required to prepare. Confirms consent was checked for every patient in the project."
+          description="Required to prepare. Patients whose consent is refused or withdrawn in the consent matrix are always kept out; this confirms consent was checked for the others."
           checked={consent}
           disabled={readOnly}
           onChange={(event) => setConsent(event.target.checked)}
@@ -267,7 +284,7 @@ function CohortPicker({
   project: ProjectDetail
   onDone: () => void
 }) {
-  const candidates = useProjectCandidates()
+  const candidates = useProjectCandidates(project.id)
   const save = useSetCohort(project.id)
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(project.cohort.map((m) => m.patient_id))
@@ -276,9 +293,18 @@ function CohortPicker({
 
   const text = search.trim().toUpperCase()
   const all = candidates.data ?? []
+  const blocked = new Map(
+    all
+      .filter((c) => c.excluded_reason)
+      .map((c) => [c.patient_id, c.excluded_reason ?? ''])
+  )
   const shown = text ? all.filter((c) => c.patient_id.includes(text)) : all
-  const allShown = shown.length > 0 && shown.every((c) => selected.has(c.patient_id))
-  const cohorts = groupByPrefix(all.map((c) => c.patient_id))
+  const shownCodes = shown.map((c) => c.patient_id).filter((code) => !blocked.has(code))
+  const allShown = shownCodes.length > 0 && shownCodes.every((code) => selected.has(code))
+  const cohorts = groupByPrefix(
+    all.map((c) => c.patient_id).filter((code) => !blocked.has(code))
+  )
+  const blockedSelected = [...selected].filter((code) => blocked.has(code))
 
   const toggle = (codes: string[], on: boolean) =>
     setSelected((current) => {
@@ -337,17 +363,33 @@ function CohortPicker({
         <Button
           size="sm"
           variant="outline"
-          disabled={shown.length === 0}
-          onClick={() =>
-            toggle(
-              shown.map((c) => c.patient_id),
-              !allShown
-            )
-          }
+          disabled={shownCodes.length === 0}
+          onClick={() => toggle(shownCodes, !allShown)}
         >
-          {allShown ? 'Clear shown' : `Select all shown (${shown.length})`}
+          {allShown ? 'Clear shown' : `Select all shown (${shownCodes.length})`}
         </Button>
       </div>
+
+      <CriteriaSearch
+        projectId={project.id}
+        onAdd={(codes) => toggle(codes, true)}
+        onReplace={(codes) => setSelected(new Set(codes))}
+      />
+
+      {blockedSelected.length > 0 ? (
+        <Card className="border-rose-500/40 p-3 text-sm">
+          {blockedSelected.length} chosen patient
+          {blockedSelected.length === 1 ? ' is' : 's are'} kept out by the consent matrix
+          and must be removed before saving: {blockedSelected.join(', ')}.{' '}
+          <button
+            type="button"
+            className="font-semibold underline"
+            onClick={() => toggle(blockedSelected, false)}
+          >
+            Remove them
+          </button>
+        </Card>
+      ) : null}
 
       {candidates.isLoading ? (
         <LoadingBlock label="Loading patients" />
@@ -365,11 +407,18 @@ function CohortPicker({
           ) : (
             shown.map((c) => (
               <li key={c.patient_id}>
-                <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-[rgb(var(--background-secondary))]">
+                <label
+                  className={`flex items-center gap-3 px-3 py-2 text-sm ${
+                    c.excluded_reason
+                      ? 'cursor-not-allowed opacity-70'
+                      : 'cursor-pointer hover:bg-[rgb(var(--background-secondary))]'
+                  }`}
+                >
                   <input
                     type="checkbox"
                     className="size-4 accent-teal-600"
                     checked={selected.has(c.patient_id)}
+                    disabled={Boolean(c.excluded_reason) && !selected.has(c.patient_id)}
                     onChange={(event) => toggle([c.patient_id], event.target.checked)}
                   />
                   <span className="w-28 font-mono font-semibold">{c.patient_id}</span>
@@ -378,6 +427,9 @@ function CohortPicker({
                     {c.applications === 1 ? '' : 's'} · {c.documents} document
                     {c.documents === 1 ? '' : 's'}
                   </span>
+                  {c.excluded_reason ? (
+                    <Badge tone="danger">{c.excluded_reason}</Badge>
+                  ) : null}
                 </label>
               </li>
             ))
@@ -388,6 +440,7 @@ function CohortPicker({
       <div className="flex flex-wrap items-center gap-3">
         <Button
           isLoading={save.isPending}
+          disabled={blockedSelected.length > 0}
           onClick={() =>
             void save
               .mutateAsync([...selected])
@@ -402,6 +455,368 @@ function CohortPicker({
         </Button>
       </div>
     </div>
+  )
+}
+
+function splitList(value: string): string[] {
+  return value
+    .split(/[\s,;]+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+const EMPTY_CRITERIA = {
+  prefixes: '',
+  registered_from: '',
+  registered_to: '',
+  age_min: '',
+  age_max: '',
+  countries: '',
+  states: '',
+  institution_codes: '',
+  alive_only: false,
+  modalities: '',
+  document_from: '',
+  document_to: '',
+  exclude_codes: '',
+}
+
+function toCriteria(form: typeof EMPTY_CRITERIA): CohortCriteria {
+  const number = (value: string) => (value.trim() === '' ? null : Number(value))
+  const day = (value: string) => value || null
+  return {
+    prefixes: splitList(form.prefixes),
+    registered_from: day(form.registered_from),
+    registered_to: day(form.registered_to),
+    age_min: number(form.age_min),
+    age_max: number(form.age_max),
+    countries: form.countries
+      .split(/[,;]+/)
+      .map((part) => part.trim())
+      .filter(Boolean),
+    states: splitList(form.states),
+    institution_codes: splitList(form.institution_codes),
+    alive_only: form.alive_only,
+    modalities: splitList(form.modalities),
+    document_from: day(form.document_from),
+    document_to: day(form.document_to),
+    exclude_codes: splitList(form.exclude_codes),
+  }
+}
+
+function CriteriaSearch({
+  projectId,
+  onAdd,
+  onReplace,
+}: {
+  projectId: string
+  onAdd: (codes: string[]) => void
+  onReplace: (codes: string[]) => void
+}) {
+  const search = useCohortSearch(projectId)
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState(EMPTY_CRITERIA)
+  const [result, setResult] = useState<CohortSearchResult | null>(null)
+
+  const field =
+    (name: keyof typeof EMPTY_CRITERIA) => (event: { target: { value: string } }) =>
+      setForm((current) => ({ ...current, [name]: event.target.value }))
+
+  if (!open) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        leadingIcon={<Search className="size-3.5" aria-hidden="true" />}
+        onClick={() => setOpen(true)}
+      >
+        Find by criteria
+      </Button>
+    )
+  }
+
+  const excluded = Object.entries(result?.excluded ?? {})
+
+  return (
+    <div className="space-y-3 rounded-lg border border-[rgb(var(--border))] p-4">
+      <div>
+        <p className="text-sm font-medium">Find by inclusion / exclusion criteria</p>
+        <p className="text-xs text-[rgb(var(--foreground-muted))]">
+          Every filter you fill in must match; empty ones are ignored. Lists can be
+          separated by commas. Patients the consent matrix keeps out are never matched.
+        </p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        <TextField
+          label="Cohort (code prefixes)"
+          placeholder="AA, BB"
+          value={form.prefixes}
+          onChange={field('prefixes')}
+        />
+        <TextField
+          label="Registered from"
+          type="date"
+          value={form.registered_from}
+          onChange={field('registered_from')}
+        />
+        <TextField
+          label="Registered to"
+          type="date"
+          value={form.registered_to}
+          onChange={field('registered_to')}
+        />
+        <TextField
+          label="Age at registration, from"
+          type="number"
+          min={0}
+          value={form.age_min}
+          onChange={field('age_min')}
+        />
+        <TextField
+          label="Age at registration, to"
+          type="number"
+          min={0}
+          value={form.age_max}
+          onChange={field('age_max')}
+        />
+        <TextField
+          label="Institution codes"
+          value={form.institution_codes}
+          onChange={field('institution_codes')}
+        />
+        <TextField
+          label="Countries"
+          placeholder="Canada, US"
+          value={form.countries}
+          onChange={field('countries')}
+        />
+        <TextField
+          label="States / provinces"
+          placeholder="ON, QC"
+          value={form.states}
+          onChange={field('states')}
+        />
+        <TextField
+          label="Has documents of type or modality"
+          placeholder="ECHO_REPORT, MR"
+          value={form.modalities}
+          onChange={field('modalities')}
+        />
+        <TextField
+          label="Document dated from"
+          type="date"
+          value={form.document_from}
+          onChange={field('document_from')}
+        />
+        <TextField
+          label="Document dated to"
+          type="date"
+          value={form.document_to}
+          onChange={field('document_to')}
+        />
+        <TextField
+          label="Exclude these codes"
+          placeholder="AA0001, AA0002"
+          value={form.exclude_codes}
+          onChange={field('exclude_codes')}
+        />
+        <CheckboxField
+          label="Living patients only"
+          description="Leave out patients with a date of death."
+          checked={form.alive_only}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, alive_only: event.target.checked }))
+          }
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          isLoading={search.isPending}
+          leadingIcon={<Search className="size-3.5" aria-hidden="true" />}
+          onClick={() =>
+            void search
+              .mutateAsync(toCriteria(form))
+              .then(setResult)
+              .catch(() => undefined)
+          }
+        >
+          Find
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setForm(EMPTY_CRITERIA)}>
+          Clear
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+          Close
+        </Button>
+      </div>
+      {result ? (
+        <div className="space-y-2 text-sm">
+          <p>
+            <strong>{result.matches.length}</strong> patient
+            {result.matches.length === 1 ? '' : 's'} match.
+            {excluded.length > 0
+              ? ` ${excluded.length} more matched but the consent matrix keeps them out.`
+              : ''}
+          </p>
+          {excluded.length > 0 ? (
+            <ul className="text-xs text-[rgb(var(--foreground-muted))]">
+              {excluded.slice(0, 20).map(([code, why]) => (
+                <li key={code}>
+                  <span className="font-mono">{code}</span>: {why}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              disabled={result.matches.length === 0}
+              onClick={() => onAdd(result.matches)}
+            >
+              Add matches to the selection
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={result.matches.length === 0}
+              onClick={() => onReplace(result.matches)}
+            >
+              Select only the matches
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function WorkspaceCard({ project }: { project: ProjectDetail }) {
+  const { can } = usePermissions()
+  const build = useBuildWorkspace(project.id)
+  const extend = useExtendWorkspace(project.id)
+  const remove = useDeleteWorkspace(project.id)
+  const [includeDocuments, setIncludeDocuments] = useState(true)
+  const [dialog, setDialog] = useState<'extend' | 'delete' | null>(null)
+  const ended = project.status === 'ended'
+  const built = Boolean(project.workspace_path)
+  const manage = can('project:update')
+  const expires = (project.workspace_expires_at ?? '').slice(0, 10)
+  const left = daysLeft(project.workspace_expires_at)
+
+  return (
+    <Card className="p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-2xl">
+          <h2 className={titleClass}>Workspace (Zone 1X)</h2>
+          <p className="mt-1 text-xs text-[rgb(var(--foreground-muted))]">
+            The cohort's tables, cleaned by the standard cleanup rules, and their
+            de-identified PDFs and images, in the project's own folder for data cleanup.
+            CHSS codes stay here; nothing in it goes to Zone 2. It is deleted 90 days
+            after it is built unless extended. Release archives are not affected.
+          </p>
+        </div>
+        {built ? (
+          <Badge tone={left !== null && left <= 14 ? 'warning' : 'success'}>
+            {left !== null && left <= 0 ? 'expired' : `deleted on ${expires}`}
+          </Badge>
+        ) : (
+          <Badge tone="neutral">not built</Badge>
+        )}
+      </div>
+
+      {built ? (
+        <dl className="mt-4 grid gap-2 text-sm md:grid-cols-2">
+          <div>
+            <dt className="text-xs text-[rgb(var(--foreground-muted))]">Folder</dt>
+            <dd className="font-mono text-[11px] break-all">{project.workspace_path}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[rgb(var(--foreground-muted))]">Last built</dt>
+            <dd>{(project.workspace_built_at ?? '').slice(0, 16).replace('T', ' ')}</dd>
+          </div>
+        </dl>
+      ) : null}
+
+      {manage ? (
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <CheckboxField
+            label="Copy the PDFs and images"
+            checked={includeDocuments}
+            onChange={(event) => setIncludeDocuments(event.target.checked)}
+          />
+          <Button
+            size="sm"
+            disabled={ended || project.cohort.length === 0}
+            title={
+              ended
+                ? 'The project has ended'
+                : project.cohort.length === 0
+                  ? 'Choose the patients first'
+                  : undefined
+            }
+            isLoading={build.isPending}
+            leadingIcon={<FolderSync className="size-3.5" aria-hidden="true" />}
+            onClick={() => build.mutate(includeDocuments)}
+          >
+            {built ? 'Rebuild workspace' : 'Build workspace'}
+          </Button>
+          {built ? (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                leadingIcon={<CalendarPlus className="size-3.5" aria-hidden="true" />}
+                onClick={() => setDialog('extend')}
+              >
+                Extend 90 days
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                leadingIcon={<Trash2 className="size-3.5" aria-hidden="true" />}
+                onClick={() => setDialog('delete')}
+              >
+                Delete workspace
+              </Button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {dialog === 'extend' ? (
+        <ReasonDialog
+          title="Keep the workspace 90 more days?"
+          description="Extending needs an approval. Record which one; it goes in the audit log."
+          confirmLabel="Extend"
+          placeholder="e.g. REB amendment 4, approved by the CHSS manager"
+          isBusy={extend.isPending}
+          onCancel={() => setDialog(null)}
+          onConfirm={(reason) =>
+            void extend
+              .mutateAsync(reason)
+              .then(() => setDialog(null))
+              .catch(() => undefined)
+          }
+        />
+      ) : null}
+      {dialog === 'delete' ? (
+        <ReasonDialog
+          title="Delete the workspace now?"
+          description="Its tables and copied documents are removed. It can be built again from the cohort. Release archives stay."
+          confirmLabel="Delete workspace"
+          placeholder="e.g. data cleanup done, moved to Zone 2"
+          isBusy={remove.isPending}
+          onCancel={() => setDialog(null)}
+          onConfirm={(reason) =>
+            void remove
+              .mutateAsync(reason)
+              .then(() => setDialog(null))
+              .catch(() => undefined)
+          }
+        />
+      ) : null}
+    </Card>
   )
 }
 

@@ -2,7 +2,7 @@ from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
-from app import zone2
+from app import cohort, consent, workspace, zone2
 from app.audit import record_audit
 from app.crud import patients as patients_crud
 from app.crud import projects as crud
@@ -11,7 +11,9 @@ from app.errors import ValidationError
 from app.logging_setup import get_logger
 from app.project_schemas import (
     Candidate,
+    CohortCriteria,
     CohortMember,
+    CohortSearchResult,
     CohortUpdate,
     Project,
     ProjectCreate,
@@ -19,6 +21,9 @@ from app.project_schemas import (
     ProjectRelease,
     ProjectUpdate,
     ReleaseDecision,
+    WorkspaceBuild,
+    WorkspaceDelete,
+    WorkspaceExtend,
 )
 from app.schemas import User
 from app.security import require_permission
@@ -84,8 +89,29 @@ def list_candidates(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("project:update")),
 ):
-    """Patients with submitted applications, who can be put in a project."""
     return zone2.candidates(cursor)
+
+
+@router.get("/{project_id}/candidates", response_model=List[Candidate])
+def list_project_candidates(
+    project_id: str,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("project:update")),
+):
+    project = crud.get_project_or_404(cursor, project_id)
+    found = zone2.candidates(cursor)
+    blocked = consent.excluded(cursor, project, [c.patient_id for c in found])
+    return [c.model_copy(update={"excluded_reason": blocked.get(c.patient_id)}) for c in found]
+
+
+@router.post("/{project_id}/cohort/search", response_model=CohortSearchResult)
+def search_cohort(
+    project_id: str,
+    criteria: CohortCriteria,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("project:update")),
+):
+    return cohort.search(cursor, crud.get_project_or_404(cursor, project_id), criteria)
 
 
 @router.post("", response_model=ProjectDetail, status_code=201)
@@ -146,6 +172,7 @@ def set_cohort(
     unknown = sorted(set(wanted) - set(known))
     if unknown:
         raise ValidationError(f"Unknown patient codes: {', '.join(unknown)}")
+    consent.refuse_excluded(cursor, project, wanted)
 
     before = [m.patient_id for m in crud.list_cohort(cursor, project_id)]
     after = crud.set_cohort(cursor, project, wanted)
@@ -181,7 +208,6 @@ def prepare_project(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("zone2:prepare")),
 ):
-    """Make the project's safe copy and put it in the Zone 2 inbox."""
     release = zone2.prepare(cursor, project_id, actor.id)
     _audit(
         background, request, "CREATE", project_id, actor,
@@ -190,6 +216,65 @@ def prepare_project(
              "files_included": release.files_included},
     )
     return release
+
+
+@router.post("/{project_id}/workspace", response_model=ProjectDetail)
+def build_workspace(
+    project_id: str,
+    payload: WorkspaceBuild,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("project:update")),
+):
+    project = workspace.build(cursor, crud.get_project_or_404(cursor, project_id), payload.include_documents)
+    _audit(
+        background, request, "UPDATE", project_id, actor,
+        new={"workspace": "built", "include_documents": payload.include_documents,
+             "expires_at": project.workspace_expires_at},
+    )
+    return _detail(cursor, project)
+
+
+@router.post("/{project_id}/workspace/extend", response_model=ProjectDetail)
+def extend_workspace(
+    project_id: str,
+    payload: WorkspaceExtend,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("project:update")),
+):
+    reason = payload.reason.strip()
+    if not reason:
+        raise ValidationError("Say why the workspace is kept longer (the approval)")
+    before = crud.get_project_or_404(cursor, project_id)
+    after = workspace.extend(cursor, before)
+    _audit(
+        background, request, "UPDATE", project_id, actor,
+        old={"workspace_expires_at": before.workspace_expires_at},
+        new={"workspace_expires_at": after.workspace_expires_at, "reason": reason},
+    )
+    return _detail(cursor, after)
+
+
+@router.post("/{project_id}/workspace/delete", response_model=ProjectDetail)
+def delete_workspace(
+    project_id: str,
+    payload: WorkspaceDelete,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("project:update")),
+):
+    before = crud.get_project_or_404(cursor, project_id)
+    after = workspace.delete(cursor, before)
+    _audit(
+        background, request, "UPDATE", project_id, actor,
+        old={"workspace_path": before.workspace_path},
+        new={"workspace": "deleted", "reason": (payload.reason or "").strip() or None},
+    )
+    return _detail(cursor, after)
 
 
 @router.post("/{project_id}/end", response_model=ProjectDetail)
@@ -201,8 +286,6 @@ def end_project(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("project:update")),
 ):
-    """Mark the project ended: no more releases. Its Zone 2 copy and archive
-    stay; remove researchers' access by hand."""
     before = crud.get_project_or_404(cursor, project_id)
     after = zone2.end_project(cursor, project_id, payload.reason)
     _audit(

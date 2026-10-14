@@ -1,14 +1,3 @@
-"""Intake emails, to every active user whose role has `deidentifier:notify`.
-
-- new files waiting in the incoming folder (scripts/intake_notify.py, run as
-  a scheduled job: it only mentions files that arrived since its last email);
-- an intake run finished: how many were done, failed, set aside;
-- an application or a document was rejected, with the reason.
-
-A failed send never raises (see app.mailer); these return whether an email
-went out.
-"""
-
 import os
 import time
 from collections import Counter
@@ -67,16 +56,11 @@ def _counted(codes: Counter) -> List[str]:
     return lines
 
 
-# --- new files ---------------------------------------------------------------
-
-
 def _state_path():
     return intake.state_dir() / STATE_FILE
 
 
 def new_files(since: float):
-    """Settled files in the incoming folder touched after `since`, and the
-    newest time among them."""
     found, newest = [], since
     root = intake.intake_root()
     for path in intake.walk(root):
@@ -115,16 +99,12 @@ def notify_new_files(cursor=None) -> dict:
     ]
     sent = _send_to_team(f"New intake files: {len(found)}", lines, cursor)
 
-    # Only move on when the email went out, so nothing is skipped silently.
     if sent:
         intake.write_json(
             _state_path(), dict(state, files_seen_until=newest, notified_at=time.time())
         )
     log.info("intake_new_files_notice", new=len(found), sent=sent)
     return {"new": len(found), "sent": sent}
-
-
-# --- a run finished ------------------------------------------------------------
 
 
 def notify_run_finished(report: dict) -> bool:
@@ -151,9 +131,6 @@ def notify_run_finished(report: dict) -> bool:
         f"Intake run finished: {done} done, {failed} failed, {aside} need attention"
     )
     return _send_to_team(subject, lines)
-
-
-# --- rejections ----------------------------------------------------------------
 
 
 def notify_application_rejected(

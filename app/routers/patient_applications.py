@@ -30,8 +30,6 @@ log = get_logger(__name__)
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
-# Submitted and deleted applications are final and cannot be rejected; a
-# draft, an approved one (reviewed again) or a rejected one (new reason) can.
 REJECTABLE = ("draft", "approved", "rejected")
 
 CLOSED_TO_FILES = ("submitted", "deleted")
@@ -50,7 +48,6 @@ def _checklist_record(key: str, checks: List[str], actor: User) -> dict:
 
 
 def _passed_checklist(payload: PatientApplicationUpdate, actor: User) -> dict:
-    """The checklist of a submission; every check must be ticked."""
     ticked = payload.checklist or {}
     unknown = sorted(set(ticked) - set(ENROLLMENT_CHECKS))
     if unknown:
@@ -212,7 +209,7 @@ def update_application(
     if payload.status == "submitted" and before.status != "submitted":
         checklist = _passed_checklist(payload, actor)
         patient = patients_crud.get_patient_or_404(cursor, before.patient_id)
-        if not patient.details_checked_at:
+        if not patient.details_checked_at and not patient.no_records:
             raise ValidationError(
                 f"Patient {patient.id}'s details have not been checked yet. Check "
                 "them in step 1 and confirm before submitting."
@@ -256,12 +253,6 @@ def reject_application(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:update")),
 ):
-    """Reject with the checklist items that failed and a reason.
-
-    A failed consent check means the data may not be kept: the application's
-    documents are deleted at once (as Delete on Rejections does) and it is
-    left as a deleted record. Any other failure leaves it rejected, to fix.
-    """
     before = crud.get_application_or_404(cursor, application_id)
 
     if before.status not in REJECTABLE:
@@ -340,12 +331,6 @@ def delete_application(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:delete")),
 ):
-    """Delete a rejected application's documents and keep it as a record.
-
-    Every file of this application is removed from disk (original and
-    de-identified); the application and its file rows stay, marked deleted
-    with the reason. Other applications of the same patient are untouched.
-    """
     before, after, summary = purge.purge_rejected_application(
         cursor, application_id, reason, actor.id
     )

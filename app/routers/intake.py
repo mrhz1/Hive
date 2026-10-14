@@ -6,12 +6,13 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.safe_cells import row as safe_row
 from app import intake, intake_progress, intake_run
 from app.audit import record_audit
 from app.cloudera import ClouderaError
 from app.db import get_cursor
 from app.errors import ConflictError, ValidationError
-from app.logging_setup import get_logger
+from app.logging_setup import get_logger, ref
 from app.schemas import User
 from app.security import require_permission
 
@@ -130,7 +131,7 @@ def export_files(
     writer = csv.writer(buffer)
     writer.writerow(EXPORT_COLUMNS)
     for f in intake.filter_by_code(intake.list_problem_files(kind), code):
-        writer.writerow([f.get(c) for c in EXPORT_COLUMNS])
+        writer.writerow(safe_row([f.get(c) for c in EXPORT_COLUMNS]))
     return StreamingResponse(
         iter([buffer.getvalue()]),
         media_type="text/csv",
@@ -149,7 +150,6 @@ def retry_all_files(
     request: Request,
     actor: User = Depends(require_permission("deidentifier:run")),
 ):
-    """Move every failed file (or every one for a code) back to incoming."""
     moved = intake.retry_all_failed(payload.code or None)
     intake_progress.clear_cache()
     background.add_task(
@@ -175,7 +175,7 @@ def retry_file(
     except ValueError as e:
         raise ValidationError(str(e)) from e
     intake_progress.clear_cache()
-    log.info("intake_file_retried", path=payload.path, actor=actor.id)
+    log.info("intake_file_retried", file_ref=ref(payload.path), actor=actor.id)
     return {"path": new_path}
 
 
@@ -202,7 +202,7 @@ def resolve_conflict(
         new_values={"patient_code": payload.code.upper()},
         request_id=request.headers.get("X-Request-ID"),
     )
-    log.info("intake_conflict_resolved", path=new_path, code=payload.code, actor=actor.id)
+    log.info("intake_conflict_resolved", file_ref=ref(new_path), code=payload.code, actor=actor.id)
     return {"path": new_path}
 
 

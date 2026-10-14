@@ -32,11 +32,6 @@ def _parse_formats(raw):
 
 
 def code_formats():
-    """The allowed formats from PATIENT_CODE_FORMATS, e.g. AA:4,BBCDE:4.
-
-    Each is a fixed prefix and an exact number of digits. Empty when unset,
-    and PATIENT_CODE_PATTERN (or the default) applies instead.
-    """
     return _parse_formats(os.environ.get("PATIENT_CODE_FORMATS", ""))
 
 

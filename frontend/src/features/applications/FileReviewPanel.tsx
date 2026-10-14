@@ -1,4 +1,4 @@
-import { Eye, FileJson, FileSearch, ShieldCheck, Tag, X } from 'lucide-react'
+import { Eye, FileJson, FileSearch, Lock, ShieldCheck, Tag, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
@@ -13,6 +13,7 @@ import { usePermissions } from '@/hooks/useCurrentUser'
 import {
   useApplicationFiles,
   useBackgroundUpload,
+  useMarkLeaded,
   useReviewApplicationFile,
   useSetDocumentInfo,
 } from '@/hooks/useResources'
@@ -56,12 +57,12 @@ export function FileReviewPanel({
 
   readOnly?: boolean
 
-  /** The application's documents were deleted; only the records remain. */
   deleted?: boolean
 }) {
   const { can } = usePermissions()
   const filesQuery = useApplicationFiles(applicationId)
   const review = useReviewApplicationFile(applicationId)
+  const markLeaded = useMarkLeaded(applicationId)
   const setDocumentInfo = useSetDocumentInfo(applicationId)
 
   const onJobFinished = useCallback(
@@ -144,7 +145,6 @@ export function FileReviewPanel({
   }
 
   function actionsFor(file: ApplicationFile): MenuAction[] {
-    // Its documents were deleted from Rejections: nothing left to open or change.
     if (isDeletedFile(file)) return []
     const hasCopy = Boolean(file.de_identified_file_path)
     const noCopy = 'No redacted copy has been produced yet'
@@ -192,13 +192,29 @@ export function FileReviewPanel({
         onSelect: () => setShowingMetadata({ file, deidentified: true }),
       })
     }
+
+    if (can('files:reject') && previewKind(file.file_extension) === 'image') {
+      actions.push({
+        id: 'leaded',
+        separatorBefore: actions.length > 0,
+        label: file.leaded_phi ? 'Clear leaded mark' : 'Mark as leaded',
+        icon: <Lock className="size-4" aria-hidden="true" />,
+        disabled: !hasCopy || markLeaded.isPending,
+        title: !hasCopy
+          ? noCopy
+          : file.leaded_phi
+            ? 'Only once the image has been scrubbed by hand and replaced'
+            : 'Identifiers in lead letters in the picture: the image stays out of Zone 2',
+        onSelect: () => markLeaded.mutate({ fileId: file.id, leaded: !file.leaded_phi }),
+      })
+    }
     if (readOnly) return actions
 
     if (can('application:update')) {
       actions.push({
         id: 'document-info',
         separatorBefore: actions.length > 0,
-        label: 'Set modality & date',
+        label: 'Set type & date',
         icon: <Tag className="size-4" aria-hidden="true" />,
         disabled: !hasCopy,
         title: hasCopy ? 'Renames the de-identified copy' : noCopy,
@@ -247,12 +263,12 @@ export function FileReviewPanel({
     },
     {
       id: 'modality',
-      header: 'Modality / date',
+      header: 'Type / date',
       cell: (file) =>
         file.modality ? (
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge tone={file.modality === UNKNOWN ? 'warning' : 'neutral'}>
-              {file.modality === UNKNOWN ? 'modality?' : file.modality}
+              {file.modality === UNKNOWN ? 'type?' : file.modality}
             </Badge>
             {isoDocumentDate(file.document_date) ? (
               <span className="text-xs tabular-nums">
@@ -272,7 +288,6 @@ export function FileReviewPanel({
       header: 'Review',
       cell: (file) => (
         <div className="min-w-0">
-          {}
           {review.isPending && review.variables?.fileId === file.id ? (
             <span className="inline-flex items-center gap-2 text-xs font-semibold text-[rgb(var(--foreground-muted))]">
               <Spinner size="sm" label="" />
@@ -310,6 +325,7 @@ export function FileReviewPanel({
           {hasCoveredImageText(file) ? (
             <Badge tone="warning">text covered in picture ({file.redaction_boxes})</Badge>
           ) : null}
+          {file.leaded_phi ? <Badge tone="danger">leaded · not for Zone 2</Badge> : null}
         </div>
       ),
       sortValue: (file) => file.deid_status,

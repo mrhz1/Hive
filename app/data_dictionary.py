@@ -1,13 +1,5 @@
-"""What every column of an extract means (protocol 7.10: extracts include
-their data definitions).
-
-The Zone 2 safe copy gets data_dictionary.csv (app/zone2.py); the Excel
-exports get a "Data dictionary" sheet (app/xlsx.py).
-"""
-
 from typing import Dict, List, Tuple
 
-# column -> (type, meaning, allowed values / notes)
 Definition = Tuple[str, str, str]
 
 SHIFTED = (

@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
-from app.logging_setup import get_logger
+from app.logging_setup import get_logger, ref
 from app.schemas import METADATA_EXTENSIONS
 
 log = get_logger(__name__)
@@ -14,6 +14,14 @@ PDF_MAGIC = b"%PDF-"
 OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
 ZIP_MAGIC = b"PK\x03\x04"
+
+IMAGE_MAGIC = (
+    (b"\xff\xd8\xff", "jpg"),
+    (b"\x89PNG\r\n\x1a\n", "png"),
+    (b"II*\x00", "tif"),
+    (b"MM\x00*", "tif"),
+    (b"BM", "bmp"),
+)
 
 SNIFF_BYTES = 4096
 
@@ -48,6 +56,10 @@ def sniff_extension(head: bytes) -> Optional[str]:
     if head.startswith(ZIP_MAGIC) and b"word/" in head:
         return "docx"
 
+    for magic, extension in IMAGE_MAGIC:
+        if head.startswith(magic):
+            return extension
+
     return None
 
 
@@ -72,5 +84,5 @@ def read_header(path) -> bytes:
         with open(path, "rb") as handle:
             return handle.read(SNIFF_BYTES)
     except OSError as exc:
-        log.warning("file_head_unreadable", path=str(path), error=str(exc))
+        log.warning("file_head_unreadable", file_ref=ref(path), error=str(exc))
         return b""

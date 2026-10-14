@@ -7,13 +7,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from deid import model_store  # noqa: E402
+from deid import model_store
 
 os.environ["DEID_OFFLINE"] = "0"
 for _var in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
     os.environ.pop(_var, None)
 
-from deid.config import load_config  # noqa: E402
+from deid.config import load_config
 
 logging.basicConfig(
     level=logging.INFO, format="%(levelname)-7s %(message)s", stream=sys.stdout

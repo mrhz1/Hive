@@ -15,14 +15,6 @@ GlobalWorkerOptions.workerSrc = workerUrl
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3]
 const PAGE_GUTTER = 48
 
-/**
- * Pages drawn by pdf.js onto canvases, with zoom and nothing else.
- *
- * The browser's own PDF viewer brings print, download, save and share
- * buttons the app cannot switch off; drawing the pages here leaves them out.
- * Downloading stays behind its own permission, on the viewer's Download
- * button.
- */
 export function PdfViewer({ url, name }: { url: string; name: string }) {
   const [loaded, setLoaded] = useState<{
     url: string
@@ -169,7 +161,6 @@ function PdfPage({
   const [size, setSize] = useState<{ width: number; height: number } | null>(null)
   const [visible, setVisible] = useState(pageNumber <= 2)
 
-  // Only draw pages near the screen, so a long document opens quickly.
   useEffect(() => {
     const holder = holderRef.current
     if (!holder || visible) return

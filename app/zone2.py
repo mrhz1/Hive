@@ -1,30 +1,3 @@
-"""Zone 2: making, reviewing and releasing a project's safe copy.
-
-Preparing a project (its cohort of patients, their submitted applications):
-
-1. every patient gets a random project-only ID and a random date shift
-   (crud.projects.set_cohort), kept in Zone 1X and never released;
-2. identifying fields and all free text are left out, every date is moved by
-   the patient's shift, and date of birth becomes age at registration;
-3. documents are left out unless the project is approved for them; then the
-   de-identified copies go in, renamed to project IDs, with the CHSS code
-   taken out of their content and metadata and DICOM dates shifted;
-4. the archive (original extract, ID map, safe copy) goes to PROJECTS_DIR and
-   the safe copy alone to ZONE2_INBOX_DIR for the CHSS manager to review.
-
-Approving copies the safe copy to ZONE2_DIR/<project>/; rejecting sends the
-project back with the reason. Which folders researchers can open is a
-Cloudera access setting, not something this module can enforce.
-
-Reviewing: the manager can open any released document (all, or a random
-few) and flag one that still identifies someone. A flag rejects the release
-and puts the source document in Rejections; the project can't be prepared
-again with documents until it is fixed (replaced as _RR).
-
-Ending a project only marks it ended: no more releases. Its Zone 2 copy and
-archive stay; researchers' access is removed by hand (Users, Roles).
-"""
-
 import csv
 import io
 import shutil
@@ -32,7 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from app import data_dictionary, storage
+from app import consent, data_dictionary, storage
 from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as applications_crud
 from app.crud import patients as patients_crud
@@ -77,9 +50,6 @@ over). Names, addresses, phone numbers, emails and all free text are left out.
 """
 
 
-# --- what can go in -----------------------------------------------------
-
-
 def _submitted_applications(cursor, patient_id: str):
     return [
         a
@@ -99,7 +69,6 @@ def _documents(cursor, application_id: str):
 
 
 def candidates(cursor) -> List[Candidate]:
-    """Patients with at least one submitted application."""
     counts: Dict[str, List[int]] = {}
     for application in applications_crud.list_applications(cursor):
         if application.status not in RELEASED_STATUSES:
@@ -111,9 +80,6 @@ def candidates(cursor) -> List[Candidate]:
         Candidate(patient_id=code, applications=apps, documents=docs)
         for code, (apps, docs) in sorted(counts.items())
     ]
-
-
-# --- small helpers ------------------------------------------------------
 
 
 def _as_date(value) -> Optional[date]:
@@ -167,9 +133,6 @@ def _model_rows(models) -> List[dict]:
 def _new_release_id() -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     return f"R{stamp}-{projects_crud.random_code(4)}"
-
-
-# --- documents ----------------------------------------------------------
 
 
 class DocumentError(ValueError):
@@ -280,8 +243,33 @@ def _shift_dicom_dates(dataset, days: int) -> None:
         element.value = shifted if element.VM > 1 else shifted[0]
 
 
-def _clean_dicom(source: Path, target: Path, code: str, project_id: str, days: int) -> None:
+def _new_uids(dataset, salt: str, depth: int = 0) -> None:
+    from pydicom._uid_dict import UID_dictionary
+    from pydicom.uid import generate_uid
+
+    if depth > 8:
+        return
+    for element in dataset:
+        if element.VR == "SQ":
+            for item in element.value or []:
+                _new_uids(item, salt, depth + 1)
+        elif element.VR == "UI" and element.keyword not in (
+            "ImplementationClassUID", "TransferSyntaxUID", "CodingSchemeUID"
+        ):
+            values = element.value if element.VM > 1 else [element.value]
+            new = [
+                str(v) if not v or str(v) in UID_dictionary
+                else str(generate_uid(entropy_srcs=[salt, str(v)]))
+                for v in values
+            ]
+            element.value = new if element.VM > 1 else new[0]
+
+
+def _clean_dicom(
+    source: Path, target: Path, code: str, project_id: str, days: int, uid_salt: str = ""
+) -> None:
     import pydicom
+    from pydicom.uid import generate_uid
 
     dataset = pydicom.dcmread(str(source), force=True)
     dataset.PatientID = project_id
@@ -295,6 +283,13 @@ def _clean_dicom(source: Path, target: Path, code: str, project_id: str, days: i
         if isinstance(element.value, str) and code in element.value:
             element.value = element.value.replace(code, project_id)
     _shift_dicom_dates(dataset, days)
+    if uid_salt:
+        _new_uids(dataset, uid_salt)
+        meta = getattr(dataset, "file_meta", None)
+        if meta is not None and "MediaStorageSOPInstanceUID" in meta:
+            meta.MediaStorageSOPInstanceUID = generate_uid(
+                entropy_srcs=[uid_salt, str(meta.MediaStorageSOPInstanceUID)]
+            )
     dataset.save_as(str(target))
 
     check = pydicom.dcmread(str(target), force=True)
@@ -302,7 +297,10 @@ def _clean_dicom(source: Path, target: Path, code: str, project_id: str, days: i
         raise DocumentError("the CHSS code is still in the DICOM header")
 
 
-def _copy_document(record, target_dir: Path, document_id: str, code: str, project_id: str, days: int) -> str:
+def _copy_document(
+    record, target_dir: Path, document_id: str, code: str, project_id: str, days: int,
+    uid_salt: str = "",
+) -> str:
     source = storage.resolve_stored_path(record.de_identified_file_path)
     if not source.is_file():
         raise DocumentError("the de-identified copy is missing from disk")
@@ -314,14 +312,13 @@ def _copy_document(record, target_dir: Path, document_id: str, code: str, projec
     elif suffix in (".doc", ".docx"):
         _clean_docx(source, target, code, project_id)
     elif suffix in (".dcm", ".dicom"):
-        _clean_dicom(source, target, code, project_id, days)
+        _clean_dicom(source, target, code, project_id, days, uid_salt)
     else:
         raise DocumentError(f"'{suffix}' documents cannot be released")
     return target.name
 
 
 def _refuse_rejected_documents(cursor, cohort) -> None:
-    """A document flagged (or rejected) and not fixed yet can't be released."""
     waiting = [
         f"{record.deidentified_file_name or record.original_file_name}"
         for member in cohort
@@ -336,7 +333,21 @@ def _refuse_rejected_documents(cursor, cohort) -> None:
         )
 
 
-# --- prepare ------------------------------------------------------------
+def _refuse_leaded_documents(cursor, cohort) -> None:
+    leaded = [
+        f"{member.patient_id}: {record.deidentified_file_name or record.original_file_name}"
+        for member in cohort
+        for application in _submitted_applications(cursor, member.patient_id)
+        for record in _documents(cursor, application.id)
+        if record.leaded_phi
+    ]
+    if leaded:
+        raise ValidationError(
+            f"{len(leaded)} image(s) are marked as having leaded identifiers and "
+            "can't go to Zone 2. Scrub them by hand and replace them, then clear "
+            "the mark, or take their patients out of the cohort: "
+            + ", ".join(leaded[:10])
+        )
 
 
 def _require_ready(project: Project, cohort) -> None:
@@ -359,8 +370,10 @@ def prepare(cursor, project_id: str, actor_id: str) -> ProjectRelease:
     project = projects_crud.get_project_or_404(cursor, project_id)
     cohort = projects_crud.list_cohort(cursor, project.id)
     _require_ready(project, cohort)
+    consent.refuse_excluded(cursor, project, [m.patient_id for m in cohort])
     if project.documents_approved:
         _refuse_rejected_documents(cursor, cohort)
+        _refuse_leaded_documents(cursor, cohort)
 
     release_id = _new_release_id()
     archive = storage.projects_root() / project.short_code / release_id
@@ -436,7 +449,7 @@ def _build(cursor, project, cohort, release_id, archive: Path, safe: Path) -> di
                     try:
                         name = _copy_document(
                             record, safe / "documents" / pid, doc_id,
-                            member.patient_id, pid, days,
+                            member.patient_id, pid, days, uid_salt=project.id,
                         )
                     except DocumentError as exc:
                         raise DocumentError(f"{record.original_file_name}: {exc}") from exc
@@ -495,11 +508,7 @@ def _build(cursor, project, cohort, release_id, archive: Path, safe: Path) -> di
     }
 
 
-# --- review -------------------------------------------------------------
-
-
 def summary(release: ProjectRelease) -> Dict[str, dict]:
-    """Columns and a few rows of each CSV, for the manager to look at."""
     folder = Path(release.release_path or release.inbox_path or "")
     columns, samples = {}, {}
     for name in ("patients", "applications", "documents"):
@@ -513,7 +522,6 @@ def summary(release: ProjectRelease) -> Dict[str, dict]:
 
 
 def _remove_from_inbox(folder: Path) -> None:
-    """Drop a release's safe copy from the inbox, and its project folder if empty."""
     if not str(folder) or not folder.resolve().is_relative_to(storage.zone2_inbox_root().resolve()):
         return
     shutil.rmtree(folder, ignore_errors=True)
@@ -530,12 +538,31 @@ def _pending(cursor, release_id: str) -> ProjectRelease:
     return release
 
 
+def _refuse_leaded_since_prepared(cursor, release: ProjectRelease) -> None:
+    if not release.files_included:
+        return
+    path = Path(release.archive_path or "") / "document_map.csv"
+    released = {row["file_id"] for row in _read_csv(path)} if path.is_file() else set()
+    leaded = [
+        record.deidentified_file_name or record.original_file_name
+        for record in files_crud.list_files(cursor)
+        if record.id in released and record.leaded_phi
+    ]
+    if leaded:
+        raise ValidationError(
+            f"{len(leaded)} image(s) in this release were marked as having leaded "
+            "identifiers after it was prepared; reject it and prepare again: "
+            + ", ".join(leaded[:10])
+        )
+
+
 def approve(cursor, release_id: str, actor_id: str) -> ProjectRelease:
     release = _pending(cursor, release_id)
     project = projects_crud.get_project_or_404(cursor, release.project_id)
     inbox = Path(release.inbox_path or "")
     if not inbox.is_dir():
         raise ValidationError("The safe copy is no longer in the inbox; prepare the project again")
+    _refuse_leaded_since_prepared(cursor, release)
 
     target = storage.zone2_root() / project.short_code / release.id
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -561,15 +588,11 @@ def reject(cursor, release_id: str, actor_id: str, reason: Optional[str]) -> Pro
     return release
 
 
-# --- spot checks and flags ----------------------------------------------
-
-
 def _release_folder(release: ProjectRelease) -> Path:
     return Path(release.release_path or release.inbox_path or "")
 
 
 def release_documents(release: ProjectRelease) -> List[dict]:
-    """The released files: project document ID, patient ID, type, path."""
     path = _release_folder(release) / "documents.csv"
     if not path.is_file():
         return []
@@ -596,8 +619,6 @@ def _source_file_id(release: ProjectRelease, document_id: str) -> str:
 
 
 def flag_document(cursor, release_id: str, document_id: str, actor_id: str, note: Optional[str]):
-    """Reject the release because of one document, and send that document to
-    Rejections to be redacted again. Returns (release, source file record)."""
     text = (note or "").strip()
     if not text:
         raise ValidationError("Say what is wrong with the document")
@@ -617,9 +638,6 @@ def flag_document(cursor, release_id: str, document_id: str, actor_id: str, note
     release = reject(cursor, release.id, actor_id, f"Document {document_id} flagged: {text}")
     log.info("zone2_document_flagged", release_id=release.id, document_id=document_id, file_id=file_id)
     return release, record
-
-
-# --- ending a project ------------------------------------------------------
 
 
 def end_project(cursor, project_id: str, reason: Optional[str]) -> Project:

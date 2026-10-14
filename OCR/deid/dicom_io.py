@@ -1,4 +1,6 @@
 import logging
+import os
+import secrets
 from typing import List
 
 import numpy as np
@@ -289,11 +291,62 @@ def _walk(dataset, redact, touched: List[str], prefix: str = "", depth: int = 0)
         _deidentify_element(element, redact, touched, prefix)
 
 
+_KEPT_UID_KEYWORDS = frozenset(
+    {"ImplementationClassUID", "TransferSyntaxUID", "CodingSchemeUID"}
+)
+
+_RUN_SALT = secrets.token_hex(16)
+_warned_no_salt = False
+
+
+def _uid_salt() -> str:
+    global _warned_no_salt
+    salt = os.environ.get("DEID_UID_SALT")
+    if salt:
+        return salt
+    if not _warned_no_salt:
+        log.warning("DEID_UID_SALT is not set; new UIDs are random per run")
+        _warned_no_salt = True
+    return _RUN_SALT
+
+
+def _is_standard_uid(value: str) -> bool:
+    from pydicom._uid_dict import UID_dictionary
+
+    return value in UID_dictionary
+
+
+def _new_uid(value: str, salt: str) -> str:
+    from pydicom.uid import generate_uid
+
+    return str(generate_uid(entropy_srcs=[salt, value]))
+
+
+def _replace_uids(dataset, salt: str, touched: List[str], prefix: str = "", depth: int = 0) -> None:
+    if depth > 8:
+        return
+    for element in dataset:
+        if element.VR == "SQ":
+            for index, item in enumerate(element.value or []):
+                _replace_uids(item, salt, touched,
+                              f"{prefix}{element.keyword or element.tag}[{index}].", depth + 1)
+            continue
+        if element.VR != "UI" or element.keyword in _KEPT_UID_KEYWORDS:
+            continue
+        values = element.value if element.VM > 1 else [element.value]
+        values = [str(v) for v in values if v not in (None, "")]
+        if not values or all(_is_standard_uid(v) for v in values):
+            continue
+        new = [v if _is_standard_uid(v) else _new_uid(v, salt) for v in values]
+        element.value = new if element.VM > 1 else new[0]
+        touched.append(f"{prefix}{element.keyword or element.tag}")
+
+
 def scrub_metadata(dataset, redact=None) -> List[str]:
     touched: List[str] = []
 
     if redact is None:
-        def redact(text: str) -> str:  # noqa: E306 - local fallback
+        def redact(text: str) -> str:
             return text
 
     try:
@@ -306,6 +359,15 @@ def scrub_metadata(dataset, redact=None) -> List[str]:
         touched.append("<private tags>")
     except Exception as exc:
         log.warning("could not remove private tags: %s", exc)
+
+    salt = _uid_salt()
+    try:
+        _replace_uids(dataset, salt, touched)
+        meta = getattr(dataset, "file_meta", None)
+        if meta is not None and "MediaStorageSOPInstanceUID" in meta:
+            meta.MediaStorageSOPInstanceUID = _new_uid(str(meta.MediaStorageSOPInstanceUID), salt)
+    except Exception as exc:
+        log.warning("UID de-identification failed: %s", exc)
 
     dataset.PatientIdentityRemoved = "YES"
     dataset.DeidentificationMethod = "Hive OCR/NER pixel and tag de-identification"

@@ -8,7 +8,7 @@ from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as applications_crud
 from app.db import hive_cursor
 from app.deid import remove_deid_artifacts
-from app.logging_setup import get_logger
+from app.logging_setup import get_logger, ref
 from app.stamp import StampError, stamp_pdf
 from app import intake
 from app.storage import (
@@ -49,13 +49,6 @@ def _delete_sidecars(directory: Path, stem: str, keep: Path) -> None:
 
 
 def _file_data_record(record, patient_id: str, staged: Path, original) -> bool:
-    """Move a De-Identifier file from pending_data to submitted_data.
-
-    Both copies keep their place in the folder layout, so on disk
-    submitted_data holds exactly what was submitted and pending_data what is
-    still being worked on. The sidecar follows the de-identified copy and is
-    pointed at the moved original.
-    """
     if not intake.is_pending_data_file(staged):
         log.info("submission_filed", file_id=record.id, patient_id=patient_id, deidentified=str(staged), moved=False)
         return True
@@ -64,7 +57,7 @@ def _file_data_record(record, patient_id: str, staged: Path, original) -> bool:
     try:
         final = intake.move_to_submitted(staged)
     except Exception as e:
-        log.error("submission_move_failed", file_id=record.id, path=str(staged), error=str(e))
+        log.error("submission_move_failed", file_id=record.id, file_ref=ref(staged), error=str(e))
         return False
 
     kept = original
@@ -72,7 +65,7 @@ def _file_data_record(record, patient_id: str, staged: Path, original) -> bool:
         try:
             kept = intake.move_to_submitted(original)
         except Exception as e:
-            log.error("submission_original_move_failed", file_id=record.id, path=str(original), error=str(e))
+            log.error("submission_original_move_failed", file_id=record.id, file_ref=ref(original), error=str(e))
 
     if sidecar.is_file():
         info = intake.read_json(sidecar)
@@ -81,7 +74,6 @@ def _file_data_record(record, patient_id: str, staged: Path, original) -> bool:
         info["submitted"] = True
         intake.write_json(Path(str(final) + intake.SIDECAR_SUFFIX), info)
         sidecar.unlink(missing_ok=True)
-    # The copy's folder only empties once its sidecar has moved too.
     prune_empty_dirs(staged.parent)
 
     try:
@@ -121,7 +113,7 @@ def process_one(record, patient_id: str) -> bool:
         return False
 
     if not staged.is_file():
-        log.error("submission_output_missing", file_id=record.id, path=str(staged))
+        log.error("submission_output_missing", file_id=record.id, file_ref=ref(staged))
         return False
 
     original = None

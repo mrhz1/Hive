@@ -1,4 +1,3 @@
-
 DROP TABLE IF EXISTS `roles`;
 
 CREATE TABLE `roles` (
@@ -61,7 +60,8 @@ CREATE TABLE `patient` (
   `original_file_path` STRING,
   `deidentified_file_path` STRING,
   `details_checked_at` STRING,
-  `details_checked_by` STRING
+  `details_checked_by` STRING,
+  `no_records` BOOLEAN
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
@@ -106,7 +106,8 @@ CREATE TABLE `patient_application_files` (
   `de_identified_file_path` STRING,
   `review_status` STRING,
   `review_note` STRING,
-  `redaction_boxes` INT
+  `redaction_boxes` INT,
+  `leaded_phi` BOOLEAN
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
@@ -164,8 +165,6 @@ CREATE TABLE `audit_logs` (
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
--- Research projects (Zone 2). A project asks for a safe copy of some
--- patients' submitted data (see app/zone2.py).
 DROP TABLE IF EXISTS `projects`;
 
 CREATE TABLE `projects` (
@@ -180,12 +179,29 @@ CREATE TABLE `projects` (
   `status_reason` STRING,
   `created_by_id` STRING,
   `created_at` TIMESTAMP,
-  `updated_at` TIMESTAMP
+  `updated_at` TIMESTAMP,
+  `workspace_path` STRING,
+  `workspace_built_at` STRING,
+  `workspace_expires_at` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
--- The cohort and the locked ID map: each patient's project-only ID and the
--- days every one of their dates is moved by. Never released.
+DROP TABLE IF EXISTS `patient_consents`;
+
+CREATE TABLE `patient_consents` (
+  `id` STRING,
+  `patient_id` STRING,
+  `consent_type` STRING,
+  `status` STRING,
+  `version` STRING,
+  `consent_date` STRING,
+  `note` STRING,
+  `source` STRING,
+  `recorded_by_id` STRING,
+  `recorded_at` STRING
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
 DROP TABLE IF EXISTS `project_patients`;
 
 CREATE TABLE `project_patients` (
@@ -198,7 +214,6 @@ CREATE TABLE `project_patients` (
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
--- Each prepared safe copy and its review by the CHSS manager.
 DROP TABLE IF EXISTS `project_releases`;
 
 CREATE TABLE `project_releases` (
@@ -220,10 +235,6 @@ CREATE TABLE `project_releases` (
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
--- Temporary abstraction folders: read-only copies of de-identified documents
--- picked by metadata for one person's task, deleted when done or when they
--- expire (see app/abstraction.py). criteria and file_ids are JSON, kept so a
--- folder can be made again.
 DROP TABLE IF EXISTS `abstraction_folders`;
 
 CREATE TABLE `abstraction_folders` (
@@ -244,9 +255,6 @@ CREATE TABLE `abstraction_folders` (
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
--- Security incidents and breach reports (protocol section 4, app/incidents.py).
--- Times are ISO strings in UTC; the 24 h and 72 h report deadlines are
--- counted from detected_at.
 DROP TABLE IF EXISTS `incidents`;
 
 CREATE TABLE `incidents` (

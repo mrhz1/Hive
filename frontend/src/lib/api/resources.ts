@@ -73,18 +73,23 @@ import {
 } from '@/schemas/role'
 import {
   candidateListSchema,
+  cohortSearchSchema,
+  consentImportSchema,
+  consentListSchema,
+  consentSchema,
   projectDetailSchema,
   projectListSchema,
   releaseDocumentListSchema,
   releaseSchema,
   releaseSummaryListSchema,
   releaseSummarySchema,
+  type CohortCriteria,
+  type ConsentPayload,
   type ProjectPayload,
 } from '@/schemas/project'
 import {
   userListSchema,
   userSchema,
-  type ProfileFormValues,
   type User,
   type UserFormValues,
 } from '@/schemas/user'
@@ -138,7 +143,7 @@ async function blobError(error: unknown): Promise<unknown> {
       const parsed = apiErrorSchema.parse(JSON.parse(await error.response.data.text()))
       return new ApiError(error.response.status, parsed.error.code, parsed.error.detail)
     } catch {
-      // Not the API envelope; fall through to the generic mapping.
+      return toApiError(error)
     }
   }
   return toApiError(error)
@@ -216,7 +221,6 @@ export type ApplicationPayload = {
   assigned_to_id?: string | null
   original_file_path?: string | null
 
-  /** Every check ticked; required when status becomes 'submitted'. */
   checklist?: Record<string, boolean>
 }
 
@@ -367,6 +371,11 @@ export const applicationFilesApi = {
       })
     ),
 
+  markLeaded: (fileId: string, leaded: boolean) =>
+    request(applicationFileSchema, () =>
+      api.put(`/files/${fileId}/leaded`, { leaded_phi: leaded })
+    ),
+
   setDocumentInfo: (fileId: string, modality: string, documentDate: string) =>
     request(applicationFileSchema, () =>
       api.put(`/files/${fileId}/document-info`, {
@@ -480,7 +489,24 @@ export const abstractionApi = {
 export const projectsApi = {
   list: () => request(projectListSchema, () => api.get('/projects')),
   get: (id: string) => request(projectDetailSchema, () => api.get(`/projects/${id}`)),
-  candidates: () => request(candidateListSchema, () => api.get('/projects/candidates')),
+  candidates: (id: string) =>
+    request(candidateListSchema, () => api.get(`/projects/${id}/candidates`)),
+  searchCohort: (id: string, criteria: CohortCriteria) =>
+    request(cohortSearchSchema, () =>
+      api.post(`/projects/${id}/cohort/search`, criteria)
+    ),
+  buildWorkspace: (id: string, includeDocuments: boolean) =>
+    request(projectDetailSchema, () =>
+      api.post(`/projects/${id}/workspace`, { include_documents: includeDocuments })
+    ),
+  extendWorkspace: (id: string, reason: string) =>
+    request(projectDetailSchema, () =>
+      api.post(`/projects/${id}/workspace/extend`, { reason })
+    ),
+  deleteWorkspace: (id: string, reason: string) =>
+    request(projectDetailSchema, () =>
+      api.post(`/projects/${id}/workspace/delete`, { reason })
+    ),
   create: (values: ProjectPayload) =>
     request(projectDetailSchema, () => api.post('/projects', values)),
   update: (id: string, values: ProjectPayload) =>
@@ -499,6 +525,22 @@ export const projectsApi = {
     } catch (error) {
       throw toApiError(error)
     }
+  },
+}
+
+export const consentsApi = {
+  list: (patientId?: string) =>
+    request(consentListSchema, () =>
+      api.get('/consents', { params: patientId ? { patient_id: patientId } : undefined })
+    ),
+  record: (values: ConsentPayload) =>
+    request(consentSchema, () => api.post('/consents', values)),
+  importFile: (file: File, apply: boolean) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request(consentImportSchema, () =>
+      api.post(apply ? '/consents/import' : '/consents/import/preview', form)
+    )
   },
 }
 
@@ -567,8 +609,6 @@ export const securityApi = {
 
 export const meApi = {
   get: () => request(userSchema, () => api.get('/me')),
-  update: (values: ProfileFormValues) =>
-    request(userSchema, () => api.put('/me', values)),
 }
 
 export const deidentifiedFilesApi = {

@@ -182,7 +182,7 @@ export function ApplicationWizard({
       toast.success('Application submitted')
       await navigate({ to: '/applications' })
     } catch {
-      // Toasted by the hook.
+      return
     }
   }
 
@@ -193,7 +193,7 @@ export function ApplicationWizard({
   const rejected = rejectedCount(files.data ?? [])
 
   const locked = isReadOnly(record?.status)
-  const unchecked = Boolean(patient && !patient.details_checked_at)
+  const unchecked = Boolean(patient && !patient.details_checked_at && !patient.no_records)
 
   function confirmPatientDetails() {
     if (!patient) return
@@ -388,7 +388,6 @@ export function ApplicationWizard({
               </Card>
             ) : null}
 
-            {}
             {!locked && rejected > 0 ? (
               <Card className="p-5 text-sm text-[rgb(var(--foreground-muted))]">
                 {rejected} document{rejected === 1 ? '' : 's'} in step 2{' '}
@@ -403,7 +402,6 @@ export function ApplicationWizard({
                 Back to documents
               </Button>
 
-              {}
               {locked ? (
                 <Button onClick={() => void navigate({ to: '/applications' })}>
                   Close

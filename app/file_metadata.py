@@ -120,7 +120,30 @@ def _extract_word(path: Path) -> Dict[str, str]:
     return _extract_docx(path)
 
 
+def _extract_image(path: Path) -> Dict[str, str]:
+    from PIL import ExifTags, Image
+
+    with Image.open(path) as image:
+        fields = [
+            ("format", image.format),
+            ("width", image.width),
+            ("height", image.height),
+            ("mode", image.mode),
+            ("frames", getattr(image, "n_frames", 1)),
+        ]
+        dpi = image.info.get("dpi")
+        if dpi:
+            fields.append(("dpi", "x".join(str(round(float(v))) for v in dpi[:2])))
+        exif = image.getexif()
+        for tag, value in exif.items():
+            fields.append((f"exif_{ExifTags.TAGS.get(tag, tag)}", value))
+        for tag, value in exif.get_ifd(0x8769).items():
+            fields.append((f"exif_{ExifTags.TAGS.get(tag, tag)}", value))
+    return _collect(fields)
+
+
 _EXTRACTORS = {
+    "image": _extract_image,
     "pdf": _extract_pdf,
     "dicom": _extract_dicom,
     "word": _extract_word,

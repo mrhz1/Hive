@@ -9,12 +9,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from app import deid, document_info, intake
+from app import deid, document_info, image_convert, intake
 from app.audit import record_audit
 from app.crud import patients as patients_crud
 from app.db import authoritative, hive_cursor
 from app.embed import embed_metadata, generated_facts
-from app.logging_setup import get_logger
+from app.logging_setup import get_logger, ref
 
 log = get_logger(__name__)
 
@@ -205,13 +205,6 @@ class Heartbeat:
 
 
 def forget_dead_workers():
-    """Drop the heartbeats of workers that are gone.
-
-    On Cloudera each Job run is a new container with a new host name, so a
-    run that was killed leaves a heartbeat nothing will ever overwrite --
-    still "working", still holding its files -- and the Intake page would
-    report the de-identification as stopped for good.
-    """
     folder = intake.state_dir() / "workers"
     if not folder.is_dir():
         return 0
@@ -249,8 +242,6 @@ class PatientCreator:
         self.thread.start()
 
     def add(self, code):
-        # Only dedupes codes still waiting in the queue: a code finished again
-        # after it was handled is queued again, so its new files are attached.
         if not code:
             return
         with self.seen_lock:
@@ -392,7 +383,9 @@ class Task:
 
 
 def is_dicom(task):
-    return (task.extension or "").lower() in ("dcm", "dicom")
+    return (task.extension or "").lower() in ("dcm", "dicom") or image_convert.is_image(
+        task.extension
+    )
 
 
 def split_into_runs(tasks, workers=1):
@@ -426,8 +419,15 @@ def run_pipeline(tasks, ocr_batch, workdir):
         if not task.path.is_file():
             results[n] = deid.DeidError("the file is no longer in the incoming folder")
             continue
-        link = input_dir / f"f{n:05d}.{(task.extension or 'bin').lower()}"
-        link.symlink_to(task.path.resolve())
+        if image_convert.is_image(task.extension):
+            try:
+                link = deid.pipeline_input(task.path, input_dir, task.code, f"f{n:05d}")
+            except deid.DeidError as e:
+                results[n] = e
+                continue
+        else:
+            link = input_dir / f"f{n:05d}.{(task.extension or 'bin').lower()}"
+            link.symlink_to(task.path.resolve())
         links[str(link)] = n
 
     if links:
@@ -465,7 +465,7 @@ def finish(task, result):
 
     if not isinstance(result, Path):
         detail = str(result) if result is not None else "no result"
-        log.error("intake_file_failed", path=task.relative_path, error=detail)
+        log.error("intake_file_failed", file_ref=ref(task.relative_path), code=task.code, error=detail)
         candidate = intake.Candidate(
             path=task.path,
             relative_path=task.relative_path,
@@ -476,7 +476,7 @@ def finish(task, result):
         try:
             intake.set_aside(candidate, intake.failed_root(), intake.REDACTION_FAILED, detail)
         except OSError as e:
-            log.error("intake_file_move_failed", path=task.relative_path, error=str(e))
+            log.error("intake_file_move_failed", file_ref=ref(task.relative_path), error=str(e))
         return "failed"
 
     target_dir = (
@@ -513,14 +513,13 @@ def finish(task, result):
             output_name=final.name,
             output_type=file_type,
             by="intake",
-            source_name=task.name,
         )
         embed_metadata(result, file_type, facts)
         os.replace(result, partial)
         original = intake.move_file(task.path, original)
         complete(pending, original)
     except Exception as e:
-        log.exception("intake_file_finish_failed", path=task.relative_path, error=str(e))
+        log.exception("intake_file_finish_failed", file_ref=ref(task.relative_path), error=str(e))
         return "failed"
     return "done"
 
@@ -665,8 +664,6 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
             state["batch"] = []
 
     def scan():
-        """Queue every settled file not queued yet; return how long the
-        unsettled ones still need, one entry per file."""
         waiting = []
         for path in intake.walk(root):
             if limit is not None and state["queued"] >= limit:
@@ -699,10 +696,6 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
         return waiting
 
     try:
-        # Files copied in just before Start are still "fresh" and skipped so a
-        # half-written file is never read. Rather than ending with 0 done and
-        # needing another click, wait for them -- but only as long as they
-        # need, and never past INTAKE_SETTLE_WAIT_SECONDS.
         deadline = time.time() + intake.settle_wait_seconds()
         waiting = scan()
         while waiting and (limit is None or state["queued"] < limit):

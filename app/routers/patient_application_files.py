@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app import data_dictionary, deid_progress, document_info, file_corrections
-from app import intake, intake_notices, purge
+from app import intake, intake_notices, purge, upload_log
 from app.audit import record_audit
 from app import uploads
 from app.crud import file_metadata as metadata_crud
@@ -37,6 +37,7 @@ from app.schemas import (
     DocumentInfoUpdate,
     FileMetadata,
     FileReview,
+    LeadedMark,
     PatientApplicationFile,
     PatientApplicationFileUpdate,
     RejectedFile,
@@ -104,10 +105,12 @@ def list_application_files(
 )
 async def upload_application_files(
     application_id: str,
+    background: BackgroundTasks,
+    request: Request,
     files: List[UploadFile] = File(...),
     description: Optional[str] = Form(default=None),
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:update")),
+    actor: User = Depends(require_permission("application:update")),
 ):
     application = applications_crud.get_application_or_404(cursor, application_id)
 
@@ -124,7 +127,7 @@ async def upload_application_files(
         data = await upload.read()
 
         if len(data) == 0:
-            log.info("skipping_empty_upload", name=raw_name)
+            log.info("skipping_empty_upload", application_id=application_id)
             continue
 
         if len(data) > MAX_FILE_BYTES:
@@ -156,6 +159,19 @@ async def upload_application_files(
         )
         _record_metadata(cursor, record.id, stored_path, extension)
         created.append(record)
+        background.add_task(
+            upload_log.record_upload,
+            actor=actor,
+            kind="application_file",
+            file_id=record.id,
+            stored_name=sanitized,
+            uploaded_as=raw_name,
+            facts=upload_log.fingerprint(data),
+            patient_id=patient_id,
+            application_id=application_id,
+            identified=True,
+            request_id=request.headers.get("X-Request-ID"),
+        )
 
     if not created:
         raise ValidationError("None of the selected files contained any data")
@@ -197,7 +213,7 @@ async def upload_application_files_in_background(
             data = await upload.read()
 
             if len(data) == 0:
-                log.info("skipping_empty_upload", name=raw_name)
+                log.info("skipping_empty_upload", application_id=application_id)
                 continue
 
             if len(data) > MAX_FILE_BYTES:
@@ -241,10 +257,12 @@ async def upload_application_files_in_background(
 )
 async def upload_deidentified_application_file(
     application_id: str,
+    background: BackgroundTasks,
+    request: Request,
     file: UploadFile = File(...),
     description: Optional[str] = Form(default=None),
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:update")),
+    actor: User = Depends(require_permission("application:update")),
 ):
     application = applications_crud.get_application_or_404(cursor, application_id)
 
@@ -308,11 +326,23 @@ async def upload_deidentified_application_file(
         ),
     )
 
+    background.add_task(
+        upload_log.record_upload,
+        actor=actor,
+        kind="deidentified_file",
+        file_id=record.id,
+        stored_name=stored_name,
+        uploaded_as=raw_name,
+        facts=upload_log.fingerprint(data),
+        patient_id=patient_id or None,
+        application_id=application_id,
+        identified=False,
+        request_id=request.headers.get("X-Request-ID"),
+    )
     log.info(
         "deidentified_file_attached",
         application_id=application_id,
         file_id=record.id,
-        name=stored_name,
     )
     return record
 
@@ -828,7 +858,36 @@ def review_application_file(
     return updated
 
 
-# Submitted applications are final; their files keep their names.
+@router.put("/files/{file_id}/leaded", response_model=PatientApplicationFile)
+def mark_leaded(
+    file_id: str,
+    payload: LeadedMark,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("files:reject")),
+):
+    record = crud.get_file_or_404(cursor, file_id)
+    purge.refuse_if_deleted(record)
+    if record.leaded_phi == payload.leaded_phi:
+        return record
+
+    updated = crud.update_file(
+        cursor, file_id, PatientApplicationFileUpdate(leaded_phi=payload.leaded_phi)
+    )
+    background.add_task(
+        record_audit,
+        action="UPDATE",
+        entity_type="application_file",
+        entity_id=file_id,
+        user_id=actor.id,
+        old_values={"leaded_phi": record.leaded_phi},
+        new_values={"leaded_phi": payload.leaded_phi},
+        request_id=request.headers.get("X-Request-ID"),
+    )
+    return updated
+
+
 DOCUMENT_INFO_FROZEN = ("submitted", "deleted")
 
 
@@ -841,7 +900,6 @@ def set_document_info(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:update")),
 ):
-    """Set the modality and date a redacted file is named by, renaming it on disk."""
     record = crud.get_file_or_404(cursor, file_id)
     purge.refuse_if_deleted(record)
 
@@ -853,7 +911,7 @@ def set_document_info(
 
     modality = document_info.clean_modality(payload.modality)
     if modality is None:
-        raise ValidationError(f"'{payload.modality}' is not a known modality")
+        raise ValidationError(f"'{payload.modality}' is not a known document type or modality")
     day = document_info.clean_date(payload.document_date)
     if day is None:
         raise ValidationError(
@@ -887,7 +945,6 @@ def purge_rejected_file(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("files:delete")),
 ):
-    """Delete a rejected file's documents from disk and keep its row as a record."""
     before = crud.get_file_or_404(cursor, file_id)
     after = purge.purge_rejected_file(cursor, file_id, payload.reason)
 

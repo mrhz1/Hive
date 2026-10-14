@@ -15,7 +15,13 @@ export const queryKeys = {
     all: ['projects'] as const,
     list: () => [...queryKeys.projects.all, 'list'] as const,
     detail: (id: string) => [...queryKeys.projects.all, 'detail', id] as const,
-    candidates: () => [...queryKeys.projects.all, 'candidates'] as const,
+    candidates: (id: string) => [...queryKeys.projects.all, 'candidates', id] as const,
+  },
+
+  consents: {
+    all: ['consents'] as const,
+    list: (patientId?: string) =>
+      [...queryKeys.consents.all, 'list', patientId ?? ''] as const,
   },
 
   abstraction: {

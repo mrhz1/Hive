@@ -15,6 +15,7 @@ from app.routers import (
     abstraction as abstraction_router,
     access_log as access_log_router,
     audit_log,
+    consents as consents_router,
     file_metadata,
     files,
     intake as intake_router,
@@ -132,7 +133,10 @@ app.add_exception_handler(Exception, unhandled_error_handler)
 
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request, exc: RequestValidationError):
-    log.warning("request_validation_failed", errors=exc.errors())
+    log.warning(
+        "request_validation_failed",
+        errors=[{"loc": list(e["loc"]), "type": e.get("type")} for e in exc.errors()],
+    )
     return JSONResponse(
         status_code=422,
         content={
@@ -149,6 +153,7 @@ async def validation_error_handler(request, exc: RequestValidationError):
 
 app.include_router(me.router)
 app.include_router(projects_router.router)
+app.include_router(consents_router.router)
 app.include_router(zone2_router.router)
 app.include_router(abstraction_router.router)
 app.include_router(security_router.router)

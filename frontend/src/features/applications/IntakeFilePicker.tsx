@@ -9,8 +9,6 @@ type Props = {
   code: string
 }
 
-// Every de-identified document waiting under the patient code belongs to the
-// application, so they are attached as soon as this step opens.
 export function IntakeFilePicker({ applicationId, code }: Props) {
   const available = useCodeFiles(code)
   const attach = useAttachIntakeFiles(applicationId)

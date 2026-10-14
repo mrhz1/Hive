@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from app.logging_setup import get_logger
+from app.logging_setup import get_logger, ref
 
 log = get_logger(__name__)
 
@@ -48,5 +48,5 @@ def stamp_pdf(path: Path, patient_id: str) -> int:
         document.close()
 
     os.replace(temporary, path)
-    log.info("pdf_stamped", path=str(path), patient_id=patient_id, pages=pages)
+    log.info("pdf_stamped", file_ref=ref(path), patient_id=patient_id, pages=pages)
     return pages

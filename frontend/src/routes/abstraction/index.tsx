@@ -53,7 +53,7 @@ const DOCUMENT_COLUMNS: Array<Column<AbstractionDocument>> = [
   },
   {
     id: 'modality',
-    header: 'Modality',
+    header: 'Type',
     cell: (d) => <Badge tone="neutral">{d.modality ?? '—'}</Badge>,
     sortValue: (d) => d.modality ?? '',
   },
@@ -98,7 +98,6 @@ function NewFolder({ onDone }: { onDone: () => void }) {
   }
   const criteriaKey = JSON.stringify(criteria)
 
-  // A preview is only good for the criteria it was made with.
   const { reset } = preview
   useEffect(() => {
     reset()
@@ -127,10 +126,10 @@ function NewFolder({ onDone }: { onDone: () => void }) {
           onChange={(event) => setCodes(event.target.value)}
         />
         <TextField
-          label="Modalities"
+          label="Types / modalities"
           value={modalities}
-          placeholder="MR, CT, US"
-          hint="DICOM codes or names like MRI, Echo, X-ray; UNKNOWN for not set"
+          placeholder="DISCHARGE, ECHO_REPORT, MR"
+          hint="Document types (DISCHARGE, CONSENT, ...) or DICOM modalities (MR, CT); UNKNOWN for not set"
           onChange={(event) => setModalities(event.target.value)}
         />
         <TextField

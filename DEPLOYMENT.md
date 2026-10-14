@@ -204,6 +204,7 @@ Users need to sign out and back in after that.
 | `project:view` / `create` / `update` / `delete` | the Projects pages: approvals, consent, patients (not given to the default viewer role) |
 | `zone2:prepare` | Prepare a project's safe copy into the Zone 2 inbox |
 | `zone2:review` | the Zone 2 inbox: release a safe copy to Zone 2 or send it back |
+| `consent:view` / `update` | the Consent matrix page: see and record patients' consent decisions |
 
 ### Research projects (Zone 2) on an existing database
 
@@ -219,6 +220,29 @@ Application (or in `Backend/.env.local`), grant the `project:*` and `zone2:*`
 permissions to the right roles, and restart the API. In Cloudera, give each
 project's researchers access to `ZONE2_DIR/<project code>/` only; the
 archive (`PROJECTS_DIR`) holds the ID map and must stay restricted.
+
+Zone 1X workspaces are written to `PROJECTS_DIR/<project code>/workspace/`;
+give the project's analysts access to that folder only. Schedule
+`scripts/workspace_cleanup.py` as a daily Job (next to
+`scripts/abstraction_cleanup.py`) so expired workspaces are deleted. Grant
+`consent:view` / `consent:update` to whoever keeps the consent matrix.
+
+Security settings:
+
+- Set `DEID_UID_SALT` (a long random secret, the same on the API and every
+  Job, never changed afterwards) so de-identified DICOM files of one study
+  keep a common study UID across runs.
+- Only trusted developers or analysts may write to the `cleaning/` folder
+  (or `CLEANING_DIR`): the Python files there run whenever a workspace is
+  built.
+- Logs carry a `file_ref` instead of file names and paths (sites' names can
+  hold a patient's name). To find the lines about a file:
+  `python -c "from app.logging_setup import ref; print(ref('AA1234/scan.pdf'))"`.
+
+Reports: schedule `scripts/qc_check.py` as a nightly Job (set `QC_EMAIL_TO`),
+and run `scripts/migration_report.py` during and after the migration. Both
+write to `REPORTS_DIR`, which holds patient codes: keep it restricted like
+the data folders.
 
 ### New columns on an existing database
 

@@ -23,7 +23,7 @@ def _repo_root():
 
 sys.path.insert(0, str(_repo_root()))
 
-from app.db import hive_cursor  # noqa: E402
+from app.db import hive_cursor
 
 MIGRATIONS = (
     ("patient_application_files", "review_status", "STRING"),
@@ -35,9 +35,17 @@ MIGRATIONS = (
     ("patient", "details_checked_at", "STRING"),
     ("patient", "details_checked_by", "STRING"),
     ("patient_application_files", "redaction_boxes", "INT"),
+    ("patient", "no_records", "BOOLEAN"),
+    ("patient_application_files", "leaded_phi", "BOOLEAN"),
+    ("projects", "workspace_path", "STRING"),
+    ("projects", "workspace_built_at", "STRING"),
+    ("projects", "workspace_expires_at", "STRING"),
 )
 
-NEW_TABLES = ("projects", "project_patients", "project_releases", "abstraction_folders", "incidents")
+NEW_TABLES = (
+    "projects", "project_patients", "project_releases", "abstraction_folders", "incidents",
+    "patient_consents",
+)
 
 SCHEMA_FILE = _repo_root() / "sql" / "schema.sql"
 

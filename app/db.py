@@ -74,7 +74,7 @@ def impala_available() -> bool:
     if not IMPALA_CONNECTION:
         return False
     try:
-        import cml.data_v1  # noqa: F401
+        import cml.data_v1
     except Exception:
         return False
     return True

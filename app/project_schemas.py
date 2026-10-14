@@ -1,6 +1,4 @@
-"""Models for research projects and their Zone 2 releases."""
-
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -63,6 +61,9 @@ class Project(BaseModel):
     created_by_id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    workspace_path: Optional[str] = None
+    workspace_built_at: Optional[str] = None
+    workspace_expires_at: Optional[str] = None
 
 
 class ProjectPatient(BaseModel):
@@ -93,8 +94,6 @@ class ProjectRelease(BaseModel):
 
 
 class CohortMember(BaseModel):
-    """A patient in a project, as the project page shows it (Zone 1X only)."""
-
     patient_id: str
     project_patient_id: str
     applications: int = 0
@@ -102,11 +101,10 @@ class CohortMember(BaseModel):
 
 
 class Candidate(BaseModel):
-    """A patient who has submitted data that can go into a project."""
-
     patient_id: str
     applications: int
     documents: int
+    excluded_reason: Optional[str] = None
 
 
 class ProjectDetail(Project):
@@ -123,8 +121,6 @@ class ReleaseDecision(BaseModel):
 
 
 class ReleaseDocument(BaseModel):
-    """A released file, as listed in the safe copy's documents.csv."""
-
     project_document_id: str
     project_patient_id: str
     file_type: str = ""
@@ -136,3 +132,81 @@ class ReleaseSummary(ProjectRelease):
     project_short_code: str = ""
     columns: dict = Field(default_factory=dict)
     samples: dict = Field(default_factory=dict)
+
+
+CONSENT_TYPES = ("research", "documents")
+CONSENT_STATUSES = ("granted", "refused", "withdrawn")
+
+
+class ConsentCreate(BaseModel):
+    patient_id: str
+    consent_type: str = Field(pattern="^(research|documents)$")
+    status: str = Field(pattern="^(granted|refused|withdrawn)$")
+    version: Optional[str] = None
+    consent_date: Optional[date] = None
+    note: Optional[str] = None
+
+    @field_validator("patient_id", mode="before")
+    @classmethod
+    def _code(cls, value):
+        return (value or "").strip().upper()
+
+    @field_validator("version", "note", mode="before")
+    @classmethod
+    def _blank_to_null(cls, value):
+        return _clean(value)
+
+
+class Consent(ConsentCreate):
+    id: str
+    source: Optional[str] = None
+    recorded_by_id: Optional[str] = None
+    recorded_at: Optional[str] = None
+
+
+class ConsentImportRow(BaseModel):
+    line: int
+    code: str = ""
+    consent_type: str = ""
+    status: str = ""
+    action: str
+    errors: List[str] = Field(default_factory=list)
+
+
+class ConsentImportResult(BaseModel):
+    applied: bool = False
+    counts: dict
+    rows: List[ConsentImportRow]
+
+
+class CohortCriteria(BaseModel):
+    prefixes: List[str] = Field(default_factory=list)
+    registered_from: Optional[date] = None
+    registered_to: Optional[date] = None
+    age_min: Optional[int] = Field(default=None, ge=0)
+    age_max: Optional[int] = Field(default=None, ge=0)
+    countries: List[str] = Field(default_factory=list)
+    states: List[str] = Field(default_factory=list)
+    institution_codes: List[str] = Field(default_factory=list)
+    alive_only: bool = False
+    modalities: List[str] = Field(default_factory=list)
+    document_from: Optional[date] = None
+    document_to: Optional[date] = None
+    exclude_codes: List[str] = Field(default_factory=list)
+
+
+class CohortSearchResult(BaseModel):
+    matches: List[str]
+    excluded: dict = Field(default_factory=dict)
+
+
+class WorkspaceBuild(BaseModel):
+    include_documents: bool = True
+
+
+class WorkspaceExtend(BaseModel):
+    reason: str = Field(min_length=1)
+
+
+class WorkspaceDelete(BaseModel):
+    reason: Optional[str] = None

@@ -23,10 +23,10 @@ def _repo_root():
 
 sys.path.insert(0, str(_repo_root()))
 
-from app.crud import roles as roles_crud  # noqa: E402
-from app.db import hive_cursor  # noqa: E402
-from app.schemas import RoleUpdate  # noqa: E402
-from app.security import KNOWN_PERMISSIONS  # noqa: E402
+from app.crud import roles as roles_crud
+from app.db import hive_cursor
+from app.schemas import RoleUpdate
+from app.security import KNOWN_PERMISSIONS
 
 
 def parse_args(argv=None):
