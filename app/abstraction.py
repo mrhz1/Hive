@@ -34,6 +34,7 @@ from app.crud import patient_applications as applications_crud
 from app.errors import ValidationError
 from app.logging_setup import get_logger
 from app.purge import is_deleted_file
+from app.safe_cells import row as safe_row
 from app.schemas import (
     AbstractionCriteria,
     AbstractionDocument,
@@ -237,7 +238,7 @@ def _copy(cursor, target: Path, docs: List[AbstractionDocument]) -> int:
         with open(target / MANIFEST, "w", newline="") as handle:
             writer = csv.writer(handle)
             writer.writerow(MANIFEST_COLUMNS)
-            writer.writerows(rows)
+            writer.writerows(safe_row(r) for r in rows)
         _make_read_only(target)
     except Exception:
         remove_dir(target)

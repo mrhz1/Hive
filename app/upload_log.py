@@ -1,0 +1,96 @@
+"""Recording every file put into the app, for later investigation.
+
+Each upload (an original, an already de-identified file, a replacement of a
+redacted copy) leaves two records:
+
+- an audit entry: who, which record, the stored name, the name it was
+  uploaded as, its size and SHA-256; for a replacement, the same about the
+  file it replaced (that one is deleted, so its fingerprint is what stays);
+- an access log entry (action "upload"), which also holds the time, the
+  client IP and the request id.
+
+The SHA-256 lets anyone later prove which exact file was uploaded.
+"""
+
+import hashlib
+from pathlib import Path
+from typing import Optional
+
+from app.access_log import UPLOAD, record_access
+from app.audit import record_audit
+from app.logging_setup import get_logger
+
+log = get_logger(__name__)
+
+
+class _Actor:
+    """Enough of a user for the logs when only the id is known."""
+
+    def __init__(self, user_id: Optional[str]):
+        self.id = user_id
+        self.username = None
+
+
+def fingerprint(data: bytes) -> dict:
+    return {"size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def file_fingerprint(path) -> Optional[dict]:
+    try:
+        digest = hashlib.sha256()
+        size = 0
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+                size += len(chunk)
+        return {"size": size, "sha256": digest.hexdigest()}
+    except OSError as e:
+        log.warning("upload_fingerprint_failed", error=str(e))
+        return None
+
+
+def record_upload(
+    *,
+    actor=None,
+    actor_id: Optional[str] = None,
+    kind: str,
+    file_id: str,
+    stored_name: str,
+    uploaded_as: str,
+    facts: Optional[dict],
+    patient_id: Optional[str] = None,
+    application_id: Optional[str] = None,
+    identified: bool,
+    replaced: Optional[dict] = None,
+    request_id: Optional[str] = None,
+) -> None:
+    """`kind`: application_file (an original), deidentified_file. `facts`:
+    fingerprint() of the stored file. `replaced`: what the file replaced."""
+    actor = actor or _Actor(actor_id)
+    new_values = {
+        "stored_as": stored_name,
+        "uploaded_as": uploaded_as,
+        "patient_id": patient_id,
+        "application_id": application_id,
+        **(facts or {}),
+    }
+    record_audit(
+        action="REPLACE" if replaced else "CREATE",
+        entity_type=kind,
+        entity_id=file_id,
+        user_id=actor.id,
+        old_values=replaced,
+        new_values=new_values,
+        request_id=request_id,
+    )
+    record_access(
+        UPLOAD,
+        actor=actor,
+        resource_type=kind,
+        resource_id=file_id,
+        patient_id=patient_id,
+        application_id=application_id,
+        identified=identified,
+        byte_count=(facts or {}).get("size"),
+        detail=f"replaced {replaced.get('name')}" if replaced else stored_name,
+    )

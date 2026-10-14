@@ -18,6 +18,7 @@ checked: their first application waits until someone confirms them.
 import csv
 import io
 import re
+from itertools import islice
 from datetime import date, datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -112,7 +113,11 @@ def template_csv() -> bytes:
 # --- reading the file -------------------------------------------------------
 
 
-def _read_rows(name: str, data: bytes) -> List[List[object]]:
+def _read_rows(name: str, data: bytes, max_rows: Optional[int] = None) -> List[List[object]]:
+    """The rows of the first sheet (or the CSV). With `max_rows`, stops one
+    row past it, so a file far too big is refused without being read whole
+    into memory; the caller still sees there are too many."""
+    limit = None if max_rows is None else max_rows + 2  # the header, one too many
     if (name or "").lower().endswith((".xlsx", ".xlsm")):
         from openpyxl import load_workbook
 
@@ -121,7 +126,7 @@ def _read_rows(name: str, data: bytes) -> List[List[object]]:
         except Exception as e:
             raise ValidationError(f"Could not read the Excel file: {e}")
         sheet = book.worksheets[0]
-        return [list(row) for row in sheet.iter_rows(values_only=True)]
+        return [list(row) for row in islice(sheet.iter_rows(values_only=True), limit)]
 
     try:
         text = data.decode("utf-8-sig")
@@ -131,7 +136,7 @@ def _read_rows(name: str, data: bytes) -> List[List[object]]:
         dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
     except csv.Error:
         dialect = csv.excel
-    return [list(row) for row in csv.reader(io.StringIO(text), dialect)]
+    return [list(row) for row in islice(csv.reader(io.StringIO(text), dialect), limit)]
 
 
 def _text(value) -> Optional[str]:
@@ -199,7 +204,7 @@ def _same(a, b) -> bool:
 
 def plan(cursor, name: str, data: bytes):
     """What importing would do, row by row: (result, new rows, fills)."""
-    rows = _read_rows(name, data)
+    rows = _read_rows(name, data, MAX_ROWS)
     while rows and not any(_text(v) for v in rows[0]):
         rows.pop(0)
     if not rows:
@@ -213,7 +218,10 @@ def plan(cursor, name: str, data: bytes):
 
     body = [(n, r) for n, r in enumerate(rows[1:], start=2) if any(_text(v) for v in r)]
     if len(body) > MAX_ROWS:
-        raise ValidationError(f"{len(body)} rows; at most {MAX_ROWS} at a time")
+        raise ValidationError(
+            f"The file has more than {MAX_ROWS} rows; split it into smaller "
+            "files and import them one by one"
+        )
 
     existing = {p.id: p for p in crud.list_patients(cursor)}
     owners: Dict[Tuple[str, str], str] = {}

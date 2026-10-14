@@ -14,7 +14,7 @@ from app.audit import record_audit
 from app.crud import patients as patients_crud
 from app.db import authoritative, hive_cursor
 from app.embed import embed_metadata, generated_facts
-from app.logging_setup import get_logger
+from app.logging_setup import get_logger, ref
 
 log = get_logger(__name__)
 
@@ -476,7 +476,7 @@ def finish(task, result):
 
     if not isinstance(result, Path):
         detail = str(result) if result is not None else "no result"
-        log.error("intake_file_failed", path=task.relative_path, error=detail)
+        log.error("intake_file_failed", file_ref=ref(task.relative_path), code=task.code, error=detail)
         candidate = intake.Candidate(
             path=task.path,
             relative_path=task.relative_path,
@@ -487,7 +487,7 @@ def finish(task, result):
         try:
             intake.set_aside(candidate, intake.failed_root(), intake.REDACTION_FAILED, detail)
         except OSError as e:
-            log.error("intake_file_move_failed", path=task.relative_path, error=str(e))
+            log.error("intake_file_move_failed", file_ref=ref(task.relative_path), error=str(e))
         return "failed"
 
     target_dir = (
@@ -524,14 +524,13 @@ def finish(task, result):
             output_name=final.name,
             output_type=file_type,
             by="intake",
-            source_name=task.name,
         )
         embed_metadata(result, file_type, facts)
         os.replace(result, partial)
         original = intake.move_file(task.path, original)
         complete(pending, original)
     except Exception as e:
-        log.exception("intake_file_finish_failed", path=task.relative_path, error=str(e))
+        log.exception("intake_file_finish_failed", file_ref=ref(task.relative_path), error=str(e))
         return "failed"
     return "done"
 

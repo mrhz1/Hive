@@ -439,7 +439,7 @@ def _rename_outputs(
                 "deid_sidecar_rename_failed", source=str(path), error=str(e)
             )
 
-    log.info("deid_output_named", name=target.name, produced_as=produced.name)
+    log.info("deid_output_named", name=target.name)
     return target
 
 
@@ -473,7 +473,7 @@ def run_deidentification(file_id: str, request_id: Optional[str] = None) -> None
         log.error("deid_lookup_failed", file_id=file_id, error=str(e))
         return
 
-    log.info("deid_started", file_id=file_id, name=record.sanitized_file_name)
+    log.info("deid_started", file_id=file_id)
 
     if record.deid_status != "processing":
         _set_status(file_id, deid_status="processing")

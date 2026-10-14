@@ -280,8 +280,35 @@ def _shift_dicom_dates(dataset, days: int) -> None:
         element.value = shifted if element.VM > 1 else shifted[0]
 
 
-def _clean_dicom(source: Path, target: Path, code: str, project_id: str, days: int) -> None:
+def _new_uids(dataset, salt: str, depth: int = 0) -> None:
+    """Project-own UIDs, so one image can't be matched across two projects'
+    releases (the same original gets the same new UID within a project)."""
+    from pydicom._uid_dict import UID_dictionary
+    from pydicom.uid import generate_uid
+
+    if depth > 8:
+        return
+    for element in dataset:
+        if element.VR == "SQ":
+            for item in element.value or []:
+                _new_uids(item, salt, depth + 1)
+        elif element.VR == "UI" and element.keyword not in (
+            "ImplementationClassUID", "TransferSyntaxUID", "CodingSchemeUID"
+        ):
+            values = element.value if element.VM > 1 else [element.value]
+            new = [
+                str(v) if not v or str(v) in UID_dictionary
+                else str(generate_uid(entropy_srcs=[salt, str(v)]))
+                for v in values
+            ]
+            element.value = new if element.VM > 1 else new[0]
+
+
+def _clean_dicom(
+    source: Path, target: Path, code: str, project_id: str, days: int, uid_salt: str = ""
+) -> None:
     import pydicom
+    from pydicom.uid import generate_uid
 
     dataset = pydicom.dcmread(str(source), force=True)
     dataset.PatientID = project_id
@@ -295,6 +322,13 @@ def _clean_dicom(source: Path, target: Path, code: str, project_id: str, days: i
         if isinstance(element.value, str) and code in element.value:
             element.value = element.value.replace(code, project_id)
     _shift_dicom_dates(dataset, days)
+    if uid_salt:
+        _new_uids(dataset, uid_salt)
+        meta = getattr(dataset, "file_meta", None)
+        if meta is not None and "MediaStorageSOPInstanceUID" in meta:
+            meta.MediaStorageSOPInstanceUID = generate_uid(
+                entropy_srcs=[uid_salt, str(meta.MediaStorageSOPInstanceUID)]
+            )
     dataset.save_as(str(target))
 
     check = pydicom.dcmread(str(target), force=True)
@@ -302,7 +336,10 @@ def _clean_dicom(source: Path, target: Path, code: str, project_id: str, days: i
         raise DocumentError("the CHSS code is still in the DICOM header")
 
 
-def _copy_document(record, target_dir: Path, document_id: str, code: str, project_id: str, days: int) -> str:
+def _copy_document(
+    record, target_dir: Path, document_id: str, code: str, project_id: str, days: int,
+    uid_salt: str = "",
+) -> str:
     source = storage.resolve_stored_path(record.de_identified_file_path)
     if not source.is_file():
         raise DocumentError("the de-identified copy is missing from disk")
@@ -314,7 +351,7 @@ def _copy_document(record, target_dir: Path, document_id: str, code: str, projec
     elif suffix in (".doc", ".docx"):
         _clean_docx(source, target, code, project_id)
     elif suffix in (".dcm", ".dicom"):
-        _clean_dicom(source, target, code, project_id, days)
+        _clean_dicom(source, target, code, project_id, days, uid_salt)
     else:
         raise DocumentError(f"'{suffix}' documents cannot be released")
     return target.name
@@ -456,7 +493,7 @@ def _build(cursor, project, cohort, release_id, archive: Path, safe: Path) -> di
                     try:
                         name = _copy_document(
                             record, safe / "documents" / pid, doc_id,
-                            member.patient_id, pid, days,
+                            member.patient_id, pid, days, uid_salt=project.id,
                         )
                     except DocumentError as exc:
                         raise DocumentError(f"{record.original_file_name}: {exc}") from exc

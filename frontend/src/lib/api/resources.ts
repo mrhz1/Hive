@@ -90,7 +90,6 @@ import {
 import {
   userListSchema,
   userSchema,
-  type ProfileFormValues,
   type User,
   type UserFormValues,
 } from '@/schemas/user'
@@ -611,8 +610,6 @@ export const securityApi = {
 
 export const meApi = {
   get: () => request(userSchema, () => api.get('/me')),
-  update: (values: ProfileFormValues) =>
-    request(userSchema, () => api.put('/me', values)),
 }
 
 export const deidentifiedFilesApi = {

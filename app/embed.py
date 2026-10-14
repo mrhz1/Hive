@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from app.logging_setup import get_logger
+from app.logging_setup import get_logger, ref
 from app.schemas import METADATA_EXTENSIONS
 
 log = get_logger(__name__)
@@ -17,8 +17,9 @@ def generated_facts(
     output_name: str = "",
     output_type: str = "",
     by: str = "",
-    source_name: str = "",
 ) -> Dict[str, str]:
+    """What the app adds to a de-identified file's metadata. Never the name
+    the site gave the file: it can hold the patient's name."""
     facts = {
         "deidentified": "yes",
         "deidentified_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -32,8 +33,6 @@ def generated_facts(
         facts["deidentified_file_type"] = output_type
     if by:
         facts["deidentified_by"] = by
-    if source_name:
-        facts["deidentified_from"] = source_name
     return facts
 
 
@@ -126,7 +125,7 @@ def embed_metadata(
         return None
 
     if not path.is_file():
-        log.warning("embed_metadata_missing_file", path=str(path))
+        log.warning("embed_metadata_missing_file", file_ref=ref(path))
         return None
 
     try:

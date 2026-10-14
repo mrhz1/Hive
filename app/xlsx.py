@@ -1,4 +1,6 @@
 from io import BytesIO
+
+from app.safe_cells import row as safe_row
 from typing import List, Optional, Sequence, Tuple
 
 MIN_WIDTH = 12
@@ -21,7 +23,7 @@ def workbook_bytes(
     sheet = book.active
     sheet.title = "".join(c for c in sheet_title if c not in r"[]:*?/\\")[:31] or "Sheet1"
 
-    sheet.append(list(headers))
+    sheet.append(safe_row(headers))
     for cell in sheet[1]:
         cell.font = Font(bold=True)
 
@@ -29,7 +31,7 @@ def workbook_bytes(
 
     for row in rows:
         values = ["" if value is None else str(value) for value in row]
-        sheet.append(values)
+        sheet.append(safe_row(values))
         for index, value in enumerate(values):
             if index < len(widths):
                 widths[index] = max(widths[index], len(value))
@@ -47,7 +49,7 @@ def workbook_bytes(
         for cell in definitions[1]:
             cell.font = Font(bold=True)
         for column, meaning in dictionary:
-            definitions.append([column, meaning])
+            definitions.append(safe_row([column, meaning]))
         definitions.column_dimensions["A"].width = 24
         definitions.column_dimensions["B"].width = MAX_WIDTH
         definitions.freeze_panes = "A2"

@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app import data_dictionary, deid_progress, document_info, file_corrections
-from app import intake, intake_notices, purge
+from app import intake, intake_notices, purge, upload_log
 from app.audit import record_audit
 from app import uploads
 from app.crud import file_metadata as metadata_crud
@@ -105,10 +105,12 @@ def list_application_files(
 )
 async def upload_application_files(
     application_id: str,
+    background: BackgroundTasks,
+    request: Request,
     files: List[UploadFile] = File(...),
     description: Optional[str] = Form(default=None),
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:update")),
+    actor: User = Depends(require_permission("application:update")),
 ):
     application = applications_crud.get_application_or_404(cursor, application_id)
 
@@ -125,7 +127,7 @@ async def upload_application_files(
         data = await upload.read()
 
         if len(data) == 0:
-            log.info("skipping_empty_upload", name=raw_name)
+            log.info("skipping_empty_upload", application_id=application_id)
             continue
 
         if len(data) > MAX_FILE_BYTES:
@@ -157,6 +159,19 @@ async def upload_application_files(
         )
         _record_metadata(cursor, record.id, stored_path, extension)
         created.append(record)
+        background.add_task(
+            upload_log.record_upload,
+            actor=actor,
+            kind="application_file",
+            file_id=record.id,
+            stored_name=sanitized,
+            uploaded_as=raw_name,
+            facts=upload_log.fingerprint(data),
+            patient_id=patient_id,
+            application_id=application_id,
+            identified=True,
+            request_id=request.headers.get("X-Request-ID"),
+        )
 
     if not created:
         raise ValidationError("None of the selected files contained any data")
@@ -198,7 +213,7 @@ async def upload_application_files_in_background(
             data = await upload.read()
 
             if len(data) == 0:
-                log.info("skipping_empty_upload", name=raw_name)
+                log.info("skipping_empty_upload", application_id=application_id)
                 continue
 
             if len(data) > MAX_FILE_BYTES:
@@ -242,10 +257,12 @@ async def upload_application_files_in_background(
 )
 async def upload_deidentified_application_file(
     application_id: str,
+    background: BackgroundTasks,
+    request: Request,
     file: UploadFile = File(...),
     description: Optional[str] = Form(default=None),
     cursor=Depends(get_cursor),
-    _actor: User = Depends(require_permission("application:update")),
+    actor: User = Depends(require_permission("application:update")),
 ):
     application = applications_crud.get_application_or_404(cursor, application_id)
 
@@ -309,11 +326,23 @@ async def upload_deidentified_application_file(
         ),
     )
 
+    background.add_task(
+        upload_log.record_upload,
+        actor=actor,
+        kind="deidentified_file",
+        file_id=record.id,
+        stored_name=stored_name,
+        uploaded_as=raw_name,
+        facts=upload_log.fingerprint(data),
+        patient_id=patient_id or None,
+        application_id=application_id,
+        identified=False,
+        request_id=request.headers.get("X-Request-ID"),
+    )
     log.info(
         "deidentified_file_attached",
         application_id=application_id,
         file_id=record.id,
-        name=stored_name,
     )
     return record
 

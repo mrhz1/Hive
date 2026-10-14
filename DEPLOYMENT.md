@@ -227,6 +227,18 @@ give the project's analysts access to that folder only. Schedule
 `scripts/abstraction_cleanup.py`) so expired workspaces are deleted. Grant
 `consent:view` / `consent:update` to whoever keeps the consent matrix.
 
+Security settings:
+
+- Set `DEID_UID_SALT` (a long random secret, the same on the API and every
+  Job, never changed afterwards) so de-identified DICOM files of one study
+  keep a common study UID across runs.
+- Only trusted developers or analysts may write to the `cleaning/` folder
+  (or `CLEANING_DIR`): the Python files there run whenever a workspace is
+  built.
+- Logs carry a `file_ref` instead of file names and paths (sites' names can
+  hold a patient's name). To find the lines about a file:
+  `python -c "from app.logging_setup import ref; print(ref('AA1234/scan.pdf'))"`.
+
 Reports: schedule `scripts/qc_check.py` as a nightly Job (set `QC_EMAIL_TO`),
 and run `scripts/migration_report.py` during and after the migration. Both
 write to `REPORTS_DIR`, which holds patient codes: keep it restricted like

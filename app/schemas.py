@@ -57,12 +57,6 @@ class UserUpdate(BaseModel):
     role_id: Optional[str] = None
 
 
-class ProfileUpdate(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    email: Optional[EmailStr] = None
-
-
 class User(BaseModel):
     id: str
     username: str

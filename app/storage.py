@@ -9,7 +9,7 @@ from typing import Optional
 
 from app.errors import ValidationError
 from app.ids import new_document_serial
-from app.logging_setup import get_logger
+from app.logging_setup import get_logger, ref
 from app.schemas import METADATA_EXTENSIONS
 
 log = get_logger(__name__)
@@ -114,7 +114,7 @@ def move_into(source: Path, directory: Path) -> Path:
 
     if target.resolve() != source.resolve():
         shutil.move(str(source), str(target))
-        log.info("file_moved", source=str(source), path=str(target))
+        log.info("file_moved", source_ref=ref(source), file_ref=ref(target))
     return target
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -304,12 +304,12 @@ def resolve_stored_path(stored: str) -> Path:
         for root in roots:
             rehomed = (root / tail).resolve()
             if rehomed.is_relative_to(root) and rehomed.exists():
-                log.info("file_path_rehomed", stored=stored, resolved=str(rehomed))
+                log.info("file_path_rehomed", file_ref=ref(stored))
                 return rehomed
 
     log.error(
         "file_path_outside_storage_root",
-        path=stored,
+        file_ref=ref(stored),
         storage_roots=[str(r) for r in roots],
     )
     from app.access_log import FAILURE, INTEGRITY, record_access
@@ -341,7 +341,7 @@ def file_deidentified_output(
     if destination.exists():
         destination.unlink()
     shutil.move(str(source), str(destination))
-    log.info("deid_output_filed", source=str(source), destination=str(destination))
+    log.info("deid_output_filed", source_ref=ref(source), file_ref=ref(destination))
     return destination
 
 
@@ -349,7 +349,7 @@ def delete_file(stored: str) -> None:
     try:
         resolve_stored_path(stored).unlink(missing_ok=True)
     except Exception as exc:
-        log.warning("file_delete_failed", path=stored, error=str(exc))
+        log.warning("file_delete_failed", file_ref=ref(stored), error=str(exc))
 
 
 def prune_empty_dirs(directory: Path) -> int:

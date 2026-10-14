@@ -42,6 +42,7 @@ _COLS = ", ".join(f"`{c}`" for c in COLUMNS)
 READ = "read"
 DOWNLOAD = "download"
 EXPORT = "export"
+UPLOAD = "upload"
 DENIED = "denied"
 AUTH_FAILURE = "auth_failure"
 INTEGRITY = "integrity"

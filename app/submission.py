@@ -8,7 +8,7 @@ from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as applications_crud
 from app.db import hive_cursor
 from app.deid import remove_deid_artifacts
-from app.logging_setup import get_logger
+from app.logging_setup import get_logger, ref
 from app.stamp import StampError, stamp_pdf
 from app import intake
 from app.storage import (
@@ -64,7 +64,7 @@ def _file_data_record(record, patient_id: str, staged: Path, original) -> bool:
     try:
         final = intake.move_to_submitted(staged)
     except Exception as e:
-        log.error("submission_move_failed", file_id=record.id, path=str(staged), error=str(e))
+        log.error("submission_move_failed", file_id=record.id, file_ref=ref(staged), error=str(e))
         return False
 
     kept = original
@@ -72,7 +72,7 @@ def _file_data_record(record, patient_id: str, staged: Path, original) -> bool:
         try:
             kept = intake.move_to_submitted(original)
         except Exception as e:
-            log.error("submission_original_move_failed", file_id=record.id, path=str(original), error=str(e))
+            log.error("submission_original_move_failed", file_id=record.id, file_ref=ref(original), error=str(e))
 
     if sidecar.is_file():
         info = intake.read_json(sidecar)
@@ -121,7 +121,7 @@ def process_one(record, patient_id: str) -> bool:
         return False
 
     if not staged.is_file():
-        log.error("submission_output_missing", file_id=record.id, path=str(staged))
+        log.error("submission_output_missing", file_id=record.id, file_ref=ref(staged))
         return False
 
     original = None

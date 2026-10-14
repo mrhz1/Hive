@@ -16,7 +16,7 @@ from app.crud import patients as patients_crud
 from app.deid import DEIDENTIFIABLE_LABEL, is_deidentifiable
 from app.filetype import read_header, resolve_extension
 from app.ids import clean_patient_code, code_formats, describe_code_formats, is_patient_code
-from app.logging_setup import get_logger
+from app.logging_setup import get_logger, ref
 from app.schemas import PatientApplicationCreate, PatientApplicationFileUpdate
 
 log = get_logger(__name__)
@@ -416,7 +416,7 @@ def set_aside(candidate, root, reason, detail=None):
             "moved_at": time.time(),
         },
     )
-    log.info("intake_file_set_aside", path=candidate.relative_path, reason=reason)
+    log.info("intake_file_set_aside", file_ref=ref(candidate.relative_path), reason=reason)
     return target
 
 
@@ -504,7 +504,7 @@ def send_back(kind, relative):
     Path(str(path) + REASON_SUFFIX).unlink(missing_ok=True)
     # Only now is the folder empty: the reason file had to go first.
     storage.prune_empty_dirs(path.parent)
-    log.info("intake_file_sent_back", path=original_relative, source=kind)
+    log.info("intake_file_sent_back", file_ref=ref(original_relative), source=kind)
     return target.relative_to(intake_root()).as_posix()
 
 
@@ -520,7 +520,7 @@ def retry_all_failed(code=None):
             send_back("failed", item["path"])
             moved += 1
         except (ValueError, OSError) as e:
-            log.warning("intake_retry_failed", path=item["path"], error=str(e))
+            log.warning("intake_retry_failed", file_ref=ref(item["path"]), error=str(e))
     log.info("intake_retry_all", code=code, moved=moved)
     return moved
 

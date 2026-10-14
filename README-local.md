@@ -531,6 +531,29 @@ de-identified documents for one person's task.
 - New columns and the `patient_consents` table:
   `python scripts/migrate_columns.py --apply`.
 
+### Metadata, uploads and logs (security review, 2026-10-14)
+
+- **Metadata of de-identified files** keeps the same fields as the original,
+  with identifying values redacted: DICOM (identifying tags become
+  `<REMOVED>`, dates blanked, free text through the name detector, private
+  tags removed, every non-standard UID replaced with a new one keyed by
+  `DEID_UID_SALT`), PDF (Info fields and XMP values through the detector,
+  authors `<REMOVED>`), Word (core properties the same way). The name the
+  site gave the file is no longer written into it. Zone 2 copies of DICOM
+  files get project-own UIDs on top.
+- **Uploads** (originals, de-identified files, replacements) each leave an
+  audit entry (who, stored name, uploaded-as name, size, SHA-256; for a
+  replacement also the fingerprint of the file replaced) and an access log
+  entry `upload` (time, IP, request id).
+- **Exports** (Excel, CSV reports, MANIFEST) put an apostrophe before text
+  starting with `= + - @` so it can't run as a formula. Workspace and Zone 2
+  data tables are left as they are.
+- **Logs** hold `file_ref` (see DEPLOYMENT.md) instead of file names and
+  paths, and validation errors log the field, not what was typed. Database
+  errors show users a plain message; the details stay in the log.
+- **Profile** is read-only; administrators change names and emails on the
+  Users page (audited).
+
 ### Migration report, data quality check, workspace profile
 
 - **Migration report** (`scripts/migration_report.py`, `app/migration_report.py`):

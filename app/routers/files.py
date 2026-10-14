@@ -12,7 +12,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 
-from app import document_info
+from app import document_info, upload_log
 from app.access_log import DOWNLOAD, READ, record_access
 from app.audit import record_audit
 from app.crud import patient_application_files as crud
@@ -279,16 +279,17 @@ async def upload_deidentified_file(
             ),
         )
 
-        if previous and previous != str(stored):
-            remove_from_disk(previous)
-
-        action = "REPLACE"
-        result = updated
         replaced = {
             "name": record.deidentified_file_name,
             "review_status": record.review_status,
             "review_note": record.review_note,
         }
+        if previous:
+            replaced.update(upload_log.file_fingerprint(resolve_stored_path(previous)) or {})
+        if previous and previous != str(stored):
+            remove_from_disk(previous)
+
+        result = updated
 
     else:
         replaced = None
@@ -323,8 +324,8 @@ async def upload_deidentified_file(
                 de_identified_file_path=str(stored),
             ),
         )
-        action = "CREATE"
 
+    facts = upload_log.fingerprint(data)
     embed_metadata(
         stored,
         extension,
@@ -337,13 +338,17 @@ async def upload_deidentified_file(
     )
 
     background.add_task(
-        record_audit,
-        action=action,
-        entity_type="deidentified_file",
-        entity_id=result.id,
-        user_id=actor.id,
-        old_values=replaced,
-        new_values={"patient_id": patient_id, "name": stored.name},
+        upload_log.record_upload,
+        actor=actor,
+        kind="deidentified_file",
+        file_id=result.id,
+        stored_name=stored.name,
+        uploaded_as=raw_name,
+        facts=facts,
+        patient_id=patient_id,
+        application_id=result.application_id,
+        identified=False,
+        replaced=replaced,
         request_id=request.headers.get("X-Request-ID"),
     )
 

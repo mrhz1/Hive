@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
-from app.logging_setup import get_logger
+from app.logging_setup import get_logger, ref
 from app.schemas import METADATA_EXTENSIONS
 
 log = get_logger(__name__)
@@ -84,5 +84,5 @@ def read_header(path) -> bytes:
         with open(path, "rb") as handle:
             return handle.read(SNIFF_BYTES)
     except OSError as exc:
-        log.warning("file_head_unreadable", path=str(path), error=str(exc))
+        log.warning("file_head_unreadable", file_ref=ref(path), error=str(exc))
         return b""

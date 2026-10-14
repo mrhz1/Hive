@@ -152,13 +152,16 @@ def _same(entry: ConsentCreate, current: Optional[Consent]) -> bool:
 def import_file(
     cursor, name: str, data: bytes, apply: bool, actor_id: Optional[str]
 ) -> ConsentImportResult:
-    rows = _read_rows(name, data)
+    rows = _read_rows(name, data, MAX_ROWS)
     while rows and not any(_text(v) for v in rows[0]):
         rows.pop(0)
     if not rows:
         raise ValidationError("The file is empty")
     if len(rows) - 1 > MAX_ROWS:
-        raise ValidationError(f"At most {MAX_ROWS} rows at a time; split the file")
+        raise ValidationError(
+            f"The file has more than {MAX_ROWS} rows; split it into smaller "
+            "files and import them one by one"
+        )
     columns = [COLUMNS.get(_key(h)) for h in rows[0]]
     if "patient_id" not in columns or "status" not in columns or "consent_type" not in columns:
         raise ValidationError("The first row needs Patient code, Consent type and Status columns")

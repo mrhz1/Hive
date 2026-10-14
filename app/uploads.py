@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 
 import structlog
 
-from app import storage
+from app import storage, upload_log
 from app.crud import file_metadata as metadata_crud
 from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as applications_crud
@@ -219,6 +219,7 @@ def _store_staged(
     patient_id: Optional[str],
     description: Optional[str],
     received_at: datetime,
+    actor_id: Optional[str] = None,
 ):
     extension = resolve_extension(staged.name, read_header(staged.path))
     record_id = str(uuid.uuid4())
@@ -245,6 +246,17 @@ def _store_staged(
         file_id=record_id,
     )
     record_metadata(cursor, record.id, stored_path, extension)
+    upload_log.record_upload(
+        actor_id=actor_id,
+        kind="application_file",
+        file_id=record.id,
+        stored_name=sanitized,
+        uploaded_as=staged.name,
+        facts=upload_log.file_fingerprint(stored_path),
+        patient_id=patient_id,
+        application_id=application_id,
+        identified=True,
+    )
     return record
 
 
@@ -275,6 +287,7 @@ def run_upload_job(
             application_id=application_id,
             description=description,
             received_at=received_at,
+            actor_id=actor_id,
         )
     except Exception as e:
         log.exception("upload_job_failed", job_id=job_id, error=str(e))
@@ -292,6 +305,7 @@ def _process(
     application_id: str,
     description: Optional[str],
     received_at: datetime,
+    actor_id: Optional[str] = None,
 ) -> None:
     with hive_cursor() as cursor:
         application = applications_crud.get_application(cursor, application_id)
@@ -308,6 +322,7 @@ def _process(
                     patient_id=patient_id,
                     description=description,
                     received_at=received_at,
+                    actor_id=actor_id,
                 )
             except Exception as e:
                 log.error(

@@ -40,12 +40,4 @@ export const userFormSchema = z.object({
 
 export type UserFormValues = z.infer<typeof userFormSchema>
 
-export const profileFormSchema = userFormSchema.pick({
-  first_name: true,
-  last_name: true,
-  email: true,
-})
-
-export type ProfileFormValues = z.infer<typeof profileFormSchema>
-
 export const USER_STATUSES = ['active', 'inactive', 'suspended'] as const
