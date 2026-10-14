@@ -227,6 +227,11 @@ give the project's analysts access to that folder only. Schedule
 `scripts/abstraction_cleanup.py`) so expired workspaces are deleted. Grant
 `consent:view` / `consent:update` to whoever keeps the consent matrix.
 
+Reports: schedule `scripts/qc_check.py` as a nightly Job (set `QC_EMAIL_TO`),
+and run `scripts/migration_report.py` during and after the migration. Both
+write to `REPORTS_DIR`, which holds patient codes: keep it restricted like
+the data folders.
+
 ### New columns on an existing database
 
 `init_db.py` drops and recreates tables, so don't run it on a live

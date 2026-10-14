@@ -6,6 +6,7 @@ Building it puts the cohort's data where the project's analysts work on it:
         patients.csv, applications.csv, documents.csv   standard tables
         documents/<CHSS code>/<redacted file>           the PDFs and images
         cleaning_log.csv                                 which cleanup rules ran
+        profile.xlsx                                     columns, frequencies, outliers
         README.txt
 
 This is Zone 1X, so the CHSS codes stay (with the project IDs next to
@@ -28,7 +29,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from app import abstraction, cleaning, consent, storage, zone2
+from app import abstraction, cleaning, consent, profiling, storage, zone2
 from app.crud import patients as patients_crud
 from app.crud import projects as crud
 from app.errors import ValidationError
@@ -54,6 +55,7 @@ patients.csv       the cohort: CHSS code, project ID, dates, place
 applications.csv   their submitted applications
 documents.csv      their de-identified documents{documents_note}
 cleaning_log.csv   the standard cleanup rules applied to the tables
+profile.xlsx       missing values, frequencies and outliers of each column
 
 This is Zone 1X: CHSS codes are here, so nothing in this folder may leave
 it. Zone 2 gets only what "Prepare safe copy" makes. The workspace is
@@ -183,6 +185,7 @@ def build(cursor, project: Project, include_documents: bool = True) -> Project:
         _write_csv(staging / "applications.csv", APPLICATION_COLUMNS, tables["applications"])
         _write_csv(staging / "documents.csv", DOCUMENT_COLUMNS, tables["documents"])
         _write_csv(staging / "cleaning_log.csv", cleaning.LOG_COLUMNS, cleaning_log)
+        profiling.write(staging / "profile.xlsx", tables)
         (staging / "README.txt").write_text(
             README.format(
                 name=project.name,

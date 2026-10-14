@@ -531,6 +531,31 @@ de-identified documents for one person's task.
 - New columns and the `patient_consents` table:
   `python scripts/migrate_columns.py --apply`.
 
+### Migration report, data quality check, workspace profile
+
+- **Migration report** (`scripts/migration_report.py`, `app/migration_report.py`):
+  files waiting, de-identified (pending/submitted), failed and needing
+  attention by reason, document types, documents in applications
+  (rejected, leaded, images with covered text), patients not checked and
+  without consent, applications by status. Reads folders and the database
+  only (names, never contents), streams rows, so it suits millions of
+  files. Output in `REPORTS_DIR/migration-<time>/`: `migration-report.xlsx`
+  (summary + lists capped at 50,000 rows, `--cap`) and every list in full
+  as CSV.
+- **Data quality check** (`scripts/qc_check.py`, `app/qc.py`): rules P01-P07
+  (patients: missing birth date, impossible or future dates, age over 100,
+  no name), A01-A02 (submitted applications without documents or
+  checklist), D01-D06 (documents: UNKNOWN type/date, dated before birth,
+  after death or in the future, failed de-identification), C01-C02 (no
+  research consent; withdrawn consent in an active project). Accepted
+  issues go in `QC_SUPPRESSIONS_FILE` (rule, record, reason, by, date) and
+  are listed apart. Excel, PDF and CSV in `REPORTS_DIR/qc-<time>/`; the
+  email to `QC_EMAIL_TO` gives counts only.
+- **Workspace profile**: every workspace build also writes `profile.xlsx`
+  (`app/profiling.py`): per column filled/missing/distinct and range,
+  frequency tables, outliers (IQR for numbers, dates before 1900 or in the
+  future).
+
 ### Zone 2 review and project end
 
 `app/zone2.py`. Reviewing a release on the Zone 2 inbox page:
