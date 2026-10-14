@@ -121,8 +121,6 @@ def _extract_word(path: Path) -> Dict[str, str]:
 
 
 def _extract_image(path: Path) -> Dict[str, str]:
-    """What the original JPG/PNG/TIFF carries, EXIF included (it can hold a
-    date, a device, even a place; none of it goes into the DICOM made from it)."""
     from PIL import ExifTags, Image
 
     with Image.open(path) as image:

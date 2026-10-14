@@ -1,22 +1,3 @@
-"""The patient consent matrix (spec 9.2.1).
-
-Each row records one decision: a patient's consent of a type (research, or
-documents: their PDFs and images) granted, refused or withdrawn, with the
-form version and date. Rows are only added, never changed, so the history
-stays; a patient's latest decision of a type is the one that counts (by
-consent date, then when it was recorded). REDCap can later fill the same
-table.
-
-The rule applied to projects: a patient whose latest research consent is
-refused or withdrawn can't be in any project; for a project approved for
-documents, the same goes for their documents consent. A patient with no
-row for a type is left to the project's "Patient consent confirmed" box,
-which is still required to prepare.
-
-The import reads a spreadsheet with the columns Patient code, Consent type,
-Status, Version, Consent date and Note.
-"""
-
 from datetime import date
 from typing import Dict, List, Optional, Tuple
 
@@ -50,7 +31,6 @@ def _order(consent: Consent) -> Tuple[str, str]:
 
 
 def latest(cursor, patient_id: Optional[str] = None) -> Latest:
-    """patient code -> consent type -> their latest decision."""
     out: Latest = {}
     for consent in sorted(crud.list_consents(cursor, patient_id), key=_order):
         out.setdefault(consent.patient_id, {})[consent.consent_type] = consent
@@ -62,7 +42,6 @@ def needed_types(project: Project) -> Tuple[str, ...]:
 
 
 def exclusion_reason(project: Project, decisions: Dict[str, Consent]) -> Optional[str]:
-    """Why the consent matrix keeps this patient out of the project, or None."""
     for consent_type in needed_types(project):
         decision = decisions.get(consent_type)
         if decision and decision.status in BLOCKING:
@@ -72,7 +51,6 @@ def exclusion_reason(project: Project, decisions: Dict[str, Consent]) -> Optiona
 
 
 def excluded(cursor, project: Project, patient_ids: List[str]) -> Dict[str, str]:
-    """The patients among `patient_ids` the consent matrix keeps out, with why."""
     matrix = latest(cursor)
     out = {}
     for code in patient_ids:
@@ -91,8 +69,6 @@ def refuse_excluded(cursor, project: Project, patient_ids: List[str]) -> None:
             f"consent matrix. Take them out of the cohort: {listed}"
         )
 
-
-# --- import --------------------------------------------------------------------
 
 COLUMNS = {
     "patientcode": "patient_id",

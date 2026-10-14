@@ -1,7 +1,5 @@
 import { z } from 'zod'
 
-// Mirrors the Abstraction* models in app/schemas.py.
-
 export const abstractionCriteriaSchema = z.object({
   patient_ids: z.array(z.string()).default([]),
   modalities: z.array(z.string()).default([]),
@@ -68,7 +66,6 @@ export function folderTone(status: string): 'success' | 'neutral' | 'warning' {
   return 'neutral'
 }
 
-/** Whole days until `expiresAt` (negative once past). */
 export function daysLeft(
   expiresAt: string | null | undefined,
   now = Date.now()
@@ -79,7 +76,6 @@ export function daysLeft(
   return Math.ceil((at - now) / 86_400_000)
 }
 
-/** 'AA1234, bb0042 AA1234' -> ['AA1234', 'BB0042'] */
 export function splitCodes(text: string): string[] {
   return [
     ...new Set(

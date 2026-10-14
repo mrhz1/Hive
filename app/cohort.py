@@ -1,15 +1,3 @@
-"""Finding a project's cohort by inclusion/exclusion criteria (spec 9.2.1).
-
-Only patients who can be in a project are searched (those with a submitted
-application, zone2.candidates). The criteria use what the CHSS data holds
-today: the code prefix (the named cohort), registration date, age at
-registration, place, institution, whether the patient has died, and the
-modality and date of their documents. Clinical criteria come with REDCap.
-
-Patients the consent matrix keeps out of the project are reported apart and
-never matched.
-"""
-
 from typing import Dict, List, Set
 
 from app import consent, document_info, zone2
@@ -31,7 +19,6 @@ def _age(patient) -> int:
 
 
 def _documents_by_patient(cursor) -> Dict[str, List[tuple]]:
-    """patient code -> [(modality, YYYYMMDD)] of their releasable documents."""
     owner = {
         a.id: a.patient_id
         for a in applications_crud.list_applications(cursor)

@@ -105,14 +105,10 @@ def apply_redactions(handle, kind: str, page_number: int, boxes, scale: float, f
 
 _PDF_PHI_KEYS = ("author",)
 
-# XMP fields that name a person, whatever the analyzer says.
 _XMP_PHI_NAMES = frozenset({"creator", "author", "owner", "lastmodifiedby", "authorsposition"})
 
 
 def _scrub_xmp(xml: str, redact) -> tuple:
-    """The XMP packet with every value (element text and attribute) passed
-    through the redactor and the person fields replaced, so the same fields
-    stay with their identifiers redacted. (new xml, touched names)."""
     import re
     import xml.etree.ElementTree as ET
 

@@ -1,12 +1,3 @@
-"""Write the migration report: how far the intake has got and what still
-needs a person (app/migration_report.py). Run it any time during a big
-migration as a progress check, and at the end. Reads only folders and the
-database; no document is opened.
-
-    python scripts/migration_report.py
-    python scripts/migration_report.py --out /path/to/reports --cap 100000
-"""
-
 import os
 import sys
 from pathlib import Path
@@ -31,12 +22,12 @@ def _repo_root():
 
 sys.path.insert(0, str(_repo_root()))
 
-import argparse  # noqa: E402
+import argparse
 
-from app import migration_report  # noqa: E402
-from app.db import hive_cursor  # noqa: E402
-from app.logging_setup import configure_logging  # noqa: E402
-from app.reports import DEFAULT_CAP  # noqa: E402
+from app import migration_report
+from app.db import hive_cursor
+from app.logging_setup import configure_logging
+from app.reports import DEFAULT_CAP
 
 
 def main(argv=None) -> int:
@@ -53,8 +44,6 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    # Under Cloudera's ipykernel launcher any SystemExit -- even 0 -- marks
-    # the Job run failed, so only exit explicitly from a terminal.
     _rc = main()
     if "ipykernel" not in sys.modules:
         sys.exit(_rc)

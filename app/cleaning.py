@@ -1,26 +1,3 @@
-"""Standard data cleanup rules applied when a project's workspace is built
-(spec 9.2.1, 9.2.3).
-
-Rules are Python files in CLEANING_DIR (default: cleaning/ in the repo), so
-every correction is code that is reviewed and versioned, never an edit in
-Excel:
-
-    cleaning/instrument/<table>.py      every row of that table
-                                         (patients, applications, documents)
-    cleaning/instrument/<MODALITY>.py   documents rows of that modality (ECHO, MR, ...)
-    cleaning/cohort/<PREFIX>.py         rows of the patients whose code starts
-                                         with PREFIX, in every table
-
-Each file defines
-
-    def clean(table: str, rows: list[dict]) -> list[dict]
-
-and returns the rows to keep (changed in place or new dicts). A file whose
-name starts with "_" is skipped. Instrument rules run first, then cohort
-rules. What ran and how many rows each changed goes to cleaning_log.csv in
-the workspace. A rule that fails stops the build, with its name.
-"""
-
 import copy
 import importlib.util
 import os
@@ -85,7 +62,6 @@ def _run(name: str, rule: Rule, table: str, rows: List[dict], log_rows: List[dic
 
 
 def apply(tables: Dict[str, List[dict]]) -> Tuple[Dict[str, List[dict]], List[dict]]:
-    """Run every rule over the tables; returns the cleaned tables and the log."""
     out = {name: list(rows) for name, rows in tables.items()}
     log_rows: List[dict] = []
 

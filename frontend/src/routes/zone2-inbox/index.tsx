@@ -337,7 +337,6 @@ function ReleaseDocuments({
         if (type === 'pdf') {
           setOpened({ document, kind: 'pdf', url })
         } else {
-          // Word: no preview here, so hand it over to open locally.
           const link = window.document.createElement('a')
           link.href = url
           link.download = document.file.split('/').pop() ?? document.project_document_id

@@ -1,30 +1,3 @@
-"""Zone 2: making, reviewing and releasing a project's safe copy.
-
-Preparing a project (its cohort of patients, their submitted applications):
-
-1. every patient gets a random project-only ID and a random date shift
-   (crud.projects.set_cohort), kept in Zone 1X and never released;
-2. identifying fields and all free text are left out, every date is moved by
-   the patient's shift, and date of birth becomes age at registration;
-3. documents are left out unless the project is approved for them; then the
-   de-identified copies go in, renamed to project IDs, with the CHSS code
-   taken out of their content and metadata and DICOM dates shifted;
-4. the archive (original extract, ID map, safe copy) goes to PROJECTS_DIR and
-   the safe copy alone to ZONE2_INBOX_DIR for the CHSS manager to review.
-
-Approving copies the safe copy to ZONE2_DIR/<project>/; rejecting sends the
-project back with the reason. Which folders researchers can open is a
-Cloudera access setting, not something this module can enforce.
-
-Reviewing: the manager can open any released document (all, or a random
-few) and flag one that still identifies someone. A flag rejects the release
-and puts the source document in Rejections; the project can't be prepared
-again with documents until it is fixed (replaced as _RR).
-
-Ending a project only marks it ended: no more releases. Its Zone 2 copy and
-archive stay; researchers' access is removed by hand (Users, Roles).
-"""
-
 import csv
 import io
 import shutil
@@ -77,9 +50,6 @@ over). Names, addresses, phone numbers, emails and all free text are left out.
 """
 
 
-# --- what can go in -----------------------------------------------------
-
-
 def _submitted_applications(cursor, patient_id: str):
     return [
         a
@@ -99,7 +69,6 @@ def _documents(cursor, application_id: str):
 
 
 def candidates(cursor) -> List[Candidate]:
-    """Patients with at least one submitted application."""
     counts: Dict[str, List[int]] = {}
     for application in applications_crud.list_applications(cursor):
         if application.status not in RELEASED_STATUSES:
@@ -111,9 +80,6 @@ def candidates(cursor) -> List[Candidate]:
         Candidate(patient_id=code, applications=apps, documents=docs)
         for code, (apps, docs) in sorted(counts.items())
     ]
-
-
-# --- small helpers ------------------------------------------------------
 
 
 def _as_date(value) -> Optional[date]:
@@ -167,9 +133,6 @@ def _model_rows(models) -> List[dict]:
 def _new_release_id() -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     return f"R{stamp}-{projects_crud.random_code(4)}"
-
-
-# --- documents ----------------------------------------------------------
 
 
 class DocumentError(ValueError):
@@ -281,8 +244,6 @@ def _shift_dicom_dates(dataset, days: int) -> None:
 
 
 def _new_uids(dataset, salt: str, depth: int = 0) -> None:
-    """Project-own UIDs, so one image can't be matched across two projects'
-    releases (the same original gets the same new UID within a project)."""
     from pydicom._uid_dict import UID_dictionary
     from pydicom.uid import generate_uid
 
@@ -358,7 +319,6 @@ def _copy_document(
 
 
 def _refuse_rejected_documents(cursor, cohort) -> None:
-    """A document flagged (or rejected) and not fixed yet can't be released."""
     waiting = [
         f"{record.deidentified_file_name or record.original_file_name}"
         for member in cohort
@@ -374,7 +334,6 @@ def _refuse_rejected_documents(cursor, cohort) -> None:
 
 
 def _refuse_leaded_documents(cursor, cohort) -> None:
-    """Images with identifiers in lead letters stay in Zones 1 and 1X (9.1.9)."""
     leaded = [
         f"{member.patient_id}: {record.deidentified_file_name or record.original_file_name}"
         for member in cohort
@@ -389,9 +348,6 @@ def _refuse_leaded_documents(cursor, cohort) -> None:
             "the mark, or take their patients out of the cohort: "
             + ", ".join(leaded[:10])
         )
-
-
-# --- prepare ------------------------------------------------------------
 
 
 def _require_ready(project: Project, cohort) -> None:
@@ -552,11 +508,7 @@ def _build(cursor, project, cohort, release_id, archive: Path, safe: Path) -> di
     }
 
 
-# --- review -------------------------------------------------------------
-
-
 def summary(release: ProjectRelease) -> Dict[str, dict]:
-    """Columns and a few rows of each CSV, for the manager to look at."""
     folder = Path(release.release_path or release.inbox_path or "")
     columns, samples = {}, {}
     for name in ("patients", "applications", "documents"):
@@ -570,7 +522,6 @@ def summary(release: ProjectRelease) -> Dict[str, dict]:
 
 
 def _remove_from_inbox(folder: Path) -> None:
-    """Drop a release's safe copy from the inbox, and its project folder if empty."""
     if not str(folder) or not folder.resolve().is_relative_to(storage.zone2_inbox_root().resolve()):
         return
     shutil.rmtree(folder, ignore_errors=True)
@@ -588,7 +539,6 @@ def _pending(cursor, release_id: str) -> ProjectRelease:
 
 
 def _refuse_leaded_since_prepared(cursor, release: ProjectRelease) -> None:
-    """An image marked as leaded after the safe copy was made."""
     if not release.files_included:
         return
     path = Path(release.archive_path or "") / "document_map.csv"
@@ -638,15 +588,11 @@ def reject(cursor, release_id: str, actor_id: str, reason: Optional[str]) -> Pro
     return release
 
 
-# --- spot checks and flags ----------------------------------------------
-
-
 def _release_folder(release: ProjectRelease) -> Path:
     return Path(release.release_path or release.inbox_path or "")
 
 
 def release_documents(release: ProjectRelease) -> List[dict]:
-    """The released files: project document ID, patient ID, type, path."""
     path = _release_folder(release) / "documents.csv"
     if not path.is_file():
         return []
@@ -673,8 +619,6 @@ def _source_file_id(release: ProjectRelease, document_id: str) -> str:
 
 
 def flag_document(cursor, release_id: str, document_id: str, actor_id: str, note: Optional[str]):
-    """Reject the release because of one document, and send that document to
-    Rejections to be redacted again. Returns (release, source file record)."""
     text = (note or "").strip()
     if not text:
         raise ValidationError("Say what is wrong with the document")
@@ -694,9 +638,6 @@ def flag_document(cursor, release_id: str, document_id: str, actor_id: str, note
     release = reject(cursor, release.id, actor_id, f"Document {document_id} flagged: {text}")
     log.info("zone2_document_flagged", release_id=release.id, document_id=document_id, file_id=file_id)
     return release, record
-
-
-# --- ending a project ------------------------------------------------------
 
 
 def end_project(cursor, project_id: str, reason: Optional[str]) -> Project:

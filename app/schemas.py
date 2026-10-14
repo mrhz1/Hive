@@ -171,8 +171,6 @@ class _PatientFields(BaseModel):
     original_file_path: Optional[str] = Field(default=None, min_length=1)
     deidentified_file_path: Optional[str] = None
 
-    # The site does not share records or contact details (9.1.2): the code
-    # is all there is, so no name is needed and nothing is asked for.
     no_records: Optional[bool] = None
 
     @field_validator(*_PATIENT_OPTIONAL_FIELDS, mode="before")
@@ -224,8 +222,6 @@ class Patient(_PatientFields):
     pemail: Optional[str] = None
     ptemail: Optional[str] = None
     original_file_path: Optional[str] = None
-    # Empty for patients made by intake or the bulk import until someone
-    # confirms their details; their first application waits for it.
     details_checked_at: Optional[str] = None
     details_checked_by: Optional[str] = None
 
@@ -268,15 +264,11 @@ class PatientApplicationFile(BaseModel):
     @computed_field
     @property
     def redaction(self) -> Optional[str]:
-        """R: redacted by the pipeline, RR: by hand."""
         parts = parse_document_name(self.deidentified_file_name or "")
         return parts and parts["redaction"]
 
 
 class DocumentInfoUpdate(BaseModel):
-    """Modality code (or an alias like MRI) and date (YYYY-MM-DD or YYYYMMDD);
-    either can be UNKNOWN."""
-
     modality: str
     document_date: str
 
@@ -452,9 +444,6 @@ APPLICATION_STATUSES = ("draft", "submitted", "approved", "rejected", "deleted")
 
 _STATUS_PATTERN = "^(draft|submitted|approved|rejected|deleted)$"
 
-# The enrollment checklist a reviewer completes before submitting an
-# application, and picks from when rejecting one. A failed consent check
-# deletes the application's documents; the others can be fixed.
 ENROLLMENT_CHECKS = {
     "files_complete": "All required files were submitted",
     "eligible": "The patient is eligible",
@@ -485,7 +474,6 @@ class PatientApplicationUpdate(BaseModel):
     status_reason: Optional[str] = None
     assigned_to_id: Optional[str] = None
     original_file_path: Optional[str] = None
-    # Required, all true, when status becomes 'submitted'; not stored as given.
     checklist: Optional[Dict[str, bool]] = None
 
     @field_validator("assigned_to_id", "original_file_path", mode="before")
@@ -498,7 +486,6 @@ class PatientApplicationUpdate(BaseModel):
 
 class ApplicationRejection(BaseModel):
     reason: Optional[str] = None
-    # Which ENROLLMENT_CHECKS failed; at least one.
     failed_checks: List[str] = Field(default_factory=list)
 
 
@@ -518,7 +505,6 @@ class PatientApplication(BaseModel):
     status_reason: Optional[str] = None
     assigned_to_id: Optional[str] = None
     original_file_path: Optional[str] = None
-    # The last checklist: {"passed"|"failed": [...], "by": user id, "at": iso time}
     checklist: Optional[Dict[str, Any]] = None
     assigned_to_username: Optional[str] = None
     created_by_username: Optional[str] = None
@@ -584,19 +570,12 @@ class AuditLog(BaseModel):
     created_at: datetime
 
 
-# --- temporary abstraction folders (app/abstraction.py) ---------------------
-
-
 class AbstractionCriteria(BaseModel):
-    """Which de-identified documents to copy. Empty lists mean any."""
-
     patient_ids: List[str] = Field(default_factory=list)
     modalities: List[str] = Field(default_factory=list)
     file_types: List[str] = Field(default_factory=list)
-    # YYYY-MM-DD; with either set, documents without a known date are left out
     date_from: Optional[date] = None
     date_to: Optional[date] = None
-    # matched against the file name and the metadata read from the file
     search: Optional[str] = None
 
     @field_validator("patient_ids", "modalities", "file_types", mode="before")

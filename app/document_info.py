@@ -1,24 +1,3 @@
-"""The document type (or modality) and date a redacted file is named by.
-
-A redacted file is named `<code>_<type>_<date>_<16-digit serial>_<R|RR>.<ext>`,
-e.g. `AA1234_DISCHARGE_20190312_1790261077741000_R.pdf` or
-`AA1234_MR_20190312_1790261077741000_R.dcm`. `R` is redacted by the
-pipeline, `RR` redacted by hand (an upload or a replacement). The type part
-is called "modality" in the code and the API, where it started.
-
-- DICOM: the Modality tag (MR, CT, US, ...), and the first of StudyDate,
-  SeriesDate, AcquisitionDate, ContentDate.
-- PDF, Word and other files: the document type, read from the file name
-  the site gave it only, never from the content (spec 9.1.2): e.g.
-  `AA1234_discharge_2019-03-12.pdf` is DISCHARGE (see TYPE_KEYWORDS). A
-  name that names no type but a modality (`AA1234_CT_...pdf`) keeps the
-  modality. The date is `YYYYMMDD` or `YYYY-MM-DD` (also with `_`, `.` or a
-  space).
-
-Anything not found is `UNKNOWN`, and staff set it on the review screen
-(`rename`).
-"""
-
 import io
 import json
 import os
@@ -33,7 +12,6 @@ UNKNOWN = "UNKNOWN"
 AUTOMATIC = "R"
 MANUAL = "RR"
 
-# DICOM modality codes (PS3.3 C.7.3.1.1.1).
 DICOM_MODALITIES = frozenset("""
     AR ASMT AU BDUS BI BMD CR CT CTPROTOCOL DG DOC DX ECG EEG EMG EOG EPS ES
     FID GM HC HD IO IOL IVOCT IVUS KER KO LEN LS M3D MG MR NM OAM OCT OP OPM
@@ -42,14 +20,11 @@ DICOM_MODALITIES = frozenset("""
     SRF STAIN TEXTUREMAP TG US VA XA XAPROTOCOL XC
 """.split())
 
-# Codes that are also ordinary words or abbreviations in file names (DOC,
-# PLAN, REG, ...) only count when they come from a DICOM tag or a person.
 NAME_MODALITIES = frozenset("""
     BDUS BMD CR CT DX ECG EEG EMG EPS IVOCT IVUS MG MR NM OCT PT PX RF RG US
     XA XC
 """.split())
 
-# Other ways modalities are written in file names.
 ALIASES = {
     "MRI": "MR",
     "MRA": "MR",
@@ -72,17 +47,12 @@ ALIASES = {
     "DXA": "BMD",
 }
 
-# Document types (spec 9.1.2). A DICOM file is named by its modality instead.
 DOCUMENT_TYPES = (
     "ENROLLMENT", "CONTACT", "CONSENT", "OPERATIVE", "DISCHARGE",
     "ECHO_REPORT", "ANGIO_REPORT", "MRI_REPORT", "ECG_REPORT",
     "IMAGE", "STS_EXTRACT", "OTHER",
 )
 
-# Words in a file name that give its type, checked in this order (the
-# first type with a match wins, so "consent for echo" is CONSENT). Matched
-# as whole words, case-insensitive, with _ - . treated as spaces. More can
-# be added in a JSON file named by DOCUMENT_TYPES_FILE: {"TYPE": ["words"]}.
 TYPE_KEYWORDS: List[Tuple[str, Tuple[str, ...]]] = [
     ("CONSENT", ("consent", "consent form", "assent")),
     ("CONTACT", ("contact form", "contact information", "contact info",
@@ -109,8 +79,6 @@ _DATE = re.compile(
 _X_RAY = re.compile(r"X[-_ ]RAY", re.IGNORECASE)
 _WORD = re.compile(r"[A-Za-z]+")
 
-# `<code>_[<type>_]<date>_<serial>[_<R|RR>]<extension>`: older names have no
-# type or redaction part. A type can have an underscore (ECHO_REPORT).
 _NAME = re.compile(
     r"^(?P<code>[A-Z0-9]+)_(?:(?P<modality>[A-Z0-9]+(?:_[A-Z0-9]+)*?)_)?"
     r"(?P<day>\d{8}|UNKNOWN)_(?P<serial>\d{16})"
@@ -121,7 +89,7 @@ _NAME = re.compile(
 @dataclass(frozen=True)
 class DocumentInfo:
     modality: str = UNKNOWN
-    date: str = UNKNOWN  # YYYYMMDD
+    date: str = UNKNOWN
 
     def stem(self, code: str, serial: str, redaction: Optional[str] = AUTOMATIC) -> str:
         stem = f"{code or 'unknown'}_{self.modality}_{self.date}_{serial}"
@@ -129,13 +97,11 @@ class DocumentInfo:
 
 
 def clean_type(value: Optional[str]) -> Optional[str]:
-    """A known document type for `value` ("echo report", "ECHO-REPORT"), or None."""
     word = re.sub(r"[\s\-]+", "_", (value or "").strip().upper())
     return word if word in DOCUMENT_TYPES else None
 
 
 def clean_modality(value: Optional[str]) -> Optional[str]:
-    """A known document type or modality code for `value`, or None."""
     typed = clean_type(value)
     if typed:
         return typed
@@ -147,7 +113,6 @@ def clean_modality(value: Optional[str]) -> Optional[str]:
 
 
 def clean_date(value: Optional[str]) -> Optional[str]:
-    """`value` (YYYYMMDD or YYYY-MM-DD) as YYYYMMDD, or None if not a real date."""
     text = (value or "").strip()
     if text.upper() == UNKNOWN:
         return UNKNOWN
@@ -196,8 +161,6 @@ def _keywords() -> List[Tuple[str, Tuple[str, ...]]]:
 
 
 def type_from_name(name: str, extension: str = "", code: str = "") -> str:
-    """The document type the file name gives, or UNKNOWN. Only the name is
-    read, never the content."""
     extension = (extension or Path(name).suffix).lower().lstrip(".")
     if extension in IMAGE_EXTENSIONS:
         return "IMAGE"
@@ -248,16 +211,8 @@ def find(
     code: str = "",
     source: Union[Path, bytes, None] = None,
 ) -> DocumentInfo:
-    """The type (or modality) and date of a file the site sent as `name`.
-
-    A DICOM file is named by its modality: its tags, then its name. Any
-    other file by the document type its name gives, else a modality its
-    name gives (`..._CT_...pdf`), else UNKNOWN. `source` is the file itself
-    (path or bytes), read for DICOM tags only.
-    """
     day = date_from_name(name, code)
     if (extension or "").lower().lstrip(".") in IMAGE_EXTENSIONS:
-        # converted to DICOM (app/image_convert.py), so named by modality
         return DocumentInfo(modality=modality_from_name(name, code), date=day)
     if not is_dicom_extension(extension):
         kind = type_from_name(name, extension, code)
@@ -284,15 +239,12 @@ def parse_name(name: str) -> Optional[dict]:
 def renamed(
     name: str, info: Optional[DocumentInfo] = None, redaction: Optional[str] = None
 ) -> Optional[str]:
-    """`name` with its modality and date, or how it was redacted, replaced.
-    None if it isn't one of ours."""
     parts = parse_name(name)
     if parts is None:
         return None
     if info is None and parts["modality"]:
         info = DocumentInfo(modality=parts["modality"], date=parts["day"])
     elif info is None:
-        # An older name's date is when it was processed, not the document's.
         info = DocumentInfo()
     return info.stem(
         parts["code"], parts["serial"], redaction or parts["redaction"]
@@ -300,8 +252,6 @@ def renamed(
 
 
 def rename(path: Path, info: DocumentInfo) -> Path:
-    """Rename a redacted file and every file next to it that shares its stem
-    (the intake `.json` sidecar). Returns the new path."""
     new_name = renamed(path.name, info)
     if new_name is None:
         raise ValueError(f"'{path.name}' is not a redacted file name")

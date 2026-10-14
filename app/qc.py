@@ -1,22 +1,3 @@
-"""Automatic quality control of the CHSS data (spec 9.1.13, checklist 8).
-
-Rules run over the database only (no document is opened): missing data,
-dates that contradict each other, and the consent matrix against project
-cohorts. Each problem is an issue: rule, severity, the record it is about,
-the patient, and what is wrong. With REDCap the same engine gets clinical
-rules.
-
-Suppressing (the query suppression engine): an issue that was checked and
-is right as it is (e.g. a patient really registered after death) is listed
-in QC_SUPPRESSIONS_FILE, a CSV with the columns rule, record, reason, by,
-date. It then goes to the "Suppressed" list instead of the issues, with the
-reason. A line without a reason is ignored.
-
-The report (Excel, PDF and a CSV per list) goes to REPORTS_DIR/qc-<time>/;
-the email to QC_EMAIL_TO says how many issues each rule found, not which
-patients.
-"""
-
 import csv
 import os
 from collections import Counter, defaultdict
@@ -128,7 +109,7 @@ def _doc_day(name: str) -> Optional[date]:
 def check(cursor, today: Optional[date] = None) -> List[Issue]:
     today = today or date.today()
     issues: List[Issue] = []
-    add = lambda rule, record, patient, detail="": issues.append(  # noqa: E731
+    add = lambda rule, record, patient, detail="": issues.append(
         Issue(rule, record, patient, detail)
     )
 

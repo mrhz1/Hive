@@ -58,8 +58,6 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         status_code=exc.status_code,
         detail=exc.message,
     )
-    # The driver's message can carry the SQL and its values; it stays in the
-    # log above, the browser gets a plain sentence.
     detail = DATABASE_UNAVAILABLE if isinstance(exc, DatabaseError) else exc.message
     return JSONResponse(
         status_code=exc.status_code,

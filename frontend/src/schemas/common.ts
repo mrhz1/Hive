@@ -26,15 +26,12 @@ export const FILE_REVIEW_ACTIONS = [
 
 export const REJECTION_ACTIONS = ['view'] as const
 
-// notify: gets the intake emails (new files waiting, runs, rejections).
 export const DEIDENTIFIER_ACTIONS = ['view', 'run', 'notify'] as const
 
 export const ZONE2_ACTIONS = ['prepare', 'review'] as const
 
-// The patient consent matrix: see it, record decisions.
 export const CONSENT_ACTIONS = ['view', 'update'] as const
 
-// manage: lock/unlock the app (and keep using it while locked), record incidents.
 export const SECURITY_ACTIONS = ['view', 'manage'] as const
 
 export type FilesAction =

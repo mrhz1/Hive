@@ -3,9 +3,6 @@ from fastapi import APIRouter, Depends
 from app.schemas import User
 from app.security import get_current_user
 
-# Read-only: a user can't change their own name or email (an email decides
-# where notifications go). An administrator does, on the Users page, and
-# that is audited.
 router = APIRouter(prefix="/me", tags=["me"])
 
 

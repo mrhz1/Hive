@@ -1,22 +1,3 @@
-"""Changing a redacted file's modality and date, one at a time (the review
-screen) or in bulk from a spreadsheet (scripts/update_file_metadata.py, 7.9).
-
-The spreadsheet's first row names the columns:
-
-    File            the redacted file name (AA1234_MR_..._R.dcm) or file id
-    Modality        new modality (a DICOM code or MRI, Echo, ...); blank keeps it
-    Document date   new date, YYYY-MM-DD or an Excel date; blank keeps it
-    Reject reason   if set, the file is rejected with this reason: it goes to
-                    Rejections, e.g. an identifier is still visible in the
-                    picture, and stays out of Zone 2 until replaced
-    Leaded          yes: the image has identifiers in lead letters (9.1.9); it
-                    stays where it is but out of Zone 2. no: clears the mark
-                    after the image was scrubbed. Blank keeps it
-
-The script renames files of any application except deleted ones, including
-submitted ones; the review screen can't rename submitted files.
-"""
-
 from datetime import date, datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -51,7 +32,6 @@ _NO = {"no", "n", "false", "0"}
 
 
 def _yes_no(raw) -> Optional[bool]:
-    """True, False, None for blank; raises ValueError for anything else."""
     if isinstance(raw, bool):
         return raw
     text = (_text(raw) or "").lower()
@@ -67,8 +47,6 @@ def _yes_no(raw) -> Optional[bool]:
 def rename_document(
     cursor, record: PatientApplicationFile, info: document_info.DocumentInfo
 ) -> Tuple[PatientApplicationFile, str, str]:
-    """Rename the de-identified copy (and its sidecar) to `info`; returns
-    the updated record and the old and new names."""
     if not record.de_identified_file_path:
         raise ValidationError(
             f"'{record.original_file_name}' has no de-identified copy to rename"
@@ -95,13 +73,10 @@ def rename_document(
     return crud.update_file(cursor, record.id, changes), current.name, target.name
 
 
-# --- bulk corrections -----------------------------------------------------------
-
-
 class CorrectionRow(BaseModel):
     line: int
     file: str = ""
-    action: str  # rename, reject, leaded, unleaded joined by "+"; unchanged; error
+    action: str
     old_name: Optional[str] = None
     new_name: Optional[str] = None
     errors: List[str] = Field(default_factory=list)

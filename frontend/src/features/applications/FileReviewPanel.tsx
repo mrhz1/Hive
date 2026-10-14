@@ -57,7 +57,6 @@ export function FileReviewPanel({
 
   readOnly?: boolean
 
-  /** The application's documents were deleted; only the records remain. */
   deleted?: boolean
 }) {
   const { can } = usePermissions()
@@ -146,7 +145,6 @@ export function FileReviewPanel({
   }
 
   function actionsFor(file: ApplicationFile): MenuAction[] {
-    // Its documents were deleted from Rejections: nothing left to open or change.
     if (isDeletedFile(file)) return []
     const hasCopy = Boolean(file.de_identified_file_path)
     const noCopy = 'No redacted copy has been produced yet'
@@ -194,7 +192,7 @@ export function FileReviewPanel({
         onSelect: () => setShowingMetadata({ file, deidentified: true }),
       })
     }
-    // Also on submitted applications: a leaded image may only be noticed later.
+
     if (can('files:reject') && previewKind(file.file_extension) === 'image') {
       actions.push({
         id: 'leaded',
@@ -290,7 +288,6 @@ export function FileReviewPanel({
       header: 'Review',
       cell: (file) => (
         <div className="min-w-0">
-          {}
           {review.isPending && review.variables?.fileId === file.id ? (
             <span className="inline-flex items-center gap-2 text-xs font-semibold text-[rgb(var(--foreground-muted))]">
               <Spinner size="sm" label="" />

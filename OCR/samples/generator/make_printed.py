@@ -7,7 +7,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from content import PRINTED_HEADER, PRINTED_PHI, printed_pages  # noqa: E402
+from content import PRINTED_HEADER, PRINTED_PHI, printed_pages
 
 PW, PH = LETTER
 ML, MR = 0.85 * inch, 0.85 * inch

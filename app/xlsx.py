@@ -13,8 +13,6 @@ def workbook_bytes(
     sheet_title: str = "Sheet1",
     dictionary: Optional[Sequence[Tuple[str, str]]] = None,
 ) -> bytes:
-    """One sheet of rows; with `dictionary`, a second "Data dictionary"
-    sheet saying what each column means (protocol 7.10)."""
     from openpyxl import Workbook
     from openpyxl.styles import Font
     from openpyxl.utils import get_column_letter

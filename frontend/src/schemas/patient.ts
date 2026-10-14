@@ -45,17 +45,14 @@ export const patientSchema = z.object({
   original_file_path: text,
   deidentified_file_path: text,
 
-  /** Empty for patients from intake or the bulk import until confirmed. */
   details_checked_at: z.string().nullable().optional(),
   details_checked_by: z.string().nullable().optional(),
 
-  /** The site shares no records or contact details (spec 9.1.2). */
   no_records: z.boolean().nullable().optional(),
 })
 
 export type Patient = z.infer<typeof patientSchema>
 
-// Mirrors app/patient_import.py.
 export const importRowSchema = z.object({
   line: z.number(),
   code: z.string().default(''),

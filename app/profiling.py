@@ -1,21 +1,3 @@
-"""A profile of a project's tables, written with the workspace (checklist 10:
-data profiling, outlier detection, frequency analysis).
-
-profile.xlsx has three sheets:
-
-- Columns: per table and column, how many values are filled or missing,
-  how many distinct, whether it holds numbers, dates or text, and for
-  numbers and dates the lowest, highest (and mean) value;
-- Frequencies: how often each value occurs, for columns with at most
-  MAX_CATEGORIES distinct values that are not identifiers;
-- Outliers: numbers outside the usual range (1.5 times the interquartile
-  range beyond the quartiles, once a column has MIN_FOR_OUTLIERS values)
-  and dates before 1900 or in the future.
-
-It is a starting point for the analyst's exploration (spec 9.2.3), not a
-verdict: an outlier can be right.
-"""
-
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -92,7 +74,6 @@ def _column(table: str, column: str, rows: List[dict]) -> Tuple[list, list, list
                len(counts), low, high, average]
 
     frequencies = []
-    # every value different (an ID, a file name): nothing to count
     is_identifier = len(counts) == len(filled) and len(filled) > 1
     if counts and len(counts) <= MAX_CATEGORIES and not is_identifier:
         for value, n in counts.most_common():

@@ -51,7 +51,6 @@ DEID_OUTPUT_EXTENSIONS = {
     ".dicom": ".dcm",
     ".doc": ".docx",
     ".docx": ".docx",
-    # converted to DICOM first (app/image_convert.py)
     **{f".{ext}": ".dcm" for ext in image_convert.IMAGE_EXTENSIONS},
 }
 
@@ -229,9 +228,6 @@ def _set_status(file_id: str, **fields) -> None:
 
 
 def pipeline_input(source: Path, folder: Path, code: str = "", name: str = "") -> Path:
-    """What the pipeline reads for `source`: the file itself, or for an
-    image, a DICOM made from it in `folder` (named `name`, default the
-    source's stem)."""
     if not image_convert.is_image(source.suffix):
         return source
     target = folder / f"{name or source.stem}.dcm"
@@ -316,15 +312,11 @@ def _run_one(
 
 
 def boxes_applied(produced: Path) -> Optional[int]:
-    """How many areas the pipeline covered in `produced`, from the report
-    it writes next to it; None if there is no report."""
     report = produced.with_name(produced.stem + ".report.json")
     try:
         data = json.loads(report.read_text())
     except (OSError, ValueError):
         return None
-    # The report (stage_nlp) says total_boxes_applied; total_boxes is the
-    # in-memory name, kept for older reports.
     for key in ("total_boxes_applied", "total_boxes"):
         try:
             return int(data[key])

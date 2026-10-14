@@ -31,21 +31,20 @@ export const applicationFileSchema = z.object({
   de_identified_file_path: z.string().nullable().optional(),
   review_status: z.string().default('pending'),
   review_note: z.string().nullable().optional(),
-  /** Read from the de-identified file name; 'UNKNOWN' until found or set. */
+
   modality: z.string().nullable().optional(),
-  /** YYYYMMDD or 'UNKNOWN'. */
+
   document_date: z.string().nullable().optional(),
-  /** 'R': redacted by the pipeline, 'RR': by hand. */
+
   redaction: z.string().nullable().optional(),
-  /** Areas redaction covered; for an image, text burned into the picture. */
+
   redaction_boxes: z.number().nullable().optional(),
-  /** Identifiers in lead letters burned into the image: kept out of Zone 2. */
+
   leaded_phi: z.boolean().default(false),
 })
 
 export const UNKNOWN = 'UNKNOWN'
 
-/** An image whose picture had text (maybe a name) covered by redaction. */
 export function hasCoveredImageText(file: {
   file_extension: string
   redaction_boxes?: number | null
@@ -53,7 +52,6 @@ export function hasCoveredImageText(file: {
   return previewKind(file.file_extension) === 'image' && (file.redaction_boxes ?? 0) > 0
 }
 
-// DICOM modality codes (app/document_info.py), the common ones first.
 const COMMON_MODALITIES = [
   'CT',
   'MR',
@@ -75,8 +73,6 @@ const OTHER_MODALITIES =
   RESP RG RTDOSE RTIMAGE RTINTENT RTPLAN RTRAD RTRECORD RTSEGANN RTSTRUCT RWV SEG SM SMR SR SRF
   STAIN TEXTUREMAP TG VA XAPROTOCOL XC`.split(/\s+/)
 
-// Document types for reports and forms (app/document_info.py DOCUMENT_TYPES);
-// DICOM files are named by their modality instead.
 export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   ENROLLMENT: 'Enrollment form',
   CONTACT: 'Contact form',
@@ -104,7 +100,6 @@ export const MODALITY_OPTIONS = [
   })),
 ]
 
-/** '20190312' -> '2019-03-12'; anything else -> null. */
 export function isoDocumentDate(value?: string | null): string | null {
   const match = /^(\d{4})(\d{2})(\d{2})$/.exec(value ?? '')
   return match ? `${match[1]}-${match[2]}-${match[3]}` : null
@@ -119,7 +114,6 @@ export function reviewTone(status: string): 'success' | 'danger' | 'neutral' {
   return 'neutral'
 }
 
-/** A file whose documents were deleted from Rejections; only its record is left. */
 export function isDeletedFile(file: { review_status: string }): boolean {
   return file.review_status === 'deleted'
 }
@@ -237,7 +231,6 @@ export function formatFileSize(bytes: number): string {
 export const METADATA_STATUSES = ['ok', 'unsupported', 'failed'] as const
 export type MetadataStatus = (typeof METADATA_STATUSES)[number]
 
-// JPG/PNG/... are converted to DICOM when de-identified (app/image_convert.py).
 export const PLAIN_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'bmp', 'gif']
 
 const METADATA_EXTENSIONS = new Set([

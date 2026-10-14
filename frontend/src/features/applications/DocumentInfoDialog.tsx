@@ -8,7 +8,6 @@ import {
   type ApplicationFile,
 } from '@/schemas/applicationFile'
 
-/** Set the document type (or modality) and date a redacted file is named by. */
 export function DocumentInfoDialog({
   file,
   isBusy,

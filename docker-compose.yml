@@ -1,10 +1,8 @@
-# Local Hive (needs ~4GB RAM, first start takes 1-2 min)
 services:
   hiveserver2:
     image: apache/hive:4.0.0
     container_name: hive-local
     restart: unless-stopped
-    # remove old pid file, otherwise it won't start after an unclean stop
     entrypoint: ["sh", "-c", "rm -f /opt/hive/conf/hiveserver2.pid; exec /entrypoint.sh"]
     environment:
       SERVICE_NAME: hiveserver2

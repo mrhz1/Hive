@@ -1,20 +1,3 @@
-"""Temporary abstraction folders.
-
-An analyst picks de-identified documents by their metadata (patient code,
-modality, document date, file type, text in the extracted metadata) and gets
-a read-only copy of them in a folder of their own under ABSTRACTION_DIR:
-
-    ABSTRACTION_DIR/<username>/<id8>-<name>/<CODE>/<redacted file name>
-                                           /MANIFEST.csv
-
-Only documents of submitted applications are offered. Nothing is added to a
-folder after it is made: files are read-only, and so are its directories
-(on Cloudera, also restrict the folder's ACLs). A folder lasts
-ABSTRACTION_EXPIRY_DAYS (90) unless extended; scripts/abstraction_cleanup.py
-deletes the expired ones. The criteria and the file list are kept, so a
-deleted or expired folder can be made again.
-"""
-
 import csv
 import json
 import os
@@ -93,17 +76,12 @@ def is_due(folder: AbstractionFolder, now: Optional[datetime] = None) -> bool:
     return expires <= (now or _now())
 
 
-# --- which documents ---------------------------------------------------------
-
-
 def file_type_of(path_or_name: str) -> str:
     extension = Path(path_or_name).suffix.lower().lstrip(".")
     return "DICOM" if extension in ("dcm", "dicom") else (extension.upper() or "FILE")
 
 
 def _available(cursor) -> List[Tuple[object, str]]:
-    """(file record, patient code) for every de-identified document of a
-    submitted application that is still on disk."""
     patients = {
         a.id: a.patient_id
         for a in applications_crud.list_applications(cursor)
@@ -112,7 +90,6 @@ def _available(cursor) -> List[Tuple[object, str]]:
     out = []
     for record in files_crud.list_files(cursor):
         patient_id = patients.get(record.application_id)
-        # deleted, or rejected and waiting to be redacted again
         if not patient_id or is_deleted_file(record) or record.review_status == "rejected":
             continue
         if record.deid_status != "done" or not record.de_identified_file_path:
@@ -174,7 +151,6 @@ def matching(cursor, criteria: AbstractionCriteria) -> List[AbstractionDocument]
 
 
 def _documents_by_id(cursor, file_ids: List[str]) -> Tuple[List[AbstractionDocument], int]:
-    """The documents among `file_ids` still available, and how many are not."""
     wanted = set(file_ids)
     found = [
         _document(record, patient_id)
@@ -184,9 +160,6 @@ def _documents_by_id(cursor, file_ids: List[str]) -> Tuple[List[AbstractionDocum
     return sorted(found, key=lambda d: (d.patient_id, d.document_date or "", d.name)), len(
         wanted - {d.file_id for d in found}
     )
-
-
-# --- the folder on disk --------------------------------------------------------
 
 
 def _slug(name: str) -> str:
@@ -256,9 +229,6 @@ def _checked(docs: List[AbstractionDocument]) -> None:
         )
 
 
-# --- actions --------------------------------------------------------------------
-
-
 def create(cursor, payload: AbstractionFolderCreate, owner: User) -> AbstractionFolder:
     docs = matching(cursor, payload.criteria)
     _checked(docs)
@@ -295,8 +265,6 @@ def extend(cursor, folder: AbstractionFolder) -> AbstractionFolder:
 
 
 def regenerate(cursor, folder: AbstractionFolder) -> Tuple[AbstractionFolder, int]:
-    """Copy the same documents again (those still available); returns the
-    folder and how many of its documents are gone."""
     docs, missing = _documents_by_id(cursor, crud.file_ids(cursor, folder.id))
     _checked(docs)
     target = Path(folder.folder_path) if folder.folder_path else None

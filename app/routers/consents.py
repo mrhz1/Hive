@@ -23,7 +23,6 @@ def list_consents(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("consent:view")),
 ):
-    """Every recorded decision, oldest first, or one patient's."""
     code = (patient_id or "").strip().upper() or None
     rows = sorted(crud.list_consents(cursor, code), key=consent._order)
     if code:
@@ -80,7 +79,6 @@ async def preview_import(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("consent:update")),
 ):
-    """What importing the file would record, row by row. Changes nothing."""
     return consent.import_file(cursor, file.filename or "", await _read(file), False, actor.id)
 
 
@@ -92,7 +90,6 @@ async def run_import(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("consent:update")),
 ):
-    """Record the file's new decisions; rows with problems or no change are skipped."""
     result = consent.import_file(cursor, file.filename or "", await _read(file), True, actor.id)
     background.add_task(
         record_audit,

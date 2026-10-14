@@ -71,7 +71,6 @@ def list_folders(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("abstraction:view")),
 ):
-    """Your folders; everyone's with abstraction:delete."""
     owner = None if MANAGE_ALL in actor.permissions else actor.id
     return _with_owner_names(cursor, crud.list_folders(cursor, owner))
 
@@ -155,7 +154,6 @@ def regenerate_folder(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("abstraction:update")),
 ):
-    """Copy the same documents again, e.g. after it expired."""
     before = _own_or_managed(cursor, folder_id, actor)
     after, missing = abstraction.regenerate(cursor, before)
     record_access(
@@ -183,7 +181,6 @@ def delete_folder(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("abstraction:update")),
 ):
-    """Remove the copy from disk; the record stays, so it can be made again."""
     before = _own_or_managed(cursor, folder_id, actor)
     after = abstraction.delete(cursor, before, actor.id, payload.reason)
     _audit(background, request, "DELETE", folder_id, actor, old=_snapshot(before), new=_snapshot(after))

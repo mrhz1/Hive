@@ -23,7 +23,7 @@ export const projectSchema = z.object({
   created_by_id: nullableText,
   created_at: nullableText,
   updated_at: nullableText,
-  /** The Zone 1X workspace (9.2.1); deleted at workspace_expires_at (9.2.2). */
+
   workspace_path: nullableText,
   workspace_built_at: nullableText,
   workspace_expires_at: nullableText,
@@ -72,7 +72,7 @@ export const candidateListSchema = z.array(
     patient_id: z.string(),
     applications: z.number(),
     documents: z.number(),
-    /** Why the consent matrix keeps the patient out of this project. */
+
     excluded_reason: nullableText,
   })
 )
@@ -88,7 +88,6 @@ export const releaseSummarySchema = releaseSchema.extend({
 
 export type ReleaseSummary = z.infer<typeof releaseSummarySchema>
 
-/** A file in a release (documents.csv), to open and spot-check. */
 export const releaseDocumentSchema = z.object({
   project_document_id: z.string(),
   project_patient_id: z.string(),
@@ -100,12 +99,10 @@ export type ReleaseDocument = z.infer<typeof releaseDocumentSchema>
 
 export const releaseDocumentListSchema = z.array(releaseDocumentSchema)
 
-/** The letters a patient code starts with, its cohort: AVSD0012 -> AVSD. */
 export function codePrefix(code: string): string {
   return /^[A-Za-z]+/.exec(code)?.[0].toUpperCase() ?? ''
 }
 
-/** Codes grouped by prefix, largest group first. */
 export function groupByPrefix(codes: readonly string[]): Array<[string, string[]]> {
   const groups = new Map<string, string[]>()
   for (const code of codes) {
@@ -118,7 +115,6 @@ export function groupByPrefix(codes: readonly string[]): Array<[string, string[]
   )
 }
 
-/** Up to `count` documents picked at random, for a spot check. */
 export function randomSample<T>(
   items: readonly T[],
   count: number,
@@ -156,7 +152,6 @@ export function releaseTone(status: string): 'info' | 'success' | 'danger' | 'ne
   return 'neutral'
 }
 
-/** Inclusion/exclusion criteria (app/project_schemas.py CohortCriteria). */
 export type CohortCriteria = {
   prefixes?: string[]
   registered_from?: string | null
@@ -179,8 +174,6 @@ export const cohortSearchSchema = z.object({
 })
 
 export type CohortSearchResult = z.infer<typeof cohortSearchSchema>
-
-// --- consent matrix -----------------------------------------------------------
 
 export const CONSENT_TYPES = ['research', 'documents'] as const
 export const CONSENT_STATUSES = ['granted', 'refused', 'withdrawn'] as const

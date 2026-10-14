@@ -749,8 +749,6 @@ export function useAttachIntakeFiles(applicationId: string) {
   })
 }
 
-// --- projects and Zone 2 ------------------------------------------------
-
 export function useLockdown() {
   return useQuery({
     queryKey: queryKeys.security.lockdown(),

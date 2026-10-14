@@ -1,20 +1,3 @@
-"""Loading patients in bulk from a spreadsheet (Excel .xlsx or CSV).
-
-The first row names the columns: the template's labels ("First name",
-"Date of birth", ...) or the database names (fstname, dt_b, ...). Only
-"Patient code" is required.
-
-- a code not in the system: the patient is created;
-- a code already there: only its empty fields are filled; a value that
-  differs from what is stored is reported as a conflict and left alone;
-- rows with problems (bad code, bad date, bad email, a code twice, an email
-  or phone of another patient) are skipped and reported.
-
-Dates are real Excel dates or YYYY-MM-DD; 03/12/1980 could be either day or
-month first, so it is refused. Imported patients' details count as not
-checked: their first application waits until someone confirms them.
-"""
-
 import csv
 import io
 import re
@@ -35,8 +18,6 @@ log = get_logger(__name__)
 
 MAX_ROWS = 20000
 
-# (column, label) in template order. Patient fields first, then the
-# provider's (the clinic/physician).
 FIELDS: List[Tuple[str, str]] = [
     ("id", "Patient code"),
     ("fstname", "First name"),
@@ -97,8 +78,6 @@ def _key(header: str) -> str:
     return re.sub(r"[^a-z0-9]", "", str(header or "").lower())
 
 
-# Labels win over column names: "City" is the patient's (ptcity), though the
-# provider's column is called city.
 _HEADERS = {_key(column): column for column, _ in FIELDS}
 _HEADERS.update({_key(label): column for column, label in FIELDS})
 _HEADERS.update({_key("code"): "id", _key("patient id"): "id", _key("dob"): "dt_b"})
@@ -110,14 +89,8 @@ def template_csv() -> bytes:
     return ("﻿" + ",".join(label for _, label in FIELDS) + "\r\n").encode("utf-8")
 
 
-# --- reading the file -------------------------------------------------------
-
-
 def _read_rows(name: str, data: bytes, max_rows: Optional[int] = None) -> List[List[object]]:
-    """The rows of the first sheet (or the CSV). With `max_rows`, stops one
-    row past it, so a file far too big is refused without being read whole
-    into memory; the caller still sees there are too many."""
-    limit = None if max_rows is None else max_rows + 2  # the header, one too many
+    limit = None if max_rows is None else max_rows + 2
     if (name or "").lower().endswith((".xlsx", ".xlsm")):
         from openpyxl import load_workbook
 
@@ -195,15 +168,11 @@ def _parse(row: List[object], columns: List[Optional[str]]) -> Tuple[Dict, List[
     return dict(values, id=code), errors
 
 
-# --- planning ---------------------------------------------------------------------
-
-
 def _same(a, b) -> bool:
     return str(a).strip().lower() == str(b).strip().lower()
 
 
 def plan(cursor, name: str, data: bytes):
-    """What importing would do, row by row: (result, new rows, fills)."""
     rows = _read_rows(name, data, MAX_ROWS)
     while rows and not any(_text(v) for v in rows[0]):
         rows.pop(0)
@@ -296,8 +265,6 @@ def plan(cursor, name: str, data: bytes):
 
 
 def run(cursor, name: str, data: bytes) -> ImportResult:
-    """Create the new patients and fill the existing ones' empty fields;
-    rows with errors are skipped."""
     result, new_rows, fills = plan(cursor, name, data)
     if new_rows:
         crud.insert_many(cursor, new_rows)

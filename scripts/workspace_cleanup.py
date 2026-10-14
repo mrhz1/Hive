@@ -1,9 +1,3 @@
-"""Delete project workspaces past their expiry date (spec 9.2.2). Run daily
-as a Cloudera Job, next to scripts/abstraction_cleanup.py.
-
-    python scripts/workspace_cleanup.py
-"""
-
 import os
 import sys
 from pathlib import Path
@@ -28,10 +22,10 @@ def _repo_root():
 
 sys.path.insert(0, str(_repo_root()))
 
-from app import workspace  # noqa: E402
-from app.audit import record_audit  # noqa: E402
-from app.db import hive_cursor  # noqa: E402
-from app.logging_setup import configure_logging  # noqa: E402
+from app import workspace
+from app.audit import record_audit
+from app.db import hive_cursor
+from app.logging_setup import configure_logging
 
 
 def main() -> int:
@@ -52,8 +46,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # Under Cloudera's ipykernel launcher any SystemExit -- even 0 -- marks
-    # the Job run failed, so only exit explicitly from a terminal.
     _rc = main()
     if "ipykernel" not in sys.modules:
         sys.exit(_rc)

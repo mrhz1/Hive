@@ -1,22 +1,3 @@
-"""Turning JPG, PNG, TIFF and BMP images into DICOM (spec 9.1.8).
-
-Images sites send in other formats are converted to a DICOM Secondary
-Capture before de-identification, so they go through the same pipeline as
-any DICOM (text burned into the picture is found and covered) and are stored
-and named like one. The DICOM header is generated (Metadata generation
-logic):
-
-- PatientID / PatientName: the CHSS code;
-- Modality: from the file name (`xray`, `CT`, `echo`, ...), else OT (other);
-- StudyDate / ContentDate: from the file name, else left empty;
-- new Study, Series and Instance UIDs; ConversionType WSD;
-- SeriesDescription "Converted from JPG" (the format), never the file name,
-  which could hold a name.
-
-Only the first frame of a multi-page TIFF is kept. Nothing else from the
-source (EXIF, GPS, comments) is carried over.
-"""
-
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -39,7 +20,6 @@ def is_image(extension: str) -> bool:
 
 
 def _pixels(path: Path):
-    """(array, photometric interpretation, bits) for the first frame."""
     import numpy as np
     from PIL import Image
 
@@ -59,7 +39,6 @@ def _pixels(path: Path):
 
 
 def to_dicom(source: Path, target: Path, code: str = "") -> Path:
-    """Write `source` (an image) as a DICOM file at `target`."""
     import pydicom
     from pydicom.dataset import FileDataset, FileMetaDataset
     from pydicom.uid import ExplicitVRLittleEndian, generate_uid

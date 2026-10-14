@@ -150,7 +150,6 @@ def retry_all_files(
     request: Request,
     actor: User = Depends(require_permission("deidentifier:run")),
 ):
-    """Move every failed file (or every one for a code) back to incoming."""
     moved = intake.retry_all_failed(payload.code or None)
     intake_progress.clear_cache()
     background.add_task(

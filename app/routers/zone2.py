@@ -53,7 +53,6 @@ def list_releases(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("zone2:review")),
 ):
-    """The Zone 2 inbox: releases waiting for review (or any status)."""
     releases = projects_crud.list_releases(cursor, status=status or None)
     return [_with_project(cursor, r) for r in releases]
 
@@ -103,7 +102,6 @@ def release_documents(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("zone2:review")),
 ):
-    """The files in a release, to spot-check before approving."""
     release = projects_crud.get_release_or_404(cursor, release_id)
     return [ReleaseDocument(**row) for row in zone2.release_documents(release)]
 
@@ -144,7 +142,6 @@ def release_document_image(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("zone2:review")),
 ):
-    """A DICOM frame as PNG; the frame count is in X-Frame-Count."""
     release = projects_crud.get_release_or_404(cursor, release_id)
     path = zone2.release_file(release, document_id)
     content, frames = render_dicom_png(path, frame)
@@ -172,8 +169,6 @@ def flag_release_document(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("zone2:review")),
 ):
-    """This document still identifies someone: reject the release and send
-    the document to Rejections."""
     release, record = zone2.flag_document(
         cursor, release_id, document_id, actor.id, payload.reason
     )

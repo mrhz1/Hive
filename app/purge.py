@@ -1,18 +1,3 @@
-"""Deleting a rejected application's or file's documents, keeping the record.
-
-The bytes go -- original, de-identified copy, its sidecar, any de-
-identification artifacts and the extracted metadata -- but the rows stay,
-marked deleted with the reason, so there is a record of what was removed and
-why. Who and when are in the audit log. Nothing on a deleted row can be
-opened or changed afterwards.
-
-Only the files of the application being deleted are touched: every file
-belongs to one application, so a patient's other applications keep theirs.
-The patient's excluded and failed De-Identifier files belong to no
-application, so they are removed only when the patient has no draft left that
-they might still be meant for.
-"""
-
 from pathlib import Path
 from typing import Dict, List
 
@@ -51,7 +36,6 @@ def _remove(stored) -> None:
 
 
 def purge_file(cursor, record, reason: str):
-    """Remove one file's documents from disk and mark its row deleted."""
     try:
         remove_deid_artifacts(record.file_path, record.deidentified_file_name or "")
     except Exception as exc:
@@ -114,10 +98,6 @@ def _purge_problem_files(code: str) -> Dict[str, int]:
 
 
 def purge_rejected_application(cursor, application_id: str, reason: str, actor_id: str):
-    """Delete a rejected application's documents; keep it as a locked record.
-
-    Returns (before, after, summary).
-    """
     before = applications_crud.get_application_or_404(cursor, application_id)
     reason = _reason(reason)
     if before.status != "rejected":

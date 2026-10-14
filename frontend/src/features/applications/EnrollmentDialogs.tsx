@@ -59,7 +59,6 @@ function useChecks() {
   return { checked, toggle }
 }
 
-/** The enrollment checklist; every item must be ticked to submit. */
 export function SubmitChecklistDialog({
   isBusy,
   onConfirm,
@@ -112,7 +111,6 @@ export function SubmitChecklistDialog({
   )
 }
 
-/** Reject with the checklist points that failed. No consent deletes the documents. */
 export function RejectApplicationDialog({
   title,
   description,

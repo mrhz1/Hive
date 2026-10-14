@@ -49,13 +49,6 @@ def _delete_sidecars(directory: Path, stem: str, keep: Path) -> None:
 
 
 def _file_data_record(record, patient_id: str, staged: Path, original) -> bool:
-    """Move a De-Identifier file from pending_data to submitted_data.
-
-    Both copies keep their place in the folder layout, so on disk
-    submitted_data holds exactly what was submitted and pending_data what is
-    still being worked on. The sidecar follows the de-identified copy and is
-    pointed at the moved original.
-    """
     if not intake.is_pending_data_file(staged):
         log.info("submission_filed", file_id=record.id, patient_id=patient_id, deidentified=str(staged), moved=False)
         return True
@@ -81,7 +74,6 @@ def _file_data_record(record, patient_id: str, staged: Path, original) -> bool:
         info["submitted"] = True
         intake.write_json(Path(str(final) + intake.SIDECAR_SUFFIX), info)
         sidecar.unlink(missing_ok=True)
-    # The copy's folder only empties once its sidecar has moved too.
     prune_empty_dirs(staged.parent)
 
     try:

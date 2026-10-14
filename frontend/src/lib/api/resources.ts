@@ -143,7 +143,7 @@ async function blobError(error: unknown): Promise<unknown> {
       const parsed = apiErrorSchema.parse(JSON.parse(await error.response.data.text()))
       return new ApiError(error.response.status, parsed.error.code, parsed.error.detail)
     } catch {
-      // Not the API envelope; fall through to the generic mapping.
+      return toApiError(error)
     }
   }
   return toApiError(error)
@@ -221,7 +221,6 @@ export type ApplicationPayload = {
   assigned_to_id?: string | null
   original_file_path?: string | null
 
-  /** Every check ticked; required when status becomes 'submitted'. */
   checklist?: Record<string, boolean>
 }
 

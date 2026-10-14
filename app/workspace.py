@@ -1,27 +1,3 @@
-"""A project's Zone 1X workspace (spec 9.2.1, 9.2.2).
-
-Building it puts the cohort's data where the project's analysts work on it:
-
-    PROJECTS_DIR/<project code>/workspace/
-        patients.csv, applications.csv, documents.csv   standard tables
-        documents/<CHSS code>/<redacted file>           the PDFs and images
-        cleaning_log.csv                                 which cleanup rules ran
-        profile.xlsx                                     columns, frequencies, outliers
-        README.txt
-
-This is Zone 1X, so the CHSS codes stay (with the project IDs next to
-them); names and contact details are left out. Only de-identified copies of
-documents of submitted applications go in; ones waiting in Rejections or
-deleted don't. The standard cleanup rules (app/cleaning.py) are applied to
-the tables. Files are read-only.
-
-The workspace is deleted WORKSPACE_EXPIRY_DAYS (90) after it was first
-built unless someone extends it, with a reason, for another 90 days (the
-"approved process"); scripts/workspace_cleanup.py deletes the expired ones.
-Rebuilding keeps the expiry date. The release archives (the original
-extract and ID map of each Zone 2 release) are not part of it and stay.
-"""
-
 import csv
 import os
 import shutil

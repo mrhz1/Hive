@@ -1,22 +1,3 @@
-"""How the migration (or any large intake) went: one report to open while it
-runs, as a progress check, and at the end, as the final check.
-
-It reads only folders and the database; no document is opened (the file
-names carry the type and date). Folders are scanned once each and the
-database is read with a few streamed queries, so millions of files are
-fine.
-
-Summary: files waiting, de-identified (pending and submitted), failed and
-needing attention (by reason), documents in applications (by status,
-rejected, leaded, with text covered in the picture), patients (details
-not checked, no consent on record, consent refused or withdrawn) and
-applications by status.
-
-Lists (CSV in full, the workbook up to a cap): failed, needs attention,
-documents with an UNKNOWN type or date, images with covered text, leaded
-images, patients not checked, patients without a consent record.
-"""
-
 import os
 from collections import Counter
 from pathlib import Path
@@ -33,7 +14,6 @@ IMAGE_SUFFIXES = (".dcm", ".dicom")
 
 
 def _files(root: Path) -> Iterator[Tuple[str, str]]:
-    """(path relative to root, file name) of every data file under root."""
     if not root.is_dir():
         return
     stack = [root]
@@ -96,7 +76,6 @@ def build(cursor, root: Optional[Path] = None, cap: int = reports.DEFAULT_CAP) -
     }
     summary = []
 
-    # --- folders ---------------------------------------------------------
     waiting = sum(1 for _ in _files(intake.intake_root()))
     types: Counter = Counter()
     pending = _scan_redacted(intake.deidentified_root(), "pending", lists["unknown"], types)
@@ -128,7 +107,6 @@ def build(cursor, root: Optional[Path] = None, cap: int = reports.DEFAULT_CAP) -
     summary += [("Needs attention", reason, n) for reason, n in problems["attention"].most_common()]
     summary += [("Document types", label[5:], n) for label, n in sorted(types.items())]
 
-    # --- database ----------------------------------------------------------
     owner: Dict[str, str] = {}
     statuses: Counter = Counter()
     for app_id, patient_id, status in _rows(

@@ -1,13 +1,3 @@
-"""Writing the big operational reports (migration, QC): a folder holding an
-Excel workbook (a summary sheet, then one sheet per list) and every list in
-full as CSV.
-
-Excel holds about a million rows, and a migration can have millions of
-problem files, so each list sheet stops at `cap` rows and says so; the CSV
-next to it always has them all. The workbook is written in streaming mode,
-so memory stays flat.
-"""
-
 import csv
 import os
 from datetime import datetime, timezone
@@ -33,9 +23,6 @@ def new_folder(kind: str, root: Path = None) -> Path:
 
 
 class ListOut:
-    """One list: written to CSV in full as rows come, and kept (up to the
-    cap) for the workbook."""
-
     def __init__(self, folder: Path, name: str, title: str, columns: Sequence[str], cap: int):
         self.name, self.title, self.columns, self.cap = name, title, list(columns), cap
         self.count = 0
@@ -61,7 +48,6 @@ def write_workbook(
     summary: Iterable[Tuple[str, str, object]],
     lists: Sequence[ListOut],
 ) -> Path:
-    """Summary rows are (section, measure, value)."""
     from openpyxl import Workbook
     from openpyxl.cell import WriteOnlyCell
     from openpyxl.styles import Font

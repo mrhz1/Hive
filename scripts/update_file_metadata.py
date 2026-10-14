@@ -1,14 +1,3 @@
-"""Correct redacted files' modality and date in bulk, reject the ones that
-still show an identifier (protocol 7.9) and mark leaded images (9.1.9).
-
-The file is a spreadsheet (.xlsx or .csv) with the columns File, Modality,
-Document date, Reject reason and Leaded; see app/file_corrections.py. Without
---apply it only shows what it would do.
-
-    python scripts/update_file_metadata.py corrections.xlsx
-    python scripts/update_file_metadata.py corrections.xlsx --apply --user jsmith
-"""
-
 import argparse
 import os
 import sys
@@ -34,11 +23,11 @@ def _repo_root():
 
 sys.path.insert(0, str(_repo_root()))
 
-from app import file_corrections  # noqa: E402
-from app.audit import record_audit  # noqa: E402
-from app.db import hive_cursor  # noqa: E402
-from app.errors import AppError  # noqa: E402
-from app.logging_setup import configure_logging  # noqa: E402
+from app import file_corrections
+from app.audit import record_audit
+from app.db import hive_cursor
+from app.errors import AppError
+from app.logging_setup import configure_logging
 
 SCRIPT_ACTOR = "metadata-script"
 

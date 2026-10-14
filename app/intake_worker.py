@@ -205,13 +205,6 @@ class Heartbeat:
 
 
 def forget_dead_workers():
-    """Drop the heartbeats of workers that are gone.
-
-    On Cloudera each Job run is a new container with a new host name, so a
-    run that was killed leaves a heartbeat nothing will ever overwrite --
-    still "working", still holding its files -- and the Intake page would
-    report the de-identification as stopped for good.
-    """
     folder = intake.state_dir() / "workers"
     if not folder.is_dir():
         return 0
@@ -249,8 +242,6 @@ class PatientCreator:
         self.thread.start()
 
     def add(self, code):
-        # Only dedupes codes still waiting in the queue: a code finished again
-        # after it was handled is queued again, so its new files are attached.
         if not code:
             return
         with self.seen_lock:
@@ -392,7 +383,6 @@ class Task:
 
 
 def is_dicom(task):
-    """DICOM, or an image that goes in as one."""
     return (task.extension or "").lower() in ("dcm", "dicom") or image_convert.is_image(
         task.extension
     )
@@ -430,7 +420,6 @@ def run_pipeline(tasks, ocr_batch, workdir):
             results[n] = deid.DeidError("the file is no longer in the incoming folder")
             continue
         if image_convert.is_image(task.extension):
-            # JPG/PNG/... go in as a DICOM made from them (9.1.8)
             try:
                 link = deid.pipeline_input(task.path, input_dir, task.code, f"f{n:05d}")
             except deid.DeidError as e:
@@ -675,8 +664,6 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
             state["batch"] = []
 
     def scan():
-        """Queue every settled file not queued yet; return how long the
-        unsettled ones still need, one entry per file."""
         waiting = []
         for path in intake.walk(root):
             if limit is not None and state["queued"] >= limit:
@@ -709,10 +696,6 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
         return waiting
 
     try:
-        # Files copied in just before Start are still "fresh" and skipped so a
-        # half-written file is never read. Rather than ending with 0 done and
-        # needing another click, wait for them -- but only as long as they
-        # need, and never past INTAKE_SETTLE_WAIT_SECONDS.
         deadline = time.time() + intake.settle_wait_seconds()
         waiting = scan()
         while waiting and (limit is None or state["queued"] < limit):

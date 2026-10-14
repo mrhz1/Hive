@@ -98,7 +98,6 @@ function NewFolder({ onDone }: { onDone: () => void }) {
   }
   const criteriaKey = JSON.stringify(criteria)
 
-  // A preview is only good for the criteria it was made with.
   const { reset } = preview
   useEffect(() => {
     reset()

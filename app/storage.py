@@ -50,32 +50,26 @@ def submitted_root() -> Path:
 
 
 def data_root() -> Path:
-    """De-identified and set-aside files of applications not submitted yet."""
     return _configured_dir("DATA_DIR", "storage/pending_data")
 
 
 def submitted_data_root() -> Path:
-    """The same layout as data_root(), for files of submitted applications."""
     return _configured_dir("SUBMITTED_DATA_DIR", "storage/submitted_data")
 
 
 def projects_root() -> Path:
-    """Project archives: original extract, ID map and the safe copy. Zone 1X."""
     return _configured_dir("PROJECTS_DIR", "storage/projects")
 
 
 def zone2_inbox_root() -> Path:
-    """Safe copies waiting for the CHSS manager's review."""
     return _configured_dir("ZONE2_INBOX_DIR", "storage/zone2_inbox")
 
 
 def zone2_root() -> Path:
-    """Released safe copies, one folder per project. Zone 2."""
     return _configured_dir("ZONE2_DIR", "storage/zone2")
 
 
 def abstraction_root() -> Path:
-    """Temporary read-only abstraction folders, one per task. Zone 1."""
     return _configured_dir("ABSTRACTION_DIR", "storage/abstraction")
 
 

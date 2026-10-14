@@ -1,15 +1,3 @@
-"""Locking the whole app during a security incident (protocol section 4).
-
-While locked, every request is refused with 503 "locked", except for users
-with `security:manage` (to investigate and unlock) and the two calls the
-page needs to say so (/me, /security/lockdown). The state is a file on
-shared storage (SECURITY_STATE_DIR), so every API instance and the alert job
-see it; it is re-read every few seconds.
-
-Locking and unlocking are emailed to ALERT_EMAIL_TO (the Program Manager,
-the application specialist and Host IT) and written to the audit log.
-"""
-
 import json
 import os
 import threading
@@ -74,8 +62,6 @@ def state(fresh: bool = False) -> LockdownState:
 
 
 def contacts(level: str = "high") -> List[str]:
-    """Who hears about it: low -> ALERT_EMAIL_LOW_TO (falls back to
-    ALERT_EMAIL_TO), anything else -> ALERT_EMAIL_TO."""
     names = ["ALERT_EMAIL_LOW_TO", "ALERT_EMAIL_TO"] if level == "low" else ["ALERT_EMAIL_TO"]
     for name in names:
         raw = os.environ.get(name) or ""

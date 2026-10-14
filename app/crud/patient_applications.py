@@ -153,7 +153,6 @@ def update_application(
     actor_id: str,
     checklist: Optional[dict] = None,
 ) -> PatientApplication:
-    """`checklist` is stored as given (JSON); the payload's own is ignored."""
     existing = get_application_or_404(cursor, application_id)
 
     fields = payload.model_dump(exclude_unset=True, exclude={"checklist"})
@@ -198,5 +197,3 @@ def delete_application(cursor, application_id: str) -> PatientApplication:
     )
     log.info("application_deleted", application_id=application_id)
     return existing
-
-

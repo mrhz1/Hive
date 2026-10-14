@@ -25,11 +25,7 @@ COLUMNS = (
     "de_identified_file_path",
     "review_status",
     "review_note",
-    # How many areas redaction covered; for an image, text burned into the
-    # picture (7.9). NULL when not known.
     "redaction_boxes",
-    # An image with identifiers in lead letters burned into it (9.1.9): it
-    # stays in Zones 1 and 1X and can't be released to Zone 2.
     "leaded_phi",
 )
 

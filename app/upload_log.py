@@ -1,17 +1,3 @@
-"""Recording every file put into the app, for later investigation.
-
-Each upload (an original, an already de-identified file, a replacement of a
-redacted copy) leaves two records:
-
-- an audit entry: who, which record, the stored name, the name it was
-  uploaded as, its size and SHA-256; for a replacement, the same about the
-  file it replaced (that one is deleted, so its fingerprint is what stays);
-- an access log entry (action "upload"), which also holds the time, the
-  client IP and the request id.
-
-The SHA-256 lets anyone later prove which exact file was uploaded.
-"""
-
 import hashlib
 from pathlib import Path
 from typing import Optional
@@ -24,8 +10,6 @@ log = get_logger(__name__)
 
 
 class _Actor:
-    """Enough of a user for the logs when only the id is known."""
-
     def __init__(self, user_id: Optional[str]):
         self.id = user_id
         self.username = None
@@ -64,8 +48,6 @@ def record_upload(
     replaced: Optional[dict] = None,
     request_id: Optional[str] = None,
 ) -> None:
-    """`kind`: application_file (an original), deidentified_file. `facts`:
-    fingerprint() of the stored file. `replaced`: what the file replaced."""
     actor = actor or _Actor(actor_id)
     new_values = {
         "stored_as": stored_name,

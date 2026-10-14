@@ -5,11 +5,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from deid import model_store  # noqa: E402
+from deid import model_store
 
 model_store.apply_offline_env()
 
-from deid.config import load_config  # noqa: E402
+from deid.config import load_config
 
 logging.basicConfig(
     level=logging.INFO, format="%(levelname)-7s %(message)s", stream=sys.stdout

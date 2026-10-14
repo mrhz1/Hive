@@ -867,9 +867,6 @@ def mark_leaded(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("files:reject")),
 ):
-    """Mark (or clear) an image whose identifiers are lead letters burned into
-    the picture (9.1.9). A marked file stays in Zones 1 and 1X; Zone 2
-    releases refuse it until it is scrubbed by hand and the mark cleared."""
     record = crud.get_file_or_404(cursor, file_id)
     purge.refuse_if_deleted(record)
     if record.leaded_phi == payload.leaded_phi:
@@ -891,7 +888,6 @@ def mark_leaded(
     return updated
 
 
-# Submitted applications are final; their files keep their names.
 DOCUMENT_INFO_FROZEN = ("submitted", "deleted")
 
 
@@ -904,7 +900,6 @@ def set_document_info(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("application:update")),
 ):
-    """Set the modality and date a redacted file is named by, renaming it on disk."""
     record = crud.get_file_or_404(cursor, file_id)
     purge.refuse_if_deleted(record)
 
@@ -950,7 +945,6 @@ def purge_rejected_file(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("files:delete")),
 ):
-    """Delete a rejected file's documents from disk and keep its row as a record."""
     before = crud.get_file_or_404(cursor, file_id)
     after = purge.purge_rejected_file(cursor, file_id, payload.reason)
 

@@ -18,8 +18,6 @@ def generated_facts(
     output_type: str = "",
     by: str = "",
 ) -> Dict[str, str]:
-    """What the app adds to a de-identified file's metadata. Never the name
-    the site gave the file: it can hold the patient's name."""
     facts = {
         "deidentified": "yes",
         "deidentified_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),

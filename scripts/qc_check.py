@@ -1,11 +1,3 @@
-"""Run the data quality check (app/qc.py): rules over the database, a report
-(Excel, PDF, CSV) in REPORTS_DIR and an email with the counts to
-QC_EMAIL_TO. Schedule it as a nightly Cloudera Job, or after an import.
-
-    python scripts/qc_check.py
-    python scripts/qc_check.py --no-email --out /path/to/reports
-"""
-
 import os
 import sys
 from pathlib import Path
@@ -30,11 +22,11 @@ def _repo_root():
 
 sys.path.insert(0, str(_repo_root()))
 
-import argparse  # noqa: E402
+import argparse
 
-from app import qc  # noqa: E402
-from app.db import hive_cursor  # noqa: E402
-from app.logging_setup import configure_logging  # noqa: E402
+from app import qc
+from app.db import hive_cursor
+from app.logging_setup import configure_logging
 
 
 def main(argv=None) -> int:
@@ -50,8 +42,6 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    # Under Cloudera's ipykernel launcher any SystemExit -- even 0 -- marks
-    # the Job run failed, so only exit explicitly from a terminal.
     _rc = main()
     if "ipykernel" not in sys.modules:
         sys.exit(_rc)

@@ -23,9 +23,9 @@ def _repo_root():
 
 sys.path.insert(0, str(_repo_root()))
 
-from app.logging_setup import configure_logging  # noqa: E402
+from app.logging_setup import configure_logging
 
-from app import intake  # noqa: E402
+from app import intake
 
 
 def _column(rows, index):

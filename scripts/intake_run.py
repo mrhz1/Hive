@@ -23,9 +23,9 @@ def _repo_root():
 
 sys.path.insert(0, str(_repo_root()))
 
-from app.logging_setup import configure_logging  # noqa: E402
+from app.logging_setup import configure_logging
 
-from app import intake, intake_run  # noqa: E402
+from app import intake, intake_run
 
 
 def _say(result) -> None:
@@ -40,8 +40,6 @@ def _say(result) -> None:
 
 
 def _under_ipython_kernel():
-    """Cloudera runs Job scripts through ipykernel_launcher, which adds its
-    own arguments (-f <connection file>) that are not ours to parse."""
     prog = Path(sys.argv[0]).name if sys.argv else ""
     if prog.startswith("ipykernel_launcher"):
         return True
@@ -97,8 +95,6 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     _rc = main()
-    # Under Cloudera's ipykernel launcher any SystemExit -- even 0 -- is
-    # reported as an exception and the Job run is marked failed.
     if _under_ipython_kernel():
         if _rc:
             raise SystemExit(_rc)

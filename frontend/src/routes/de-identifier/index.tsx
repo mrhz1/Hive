@@ -29,7 +29,6 @@ import {
   type ProblemList,
 } from '@/schemas/intake'
 
-/** Which patient codes the de-identifier picks up, as set in the server's .env. */
 function AcceptedCodes({ status }: { status: IntakeStatus }) {
   const formats = status.code_formats
 

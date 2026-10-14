@@ -1,5 +1,3 @@
-"""Hive access for the patient consent matrix (one row per recorded decision)."""
-
 import uuid
 from datetime import date, datetime, timezone
 from typing import List, Optional
@@ -44,7 +42,6 @@ def _now() -> str:
 def insert_many(
     cursor, entries: List[ConsentCreate], source: str, actor_id: Optional[str]
 ) -> List[Consent]:
-    """Record decisions; nothing is changed or deleted, so the history stays."""
     recorded_at = _now()
     rows = []
     for entry in entries:

@@ -291,8 +291,6 @@ def _walk(dataset, redact, touched: List[str], prefix: str = "", depth: int = 0)
         _deidentify_element(element, redact, touched, prefix)
 
 
-# UIDs that name a kind of thing (a SOP class, a transfer syntax, the
-# software that wrote the file), not a patient's study; they stay.
 _KEPT_UID_KEYWORDS = frozenset(
     {"ImplementationClassUID", "TransferSyntaxUID", "CodingSchemeUID"}
 )
@@ -302,9 +300,6 @@ _warned_no_salt = False
 
 
 def _uid_salt() -> str:
-    """DEID_UID_SALT keeps a study's new UIDs the same across files and runs.
-    Without it a random key is used per run: still safe, but two files of
-    one study processed in different runs no longer share a study UID."""
     global _warned_no_salt
     salt = os.environ.get("DEID_UID_SALT")
     if salt:
@@ -328,10 +323,6 @@ def _new_uid(value: str, salt: str) -> str:
 
 
 def _replace_uids(dataset, salt: str, touched: List[str], prefix: str = "", depth: int = 0) -> None:
-    """Every UID that identifies a study, series, image, frame of reference,
-    device or request gets a new one: the same original always maps to the
-    same new UID (with the same salt), so the images of a study still group
-    together, but the new one can't be looked up in the hospital's PACS."""
     if depth > 8:
         return
     for element in dataset:
@@ -355,7 +346,7 @@ def scrub_metadata(dataset, redact=None) -> List[str]:
     touched: List[str] = []
 
     if redact is None:
-        def redact(text: str) -> str:  # noqa: E306 - local fallback
+        def redact(text: str) -> str:
             return text
 
     try:

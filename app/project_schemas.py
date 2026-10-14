@@ -1,5 +1,3 @@
-"""Models for research projects and their Zone 2 releases."""
-
 from datetime import date, datetime
 from typing import List, Optional
 
@@ -63,8 +61,6 @@ class Project(BaseModel):
     created_by_id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    # The Zone 1X workspace: the cohort's tables and documents (9.2.1). It is
-    # deleted after 90 days unless extended (9.2.2); ISO times in UTC.
     workspace_path: Optional[str] = None
     workspace_built_at: Optional[str] = None
     workspace_expires_at: Optional[str] = None
@@ -98,8 +94,6 @@ class ProjectRelease(BaseModel):
 
 
 class CohortMember(BaseModel):
-    """A patient in a project, as the project page shows it (Zone 1X only)."""
-
     patient_id: str
     project_patient_id: str
     applications: int = 0
@@ -107,12 +101,9 @@ class CohortMember(BaseModel):
 
 
 class Candidate(BaseModel):
-    """A patient who has submitted data that can go into a project."""
-
     patient_id: str
     applications: int
     documents: int
-    # Why the consent matrix keeps this patient out of the project, if it does.
     excluded_reason: Optional[str] = None
 
 
@@ -130,8 +121,6 @@ class ReleaseDecision(BaseModel):
 
 
 class ReleaseDocument(BaseModel):
-    """A released file, as listed in the safe copy's documents.csv."""
-
     project_document_id: str
     project_patient_id: str
     file_type: str = ""
@@ -145,10 +134,6 @@ class ReleaseSummary(ProjectRelease):
     samples: dict = Field(default_factory=dict)
 
 
-# --- consent matrix (9.2.1) ----------------------------------------------
-
-# research: the patient's data may be used in research projects.
-# documents: their PDFs and images may be too (projects approved for documents).
 CONSENT_TYPES = ("research", "documents")
 CONSENT_STATUSES = ("granted", "refused", "withdrawn")
 
@@ -184,7 +169,7 @@ class ConsentImportRow(BaseModel):
     code: str = ""
     consent_type: str = ""
     status: str = ""
-    action: str  # add, unchanged, error
+    action: str
     errors: List[str] = Field(default_factory=list)
 
 
@@ -194,12 +179,7 @@ class ConsentImportResult(BaseModel):
     rows: List[ConsentImportRow]
 
 
-# --- cohort by criteria (9.2.1) ------------------------------------------
-
-
 class CohortCriteria(BaseModel):
-    """Every filter given must match; empty ones are ignored."""
-
     prefixes: List[str] = Field(default_factory=list)
     registered_from: Optional[date] = None
     registered_to: Optional[date] = None
@@ -217,11 +197,7 @@ class CohortCriteria(BaseModel):
 
 class CohortSearchResult(BaseModel):
     matches: List[str]
-    # Matched, but left out by the consent matrix: code -> why.
     excluded: dict = Field(default_factory=dict)
-
-
-# --- the project's Zone 1X workspace (9.2.1, 9.2.2) ----------------------
 
 
 class WorkspaceBuild(BaseModel):

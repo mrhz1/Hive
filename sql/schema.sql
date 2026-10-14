@@ -1,4 +1,3 @@
-
 DROP TABLE IF EXISTS `roles`;
 
 CREATE TABLE `roles` (
@@ -166,8 +165,6 @@ CREATE TABLE `audit_logs` (
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
--- Research projects (Zone 2). A project asks for a safe copy of some
--- patients' submitted data (see app/zone2.py).
 DROP TABLE IF EXISTS `projects`;
 
 CREATE TABLE `projects` (
@@ -189,8 +186,6 @@ CREATE TABLE `projects` (
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
--- The patient consent matrix (app/consent.py): one row per recorded decision,
--- never changed, so the history stays. The latest per patient and type counts.
 DROP TABLE IF EXISTS `patient_consents`;
 
 CREATE TABLE `patient_consents` (
@@ -207,8 +202,6 @@ CREATE TABLE `patient_consents` (
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
--- The cohort and the locked ID map: each patient's project-only ID and the
--- days every one of their dates is moved by. Never released.
 DROP TABLE IF EXISTS `project_patients`;
 
 CREATE TABLE `project_patients` (
@@ -221,7 +214,6 @@ CREATE TABLE `project_patients` (
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
--- Each prepared safe copy and its review by the CHSS manager.
 DROP TABLE IF EXISTS `project_releases`;
 
 CREATE TABLE `project_releases` (
@@ -243,10 +235,6 @@ CREATE TABLE `project_releases` (
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
--- Temporary abstraction folders: read-only copies of de-identified documents
--- picked by metadata for one person's task, deleted when done or when they
--- expire (see app/abstraction.py). criteria and file_ids are JSON, kept so a
--- folder can be made again.
 DROP TABLE IF EXISTS `abstraction_folders`;
 
 CREATE TABLE `abstraction_folders` (
@@ -267,9 +255,6 @@ CREATE TABLE `abstraction_folders` (
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
--- Security incidents and breach reports (protocol section 4, app/incidents.py).
--- Times are ISO strings in UTC; the 24 h and 72 h report deadlines are
--- counted from detected_at.
 DROP TABLE IF EXISTS `incidents`;
 
 CREATE TABLE `incidents` (

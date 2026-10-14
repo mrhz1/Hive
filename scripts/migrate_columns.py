@@ -23,7 +23,7 @@ def _repo_root():
 
 sys.path.insert(0, str(_repo_root()))
 
-from app.db import hive_cursor  # noqa: E402
+from app.db import hive_cursor
 
 MIGRATIONS = (
     ("patient_application_files", "review_status", "STRING"),

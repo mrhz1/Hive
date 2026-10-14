@@ -31,7 +31,6 @@ export const Route = createFileRoute('/consents/')({
 
 const TEMPLATE = 'Patient code,Consent type,Status,Version,Consent date,Note\r\n'
 
-/** The latest decision per patient and type, as the projects apply it. */
 function latestOnly(rows: Consent[]): Consent[] {
   const latest = new Map<string, Consent>()
   for (const row of rows) latest.set(`${row.patient_id}|${row.consent_type}`, row)

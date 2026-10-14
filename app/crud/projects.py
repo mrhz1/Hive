@@ -1,5 +1,3 @@
-"""Hive access for projects, their cohort/ID map and their releases."""
-
 import secrets
 import uuid
 from typing import Any, List, Optional
@@ -20,10 +18,8 @@ log = get_logger(__name__)
 NOW = object()
 NULL_TS = object()
 
-# No 0/O or 1/I: the IDs are read and typed by people.
 ID_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
-# Five years either way, never zero: a shift of 0 would leave real dates.
 MAX_SHIFT_DAYS = 1826
 
 PROJECT_COLUMNS = (
@@ -89,9 +85,6 @@ def random_shift() -> int:
     while shift == 0:
         shift = secrets.randbelow(2 * MAX_SHIFT_DAYS + 1) - MAX_SHIFT_DAYS
     return shift
-
-
-# --- projects -----------------------------------------------------------
 
 
 def _project(row) -> Project:
@@ -188,9 +181,6 @@ def delete_project(cursor, project_id: str) -> None:
     log.info("project_deleted", project_id=project_id)
 
 
-# --- cohort and ID map --------------------------------------------------
-
-
 def _member(row) -> ProjectPatient:
     values = dict(zip(PATIENT_COLUMNS, row))
     values["date_shift_days"] = int(values["date_shift_days"] or 0)
@@ -207,12 +197,6 @@ def list_cohort(cursor, project_id: str) -> List[ProjectPatient]:
 
 
 def set_cohort(cursor, project: Project, patient_ids: List[str]) -> List[ProjectPatient]:
-    """Make the cohort exactly these patients.
-
-    A patient already in it keeps their project ID and date shift, so a
-    project prepared again stays consistent. A new one gets a fresh random
-    ID and shift; one taken out loses theirs.
-    """
     wanted = list(dict.fromkeys(patient_ids))
     current = {m.patient_id: m for m in list_cohort(cursor, project.id)}
 
@@ -243,9 +227,6 @@ def set_cohort(cursor, project: Project, patient_ids: List[str]) -> List[Project
         )
     log.info("project_cohort_set", project_id=project.id, patients=len(wanted))
     return list_cohort(cursor, project.id)
-
-
-# --- releases -----------------------------------------------------------
 
 
 def _release(row) -> ProjectRelease:

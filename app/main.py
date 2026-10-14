@@ -133,8 +133,6 @@ app.add_exception_handler(Exception, unhandled_error_handler)
 
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request, exc: RequestValidationError):
-    # Which fields and why, never what was typed: that can be a name or a
-    # date of birth.
     log.warning(
         "request_validation_failed",
         errors=[{"loc": list(e["loc"]), "type": e.get("type")} for e in exc.errors()],

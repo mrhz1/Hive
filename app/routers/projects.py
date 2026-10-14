@@ -89,7 +89,6 @@ def list_candidates(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("project:update")),
 ):
-    """Patients with submitted applications, who can be put in a project."""
     return zone2.candidates(cursor)
 
 
@@ -99,8 +98,6 @@ def list_project_candidates(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("project:update")),
 ):
-    """The candidates, each with why the consent matrix keeps them out of
-    this project, if it does."""
     project = crud.get_project_or_404(cursor, project_id)
     found = zone2.candidates(cursor)
     blocked = consent.excluded(cursor, project, [c.patient_id for c in found])
@@ -114,7 +111,6 @@ def search_cohort(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("project:update")),
 ):
-    """Patients matching inclusion/exclusion criteria. Changes nothing."""
     return cohort.search(cursor, crud.get_project_or_404(cursor, project_id), criteria)
 
 
@@ -212,7 +208,6 @@ def prepare_project(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("zone2:prepare")),
 ):
-    """Make the project's safe copy and put it in the Zone 2 inbox."""
     release = zone2.prepare(cursor, project_id, actor.id)
     _audit(
         background, request, "CREATE", project_id, actor,
@@ -232,8 +227,6 @@ def build_workspace(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("project:update")),
 ):
-    """Copy the cohort's tables (cleaned) and documents to the project's
-    Zone 1X workspace, replacing what was there."""
     project = workspace.build(cursor, crud.get_project_or_404(cursor, project_id), payload.include_documents)
     _audit(
         background, request, "UPDATE", project_id, actor,
@@ -252,7 +245,6 @@ def extend_workspace(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("project:update")),
 ):
-    """Keep the workspace another 90 days; the reason (the approval) is audited."""
     reason = payload.reason.strip()
     if not reason:
         raise ValidationError("Say why the workspace is kept longer (the approval)")
@@ -275,7 +267,6 @@ def delete_workspace(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("project:update")),
 ):
-    """Delete the workspace now (the task is done). Release archives stay."""
     before = crud.get_project_or_404(cursor, project_id)
     after = workspace.delete(cursor, before)
     _audit(
@@ -295,8 +286,6 @@ def end_project(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("project:update")),
 ):
-    """Mark the project ended: no more releases. Its Zone 2 copy and archive
-    stay; remove researchers' access by hand."""
     before = crud.get_project_or_404(cursor, project_id)
     after = zone2.end_project(cursor, project_id, payload.reason)
     _audit(

@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/Button'
 import { usePermissions } from '@/hooks/useCurrentUser'
 import { useLockdown, useUnlockApp } from '@/hooks/useResources'
 
-/** Shown on every page while the app is locked (app/lockdown.py). */
 export function LockdownBanner() {
   const { can } = usePermissions()
   const lockdown = useLockdown()

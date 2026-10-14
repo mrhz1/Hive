@@ -1,5 +1,3 @@
-"""Section 4: locking the app and recording security incidents."""
-
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
@@ -40,12 +38,8 @@ def _audit(background, request, action, entity_type, entity_id, actor, old=None,
     )
 
 
-# --- lockdown ----------------------------------------------------------------------
-
-
 @router.get("/security/lockdown", response_model=lockdown.LockdownState)
 def lockdown_state(_actor: User = Depends(get_current_user)):
-    """Whether the app is locked; anyone signed in may ask, even when locked."""
     return lockdown.state()
 
 
@@ -74,9 +68,6 @@ def unlock_app(
     _audit(background, request, "UPDATE", "lockdown", "app", actor,
            old=before.model_dump(), new={"locked": False, "reason": payload.reason})
     return after
-
-
-# --- incidents ---------------------------------------------------------------------
 
 
 @router.get("/incidents", response_model=List[incidents.Incident])
@@ -161,7 +152,6 @@ def incident_report(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("security:view")),
 ):
-    """The breach report as a Word document."""
     incident = incidents.get_or_404(cursor, incident_id)
     return Response(
         content=incidents.report_docx(incident),

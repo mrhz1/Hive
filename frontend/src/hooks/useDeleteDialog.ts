@@ -17,7 +17,7 @@ export function useDeleteDialog<T>(onConfirmed: (target: T) => Promise<unknown>)
       await onConfirmed(target)
       setTarget(null)
     } catch {
-      // Toasted by onError; the dialog stays open so the user can retry.
+      return
     } finally {
       setIsDeleting(false)
     }
