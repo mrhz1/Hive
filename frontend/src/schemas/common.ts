@@ -71,36 +71,73 @@ export const ALL_PERMISSIONS: Permission[] = [
   ...SECURITY_ACTIONS.map((action) => `security:${action}` as Permission),
 ]
 
-export const PERMISSION_GROUPS: ReadonlyArray<{
+export type PermissionGroup = {
   models: readonly string[]
   actions: readonly string[]
   rowLabel?: string
-}> = [
-  { models: MODELS, actions: ACTIONS },
-  { models: ['files'], actions: FILES_ACTIONS },
-  { models: ['files'], actions: FILE_REVIEW_ACTIONS, rowLabel: 'documents' },
-  { models: ['log'], actions: LOG_ACTIONS, rowLabel: 'logs' },
-  { models: ['project'], actions: PROJECT_EXTRA_ACTIONS, rowLabel: 'project access' },
+  labels?: Readonly<Record<string, string>>
+}
+
+export type PermissionSection = {
+  id: 'zone1' | 'zone1x' | 'zone2' | 'admin'
+  description: string
+  groups: readonly PermissionGroup[]
+}
+
+export const PERMISSION_SECTIONS: readonly PermissionSection[] = [
   {
-    models: ['abstraction'],
-    actions: ABSTRACTION_EXTRA_ACTIONS,
-    rowLabel: 'abstraction folders',
+    id: 'zone1',
+    description: 'Intake, cleaning, review and the archive. Real names are allowed here.',
+    groups: [
+      { models: ['patient', 'application'], actions: ACTIONS },
+      { models: ['files'], actions: FILES_ACTIONS },
+      { models: ['files'], actions: FILE_REVIEW_ACTIONS, rowLabel: 'documents' },
+      { models: ['rejection'], actions: REJECTION_ACTIONS, rowLabel: 'rejections' },
+      {
+        models: ['deidentifier'],
+        actions: DEIDENTIFIER_ACTIONS,
+        rowLabel: 'de-identifier',
+      },
+    ],
   },
-  { models: ['rejection'], actions: REJECTION_ACTIONS, rowLabel: 'rejections' },
   {
-    models: ['deidentifier'],
-    actions: DEIDENTIFIER_ACTIONS,
-    rowLabel: 'de-identifier',
+    id: 'zone1x',
+    description: 'Preparing data for one project: consent, cohorts, workspaces, folders.',
+    groups: [
+      { models: ['consent'], actions: CONSENT_ACTIONS, rowLabel: 'consent matrix' },
+      {
+        models: ['project'],
+        actions: [...ACTIONS, ...PROJECT_EXTRA_ACTIONS],
+        rowLabel: 'projects',
+        labels: { workspace: 'workspace storage', manage: 'all projects + members' },
+      },
+      {
+        models: ['abstraction'],
+        actions: [...ACTIONS, ...ABSTRACTION_EXTRA_ACTIONS],
+        rowLabel: 'abstraction folders',
+        labels: { manage: 'everyone’s folders' },
+      },
+    ],
   },
-  { models: ['zone2'], actions: ZONE2_ACTIONS, rowLabel: 'zone 2' },
-  { models: ['consent'], actions: CONSENT_ACTIONS, rowLabel: 'consent' },
-  { models: ['security'], actions: SECURITY_ACTIONS, rowLabel: 'security' },
+  {
+    id: 'zone2',
+    description: 'Checking a safe copy and releasing it to researchers.',
+    groups: [{ models: ['zone2'], actions: ZONE2_ACTIONS, rowLabel: 'zone 2 release' }],
+  },
+  {
+    id: 'admin',
+    description: 'People, roles, logs and security.',
+    groups: [
+      { models: ['user', 'role'], actions: ACTIONS },
+      { models: ['log'], actions: LOG_ACTIONS, rowLabel: 'logs' },
+      { models: ['security'], actions: SECURITY_ACTIONS },
+    ],
+  },
 ]
 
 const ACTION_LABELS: Record<string, string> = {
   view_original: 'view original',
   grant_original: 'grant originals',
-  workspace: 'workspace storage',
   view_deidentified: 'view de-identified',
   metadata: 'metadata',
   deid_metadata: 'de-identified metadata',
