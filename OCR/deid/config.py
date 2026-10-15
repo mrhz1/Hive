@@ -83,6 +83,7 @@ class Config:
         self.use_textline_orientation = _env_bool("OCR_TEXTLINE_ORIENTATION", False)
         self.enable_mkldnn = _env_bool("OCR_ENABLE_MKLDNN", False)
         self.cpu_threads = _env_int("OCR_CPU_THREADS", 8)
+        self.page_workers = max(1, _env_int("OCR_PAGE_WORKERS", 1))
 
         self.spacy_model = os.environ.get("DEID_SPACY_MODEL", DEFAULT_SPACY_MODEL)
         self.transformers_model = os.environ.get(

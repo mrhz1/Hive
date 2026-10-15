@@ -25,23 +25,24 @@ def open_pdf(path: str):
         raise RuntimeError(f"Could not open PDF {path}: {exc}") from exc
 
 
-def render_pages(doc, dpi: int):
+def render_page(doc, page_index: int, dpi: int) -> RenderedPage:
     import fitz
 
     scale = dpi / 72.0
-    matrix = fitz.Matrix(scale, scale)
+    pix = doc[page_index].get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+    image = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
+        pix.height, pix.width, pix.n
+    )
+    if pix.n == 4:
+        image = image[:, :, :3]
+    return RenderedPage(
+        page_number=page_index + 1, image=np.ascontiguousarray(image), scale=scale
+    )
 
+
+def render_pages(doc, dpi: int):
     for page_index in range(doc.page_count):
-        page = doc[page_index]
-        pix = page.get_pixmap(matrix=matrix, alpha=False)
-        image = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
-            pix.height, pix.width, pix.n
-        )
-        if pix.n == 4:
-            image = image[:, :, :3]
-        yield RenderedPage(
-            page_number=page_index + 1, image=np.ascontiguousarray(image), scale=scale
-        )
+        yield render_page(doc, page_index, dpi)
 
 
 def apply_redactions(doc, page_number: int, boxes: List[RedactionBox], scale: float,
