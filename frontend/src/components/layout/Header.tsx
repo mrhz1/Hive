@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { Moon, Sun } from 'lucide-react'
 import { useCallback } from 'react'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
@@ -96,14 +97,18 @@ export function Header({
         <UserSwitcher />
         <ThemeToggle />
         {user ? (
-          <div className="flex items-center gap-2">
+          <Link
+            to="/profile"
+            title="Your profile"
+            className="flex items-center gap-2 rounded-full pr-2 transition hover:bg-[rgb(var(--nav-hover-bg))] focus:ring-2 focus:ring-teal-500 focus:outline-none"
+          >
             <span className="flex h-8 w-8 items-center justify-center rounded-full border border-teal-300 bg-teal-100 font-bold text-teal-700 dark:border-teal-700 dark:bg-teal-900 dark:text-teal-200">
               {getInitials(user.first_name, user.last_name, user.email)}
             </span>
             <span className="hidden font-medium text-[rgb(var(--foreground))] sm:inline-block">
               {user.first_name} {user.last_name}
             </span>
-          </div>
+          </Link>
         ) : null}
       </div>
     </header>

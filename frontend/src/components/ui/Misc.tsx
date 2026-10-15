@@ -1,6 +1,7 @@
 import { cva, type VariantProps } from 'class-variance-authority'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/cn'
+import { ZoneBadge } from '@/components/layout/ZoneBadge'
 
 export function Card({
   children,
@@ -33,6 +34,7 @@ export function PageHeader({
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
+        <ZoneBadge />
         <h1 className="text-2xl font-bold tracking-tight text-[rgb(var(--foreground))]">
           {title}
         </h1>
