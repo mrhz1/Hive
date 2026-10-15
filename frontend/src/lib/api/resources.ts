@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { apiErrorSchema } from '@/schemas/common'
-import type { z } from 'zod'
+import { z } from 'zod'
 import { ApiError, api, toApiError } from './client'
 import {
   abstractionDocumentListSchema,
@@ -55,6 +55,8 @@ import {
   applicationFileSchema,
   bulkResultSchema,
   fileMetadataSchema,
+  originalGrantListSchema,
+  originalGrantSchema,
   uploadJobSchema,
   wordPreviewSchema,
   type ApplicationFile,
@@ -88,6 +90,7 @@ import {
   type ProjectPayload,
 } from '@/schemas/project'
 import {
+  userBriefListSchema,
   userListSchema,
   userSchema,
   type User,
@@ -155,6 +158,7 @@ function toUserPayload(values: UserFormValues) {
 
 export const usersApi = {
   list: () => request(userListSchema, () => api.get('/users')),
+  directory: () => request(userBriefListSchema, () => api.get('/users/directory')),
   get: (id: string) => request(userSchema, () => api.get(`/users/${id}`)),
   create: (values: UserFormValues) =>
     request(userSchema, () => api.post('/users', toUserPayload(values))),
@@ -411,6 +415,18 @@ export const applicationFilesApi = {
   },
 
   listRejected: () => request(rejectedFileListSchema, () => api.get('/files/rejected')),
+  originalGrants: (fileId: string) =>
+    request(originalGrantListSchema, () => api.get(`/files/${fileId}/original-grants`)),
+  grantOriginal: (fileId: string, userId: string, reason: string) =>
+    request(originalGrantSchema, () =>
+      api.post(`/files/${fileId}/original-grants`, { user_id: userId, reason })
+    ),
+  revokeOriginal: (fileId: string, grantId: string) =>
+    request(originalGrantSchema, () =>
+      api.post(`/files/${fileId}/original-grants/${grantId}/revoke`)
+    ),
+  myOriginalGrants: () =>
+    request(z.array(z.string()), () => api.get('/me/original-grants')),
 
   fetchContent: async (
     fileId: string,
@@ -470,8 +486,12 @@ export const abstractionApi = {
     request(abstractionPreviewSchema, () =>
       api.post('/abstraction-folders/preview', criteria)
     ),
-  create: (values: { name: string; purpose: string; criteria: AbstractionCriteria }) =>
-    request(abstractionFolderSchema, () => api.post('/abstraction-folders', values)),
+  create: (values: {
+    name: string
+    purpose: string
+    criteria: AbstractionCriteria
+    assigned_to_id?: string | null
+  }) => request(abstractionFolderSchema, () => api.post('/abstraction-folders', values)),
   documents: (id: string) =>
     request(abstractionDocumentListSchema, () =>
       api.get(`/abstraction-folders/${id}/documents`)
@@ -517,6 +537,12 @@ export const projectsApi = {
     request(projectDetailSchema, () =>
       api.put(`/projects/${id}/cohort`, { patient_ids: patientIds })
     ),
+  addMember: (id: string, userId: string) =>
+    request(projectDetailSchema, () =>
+      api.post(`/projects/${id}/members`, { user_id: userId })
+    ),
+  removeMember: (id: string, userId: string) =>
+    request(projectDetailSchema, () => api.delete(`/projects/${id}/members/${userId}`)),
   prepare: (id: string) =>
     request(releaseSchema, () => api.post(`/projects/${id}/prepare`)),
   remove: async (id: string) => {

@@ -8,6 +8,7 @@ from app.logging_setup import get_logger
 from app.project_schemas import (
     Project,
     ProjectCreate,
+    ProjectMember,
     ProjectPatient,
     ProjectRelease,
     ProjectUpdate,
@@ -31,6 +32,7 @@ PROJECT_COLUMNS = (
 PATIENT_COLUMNS = (
     "id", "project_id", "patient_id", "project_patient_id", "date_shift_days", "added_at",
 )
+MEMBER_COLUMNS = ("id", "project_id", "user_id", "added_by_id", "added_at")
 RELEASE_COLUMNS = (
     "id", "project_id", "status", "status_reason", "prepared_by_id", "prepared_at",
     "reviewed_by_id", "reviewed_at", "patients", "applications", "documents",
@@ -177,6 +179,8 @@ def set_project_status(cursor, project_id: str, status: str, reason: Optional[st
 def delete_project(cursor, project_id: str) -> None:
     for member in list_cohort(cursor, project_id):
         execute(cursor, "DELETE FROM `project_patients` WHERE `id` = %s", (member.id,))
+    for person in list_members(cursor, project_id):
+        execute(cursor, "DELETE FROM `project_members` WHERE `id` = %s", (person.id,))
     execute(cursor, "DELETE FROM `projects` WHERE `id` = %s", (project_id,))
     log.info("project_deleted", project_id=project_id)
 
@@ -302,3 +306,47 @@ def decide_release(cursor, release_id: str, status: str, actor_id: str, reason: 
         fields["release_path"] = release_path
     _update(cursor, "project_releases", release_id, fields)
     return get_release_or_404(cursor, release_id)
+
+
+def _project_member(row) -> ProjectMember:
+    return ProjectMember(**dict(zip(MEMBER_COLUMNS, row)))
+
+
+def list_members(cursor, project_id: str) -> List[ProjectMember]:
+    execute(
+        cursor,
+        f"SELECT {_cols(MEMBER_COLUMNS)} FROM `project_members` WHERE `project_id` = %s",
+        (project_id,),
+    )
+    return [_project_member(r) for r in cursor.fetchall()]
+
+
+def member_project_ids(cursor, user_id: str) -> set:
+    execute(
+        cursor,
+        f"SELECT {_cols(MEMBER_COLUMNS)} FROM `project_members` WHERE `user_id` = %s",
+        (user_id,),
+    )
+    return {_project_member(r).project_id for r in cursor.fetchall()}
+
+
+def is_member(cursor, project_id: str, user_id: str) -> bool:
+    return any(m.user_id == user_id for m in list_members(cursor, project_id))
+
+
+def add_member(cursor, project_id: str, user_id: str, added_by_id: Optional[str]) -> ProjectMember:
+    fields = {
+        "id": str(uuid.uuid4()),
+        "project_id": project_id,
+        "user_id": user_id,
+        "added_by_id": added_by_id,
+        "added_at": NOW,
+    }
+    _insert(cursor, "project_members", MEMBER_COLUMNS, fields)
+    log.info("project_member_added", project_id=project_id, user_id=user_id)
+    return next(m for m in list_members(cursor, project_id) if m.id == fields["id"])
+
+
+def remove_member(cursor, member_id: str) -> None:
+    execute(cursor, "DELETE FROM `project_members` WHERE `id` = %s", (member_id,))
+    log.info("project_member_removed", member_id=member_id)

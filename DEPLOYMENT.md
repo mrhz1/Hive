@@ -187,13 +187,29 @@ python scripts/grant_permissions.py --role viewer --grant files:read,files:view_
 
 Users need to sign out and back in after that.
 
+After upgrading to the protocol permissions (originals by grant, project
+members, workspace storage), bring the stored roles and projects up to date
+once, after `migrate_columns.py --apply`:
+
+```bash
+python scripts/upgrade_permissions.py          # shows what it would change
+python scripts/upgrade_permissions.py --apply
+```
+
+It removes `log:update` and `log:delete`, gives `abstraction:manage` to roles
+that had `abstraction:delete` and `project:workspace` to roles that had
+`project:update`, gives every new permission to roles that can edit roles
+(admin), and makes each project's creator a member. Roles themselves are
+built by the CHSS manager on the Roles page.
+
 | Permission | Allows |
 |---|---|
 | `files:read` | browse de-identified files |
 | `files:download` | every Download button, and exporting a file's metadata |
 | `files:upload` | upload or replace a redacted file |
 | `files:delete` | delete a document from an application, or a redacted copy |
-| `files:view_original` | view the identified original |
+| `files:view_original` | view the identified original. Once its application is submitted the original is archived, and it opens only for people the CRS manager granted it to (protocol 9.1.3) |
+| `files:grant_original` | give or take back access to one archived original, with a reason (Access to the original… in the file's menu) |
 | `files:view_deidentified` | view the de-identified copy |
 | `files:metadata` | show the original's metadata |
 | `files:deid_metadata` | show the de-identified copy's metadata |
@@ -201,7 +217,12 @@ Users need to sign out and back in after that.
 | `rejection:view` | the Rejections page (not given to the default viewer role) |
 | `deidentifier:view` | the De-Identifier page: status, workers, runs, Failed and Excluded lists (not given to the default viewer role) |
 | `deidentifier:run` | Start de-identification, Retry, Retry all, pick the code for a conflict |
-| `project:view` / `create` / `update` / `delete` | the Projects pages: approvals, consent, patients (not given to the default viewer role) |
+| `project:view` / `create` / `update` / `delete` | the Projects pages: approvals, consent, patients, cohort, ending a project. Only for projects you are a member of (protocol 9.2); the creator becomes a member |
+| `project:workspace` | build, extend and delete a project's Zone 1X workspace (protocol 9.2.2) |
+| `project:manage` | see every project and add or remove its members |
+| `abstraction:view` / `create` / `update` / `delete` | temporary folders you made or that were assigned to you (protocol 9.1.6) |
+| `abstraction:manage` | see and change everyone's temporary folders |
+| `log:view` / `create` | the Audit and Access logs; nobody can change or delete a log line |
 | `zone2:prepare` | Prepare a project's safe copy into the Zone 2 inbox |
 | `zone2:review` | the Zone 2 inbox: release a safe copy to Zone 2 or send it back |
 | `consent:view` / `update` | the Consent matrix page: see and record patients' consent decisions |

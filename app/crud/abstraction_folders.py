@@ -1,6 +1,6 @@
 import json
 import uuid
-from typing import Any, List, Optional
+from typing import Any, List
 
 from app.db import NOW_SQL, execute
 from app.errors import NotFoundError
@@ -14,7 +14,7 @@ NOW = object()
 COLUMNS = (
     "id", "name", "purpose", "owner_id", "status", "criteria", "file_ids",
     "file_count", "folder_path", "created_at", "expires_at", "deleted_at",
-    "deleted_by_id", "deleted_reason",
+    "deleted_by_id", "deleted_reason", "assigned_to_id",
 )
 _COLS = ", ".join(f"`{c}`" for c in COLUMNS)
 
@@ -32,13 +32,8 @@ def _row(row) -> AbstractionFolder:
     return AbstractionFolder(**values)
 
 
-def list_folders(cursor, owner_id: Optional[str] = None) -> List[AbstractionFolder]:
-    sql = f"SELECT {_COLS} FROM `abstraction_folders`"
-    params: tuple = ()
-    if owner_id:
-        sql += " WHERE `owner_id` = %s"
-        params = (owner_id,)
-    execute(cursor, sql + " ORDER BY `created_at` DESC", params)
+def list_folders(cursor) -> List[AbstractionFolder]:
+    execute(cursor, f"SELECT {_COLS} FROM `abstraction_folders` ORDER BY `created_at` DESC")
     return [_row(r) for r in cursor.fetchall()]
 
 

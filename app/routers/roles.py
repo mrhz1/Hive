@@ -6,7 +6,8 @@ from app.crud import roles as crud
 from app.db import get_cursor
 from app.errors import NotFoundError, ValidationError
 from app.schemas import Role, RoleCreate, RoleUpdate, User
-from app.security import KNOWN_PERMISSIONS, require_permission
+from app.permissions import KNOWN_PERMISSIONS
+from app.security import require_permission
 
 router = APIRouter(prefix="/roles", tags=["roles"])
 

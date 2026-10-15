@@ -26,7 +26,7 @@ sys.path.insert(0, str(_repo_root()))
 from app.crud import roles as roles_crud
 from app.db import hive_cursor
 from app.schemas import RoleUpdate
-from app.security import KNOWN_PERMISSIONS
+from app.permissions import KNOWN_PERMISSIONS
 
 
 def parse_args(argv=None):

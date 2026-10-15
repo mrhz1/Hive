@@ -60,9 +60,19 @@ export const cohortMemberSchema = z.object({
   documents: z.number(),
 })
 
+export const projectMemberSchema = z.object({
+  id: z.string(),
+  user_id: z.string(),
+  username: nullableText,
+  added_at: nullableText,
+})
+
+export type ProjectMember = z.infer<typeof projectMemberSchema>
+
 export const projectDetailSchema = projectSchema.extend({
   cohort: z.array(cohortMemberSchema).default([]),
   releases: z.array(releaseSchema).default([]),
+  members: z.array(projectMemberSchema).default([]),
 })
 
 export type ProjectDetail = z.infer<typeof projectDetailSchema>

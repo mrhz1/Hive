@@ -47,6 +47,8 @@ export const abstractionFolderSchema = z.object({
   expires_at: z.string().nullable().optional(),
   deleted_at: z.string().nullable().optional(),
   deleted_reason: z.string().nullable().optional(),
+  assigned_to_id: z.string().nullable().optional(),
+  assigned_to_username: z.string().nullable().optional(),
 })
 
 export type AbstractionFolder = z.infer<typeof abstractionFolderSchema>

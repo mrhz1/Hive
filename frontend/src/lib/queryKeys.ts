@@ -39,6 +39,7 @@ export const queryKeys = {
   users: {
     all: ['users'] as const,
     list: () => [...queryKeys.users.all, 'list'] as const,
+    directory: () => [...queryKeys.users.all, 'directory'] as const,
     detail: (id: string) => [...queryKeys.users.all, 'detail', id] as const,
   },
 
@@ -79,6 +80,9 @@ export const queryKeys = {
     list: (applicationId: string) =>
       [...queryKeys.applicationFiles.all, 'list', applicationId] as const,
     rejected: () => [...queryKeys.applicationFiles.all, 'rejected'] as const,
+    grants: (fileId: string) =>
+      [...queryKeys.applicationFiles.all, 'grants', fileId] as const,
+    myGrants: () => [...queryKeys.applicationFiles.all, 'my-grants'] as const,
 
     metadata: (fileId: string, deidentified = false) =>
       [

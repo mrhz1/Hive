@@ -229,12 +229,14 @@ def _checked(docs: List[AbstractionDocument]) -> None:
         )
 
 
-def create(cursor, payload: AbstractionFolderCreate, owner: User) -> AbstractionFolder:
+def create(
+    cursor, payload: AbstractionFolderCreate, owner: User, assignee: Optional[User] = None
+) -> AbstractionFolder:
     docs = matching(cursor, payload.criteria)
     _checked(docs)
 
     folder_id = str(uuid.uuid4())
-    target = folder_dir(owner, folder_id, payload.name)
+    target = folder_dir(assignee or owner, folder_id, payload.name)
     count = _copy(cursor, target, docs)
 
     try:
@@ -251,6 +253,7 @@ def create(cursor, payload: AbstractionFolderCreate, owner: User) -> Abstraction
                 "file_count": count,
                 "folder_path": str(target),
                 "expires_at": new_expiry(),
+                "assigned_to_id": assignee.id if assignee else None,
             },
         )
     except Exception:

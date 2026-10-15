@@ -41,3 +41,14 @@ export const userFormSchema = z.object({
 export type UserFormValues = z.infer<typeof userFormSchema>
 
 export const USER_STATUSES = ['active', 'inactive', 'suspended'] as const
+
+export const userBriefSchema = z.object({
+  id: z.string(),
+  username: z.string(),
+  first_name: z.string(),
+  last_name: z.string(),
+})
+
+export type UserBrief = z.infer<typeof userBriefSchema>
+
+export const userBriefListSchema = z.array(userBriefSchema)

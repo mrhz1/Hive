@@ -71,6 +71,39 @@ class User(BaseModel):
     permissions: List[str] = Field(default_factory=list)
 
 
+class UserBrief(BaseModel):
+    id: str
+    username: str
+    first_name: str
+    last_name: str
+
+
+class OriginalGrant(BaseModel):
+    id: str
+    file_id: str
+    user_id: str
+    username: Optional[str] = None
+    reason: Optional[str] = None
+    granted_by_id: Optional[str] = None
+    granted_by_username: Optional[str] = None
+    granted_at: Optional[datetime] = None
+    revoked_by_id: Optional[str] = None
+    revoked_at: Optional[str] = None
+
+
+class OriginalGrantCreate(BaseModel):
+    user_id: str = Field(min_length=1)
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Say why the original is needed")
+        return value
+
+
 _PATIENT_OPTIONAL_FIELDS = (
     "instcode",
     "pname",
@@ -634,6 +667,7 @@ class AbstractionFolderCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     purpose: str = Field(min_length=1, max_length=1000)
     criteria: AbstractionCriteria
+    assigned_to_id: Optional[str] = None
 
     @field_validator("name", "purpose")
     @classmethod
@@ -659,6 +693,8 @@ class AbstractionFolder(BaseModel):
     deleted_at: Optional[str] = None
     deleted_by_id: Optional[str] = None
     deleted_reason: Optional[str] = None
+    assigned_to_id: Optional[str] = None
+    assigned_to_username: Optional[str] = None
 
     @field_validator("criteria", mode="before")
     @classmethod

@@ -9,7 +9,7 @@ from app.audit import record_audit
 from app.crud import abstraction_folders as crud
 from app.crud import users as users_crud
 from app.db import get_cursor
-from app.errors import PermissionDeniedError
+from app.errors import PermissionDeniedError, ValidationError
 from app.logging_setup import get_logger
 from app.schemas import (
     AbstractionCriteria,
@@ -27,7 +27,7 @@ log = get_logger(__name__)
 router = APIRouter(prefix="/abstraction-folders", tags=["abstraction"])
 
 PREVIEW_ROWS = 200
-MANAGE_ALL = "abstraction:delete"
+MANAGE_ALL = "abstraction:manage"
 
 
 class Regenerated(BaseModel):
@@ -52,18 +52,36 @@ def _with_owner_names(cursor, folders: List[AbstractionFolder]) -> List[Abstract
     names = {user.id: user.username for user in users_crud.list_users(cursor)}
     for folder in folders:
         folder.owner_username = names.get(folder.owner_id or "")
+        folder.assigned_to_username = names.get(folder.assigned_to_id or "")
     return folders
+
+
+def _visible_to(folder: AbstractionFolder, actor: User) -> bool:
+    return (
+        MANAGE_ALL in actor.permissions
+        or folder.owner_id == actor.id
+        or folder.assigned_to_id == actor.id
+    )
 
 
 def _own_or_managed(cursor, folder_id: str, actor: User) -> AbstractionFolder:
     folder = crud.get_folder_or_404(cursor, folder_id)
-    if folder.owner_id != actor.id and MANAGE_ALL not in actor.permissions:
+    if not _visible_to(folder, actor):
         raise PermissionDeniedError("This folder belongs to someone else")
     return folder
 
 
+def _assignee(cursor, payload: AbstractionFolderCreate, actor: User):
+    if not payload.assigned_to_id or payload.assigned_to_id == actor.id:
+        return None
+    person = users_crud.get_user_or_404(cursor, payload.assigned_to_id)
+    if not person.is_active:
+        raise ValidationError(f"'{person.username}' is not active")
+    return person
+
+
 def _snapshot(folder: AbstractionFolder) -> dict:
-    return folder.model_dump(mode="json", exclude={"owner_username"})
+    return folder.model_dump(mode="json", exclude={"owner_username", "assigned_to_username"})
 
 
 @router.get("", response_model=List[AbstractionFolder])
@@ -71,8 +89,8 @@ def list_folders(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("abstraction:view")),
 ):
-    owner = None if MANAGE_ALL in actor.permissions else actor.id
-    return _with_owner_names(cursor, crud.list_folders(cursor, owner))
+    folders = [f for f in crud.list_folders(cursor) if _visible_to(f, actor)]
+    return _with_owner_names(cursor, folders)
 
 
 @router.post("/preview", response_model=AbstractionPreview)
@@ -97,7 +115,7 @@ def create_folder(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("abstraction:create")),
 ):
-    folder = abstraction.create(cursor, payload, actor)
+    folder = abstraction.create(cursor, payload, actor, _assignee(cursor, payload, actor))
     record_access(
         EXPORT,
         actor=actor,

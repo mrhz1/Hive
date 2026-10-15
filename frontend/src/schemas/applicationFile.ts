@@ -375,3 +375,18 @@ export function uploadJobSummary(job: UploadJob): string {
   }
   return `Moving ${job.total} file${job.total === 1 ? '' : 's'} into storage…`
 }
+
+export const originalGrantSchema = z.object({
+  id: z.string(),
+  file_id: z.string(),
+  user_id: z.string(),
+  username: z.string().nullable().optional(),
+  reason: z.string().nullable().optional(),
+  granted_by_username: z.string().nullable().optional(),
+  granted_at: z.string().nullable().optional(),
+  revoked_at: z.string().nullable().optional(),
+})
+
+export type OriginalGrant = z.infer<typeof originalGrantSchema>
+
+export const originalGrantListSchema = z.array(originalGrantSchema)

@@ -5,6 +5,7 @@ from typing import List, Optional
 from app.db import execute
 from app.errors import ConflictError, NotFoundError
 from app.logging_setup import get_logger
+from app.permissions import known_only
 from app.schemas import Role, RoleCreate, RoleUpdate
 
 log = get_logger(__name__)
@@ -12,7 +13,7 @@ log = get_logger(__name__)
 _COLS = "`id`, `name`, `permissions`"
 
 
-def _parse_permissions(raw) -> List[str]:
+def parse_stored_permissions(raw) -> List[str]:
     if raw is None:
         return []
     if isinstance(raw, (bytes, bytearray)):
@@ -27,6 +28,10 @@ def _parse_permissions(raw) -> List[str]:
     if isinstance(raw, list):
         return [str(p) for p in raw]
     return []
+
+
+def _parse_permissions(raw) -> List[str]:
+    return known_only(parse_stored_permissions(raw))
 
 
 def _row_to_role(row) -> Role:

@@ -1,4 +1,13 @@
-import { Eye, FileJson, FileSearch, Lock, ShieldCheck, Tag, X } from 'lucide-react'
+import {
+  Eye,
+  FileJson,
+  FileSearch,
+  KeyRound,
+  Lock,
+  ShieldCheck,
+  Tag,
+  X,
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
@@ -14,6 +23,7 @@ import {
   useApplicationFiles,
   useBackgroundUpload,
   useMarkLeaded,
+  useMyOriginalGrants,
   useReviewApplicationFile,
   useSetDocumentInfo,
 } from '@/hooks/useResources'
@@ -35,6 +45,7 @@ import {
   type UploadJob,
 } from '@/schemas/applicationFile'
 import { DocumentInfoDialog } from './DocumentInfoDialog'
+import { OriginalAccessDialog } from './OriginalAccessDialog'
 import { FileTallyBar } from './FileTallyBar'
 import { UploadProgress } from './UploadProgress'
 
@@ -101,6 +112,10 @@ export function FileReviewPanel({
   } | null>(null)
   const [rejecting, setRejecting] = useState<ApplicationFile | null>(null)
   const [naming, setNaming] = useState<ApplicationFile | null>(null)
+  const [granting, setGranting] = useState<ApplicationFile | null>(null)
+  const { data: myGrants = [] } = useMyOriginalGrants(
+    readOnly && can('files:view_original')
+  )
   const [search, setSearch] = useState('')
   const [onlyCoveredText, setOnlyCoveredText] = useState(false)
 
@@ -144,13 +159,18 @@ export function FileReviewPanel({
     setViewing(null)
   }
 
+  function canOpenOriginal(file: ApplicationFile): boolean {
+    if (!can('files:view_original')) return false
+    return !readOnly || myGrants.includes(file.id)
+  }
+
   function actionsFor(file: ApplicationFile): MenuAction[] {
     if (isDeletedFile(file)) return []
     const hasCopy = Boolean(file.de_identified_file_path)
     const noCopy = 'No redacted copy has been produced yet'
     const actions: MenuAction[] = []
 
-    if (!readOnly && can('files:view_original')) {
+    if (canOpenOriginal(file)) {
       actions.push({
         id: 'original',
         label: 'View original',
@@ -190,6 +210,15 @@ export function FileReviewPanel({
         disabled: !hasCopy,
         title: hasCopy ? 'What the redacted copy still carries' : noCopy,
         onSelect: () => setShowingMetadata({ file, deidentified: true }),
+      })
+    }
+
+    if (readOnly && can('files:grant_original')) {
+      actions.push({
+        id: 'grant-original',
+        label: 'Access to the original…',
+        icon: <KeyRound className="size-4" aria-hidden="true" />,
+        onSelect: () => setGranting(file),
       })
     }
 
@@ -444,13 +473,21 @@ export function FileReviewPanel({
         />
       ) : null}
 
+      {granting ? (
+        <OriginalAccessDialog
+          fileId={granting.id}
+          fileName={granting.original_file_name}
+          onClose={() => setGranting(null)}
+        />
+      ) : null}
+
       {viewing ? (
         <FileViewerModal
           file={viewing.file}
           fileId={viewing.file.id}
           blobUrl={viewing.url}
           isDeidentified={viewing.isDeidentified}
-          canViewOriginal={!readOnly && can('files:view_original')}
+          canViewOriginal={canOpenOriginal(viewing.file)}
           onClose={closeViewer}
         />
       ) : null}

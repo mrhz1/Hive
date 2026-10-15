@@ -10,7 +10,7 @@ load_dotenv(".env.local")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.security import FILE_VIEW_PERMISSIONS, KNOWN_PERMISSIONS, MODEL_ACTIONS
+from app.permissions import FILE_VIEW_PERMISSIONS, KNOWN_PERMISSIONS, MODEL_ACTIONS
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "sql" / "schema.sql"
 

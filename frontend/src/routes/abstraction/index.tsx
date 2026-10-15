@@ -6,7 +6,12 @@ import { Can, RequirePermission } from '@/components/PermissionGate'
 import { ReasonDialog } from '@/components/ReasonDialog'
 import { Button } from '@/components/ui/Button'
 import { DropdownMenu, type MenuAction } from '@/components/ui/DropdownMenu'
-import { CheckboxField, TextAreaField, TextField } from '@/components/ui/Field'
+import {
+  CheckboxField,
+  SelectField,
+  TextAreaField,
+  TextField,
+} from '@/components/ui/Field'
 import { Badge, Card, PageHeader } from '@/components/ui/Misc'
 import { useCurrentUser, usePermissions } from '@/hooks/useCurrentUser'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
@@ -18,6 +23,7 @@ import {
   useDeleteAbstractionFolder,
   useExtendAbstractionFolder,
   useRegenerateAbstractionFolder,
+  useUserDirectory,
 } from '@/hooks/useResources'
 import {
   FILE_TYPES,
@@ -87,6 +93,9 @@ function NewFolder({ onDone }: { onDone: () => void }) {
   const [search, setSearch] = useState('')
   const [name, setName] = useState('')
   const [purpose, setPurpose] = useState('')
+  const [assignee, setAssignee] = useState('')
+  const { data: me } = useCurrentUser()
+  const { data: people = [] } = useUserDirectory()
 
   const criteria: AbstractionCriteria = {
     patient_ids: splitCodes(codes),
@@ -217,6 +226,19 @@ function NewFolder({ onDone }: { onDone: () => void }) {
               placeholder="What the documents are needed for"
               onChange={(event) => setPurpose(event.target.value)}
             />
+            <SelectField
+              label="Assign to"
+              value={assignee}
+              placeholder="Myself"
+              hint="The person doing the abstraction or clean-up. Only they and you can open it."
+              options={people
+                .filter((person) => person.id !== me?.id)
+                .map((person) => ({
+                  value: person.id,
+                  label: `${person.first_name} ${person.last_name} (${person.username})`,
+                }))}
+              onChange={(event) => setAssignee(event.target.value)}
+            />
           </div>
         </>
       ) : null}
@@ -235,7 +257,12 @@ function NewFolder({ onDone }: { onDone: () => void }) {
           }
           onClick={() =>
             void create
-              .mutateAsync({ name: name.trim(), purpose: purpose.trim(), criteria })
+              .mutateAsync({
+                name: name.trim(),
+                purpose: purpose.trim(),
+                criteria,
+                assigned_to_id: assignee || null,
+              })
               .then(onDone)
               .catch(() => undefined)
           }
@@ -310,12 +337,13 @@ function AbstractionPage() {
   const [showing, setShowing] = useState<AbstractionFolder | null>(null)
   const [deleting, setDeleting] = useState<AbstractionFolder | null>(null)
 
-  const manageAll = can('abstraction:delete')
+  const manageAll = can('abstraction:manage')
 
   function actionsFor(folder: AbstractionFolder): MenuAction[] {
     const active = folder.status === 'active'
     const mayChange =
-      can('abstraction:update') && (manageAll || folder.owner_id === me?.id)
+      can('abstraction:update') &&
+      (manageAll || folder.owner_id === me?.id || folder.assigned_to_id === me?.id)
     const actions: MenuAction[] = [
       {
         id: 'documents',
@@ -375,16 +403,18 @@ function AbstractionPage() {
       ),
       sortValue: (f) => f.name.toLowerCase(),
     },
-    ...(manageAll
-      ? [
-          {
-            id: 'owner',
-            header: 'Owner',
-            cell: (f: AbstractionFolder) => f.owner_username ?? f.owner_id ?? '—',
-            sortValue: (f: AbstractionFolder) => f.owner_username ?? '',
-          },
-        ]
-      : []),
+    {
+      id: 'owner',
+      header: 'Made by',
+      cell: (f: AbstractionFolder) => f.owner_username ?? f.owner_id ?? '—',
+      sortValue: (f: AbstractionFolder) => f.owner_username ?? '',
+    },
+    {
+      id: 'assignee',
+      header: 'Assigned to',
+      cell: (f: AbstractionFolder) => f.assigned_to_username ?? '—',
+      sortValue: (f: AbstractionFolder) => f.assigned_to_username ?? '',
+    },
     {
       id: 'status',
       header: 'Status',
@@ -442,7 +472,7 @@ function AbstractionPage() {
         description={
           manageAll
             ? 'Everyone’s temporary copies of de-identified documents.'
-            : 'Your temporary copies of de-identified documents.'
+            : 'Temporary copies of de-identified documents that you made or that were assigned to you.'
         }
         actions={
           creating ? null : (

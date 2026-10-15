@@ -251,7 +251,33 @@ CREATE TABLE `abstraction_folders` (
   `expires_at` STRING,
   `deleted_at` STRING,
   `deleted_by_id` STRING,
-  `deleted_reason` STRING
+  `deleted_reason` STRING,
+  `assigned_to_id` STRING
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
+DROP TABLE IF EXISTS `project_members`;
+
+CREATE TABLE `project_members` (
+  `id` STRING,
+  `project_id` STRING,
+  `user_id` STRING,
+  `added_by_id` STRING,
+  `added_at` TIMESTAMP
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
+DROP TABLE IF EXISTS `original_grants`;
+
+CREATE TABLE `original_grants` (
+  `id` STRING,
+  `file_id` STRING,
+  `user_id` STRING,
+  `reason` STRING,
+  `granted_by_id` STRING,
+  `granted_at` TIMESTAMP,
+  `revoked_by_id` STRING,
+  `revoked_at` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 

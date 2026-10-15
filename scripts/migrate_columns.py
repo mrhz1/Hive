@@ -40,11 +40,12 @@ MIGRATIONS = (
     ("projects", "workspace_path", "STRING"),
     ("projects", "workspace_built_at", "STRING"),
     ("projects", "workspace_expires_at", "STRING"),
+    ("abstraction_folders", "assigned_to_id", "STRING"),
 )
 
 NEW_TABLES = (
     "projects", "project_patients", "project_releases", "abstraction_folders", "incidents",
-    "patient_consents",
+    "patient_consents", "project_members", "original_grants",
 )
 
 SCHEMA_FILE = _repo_root() / "sql" / "schema.sql"

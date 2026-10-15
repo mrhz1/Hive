@@ -5,8 +5,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from app.audit import record_audit
 from app.crud import users as crud
 from app.db import get_cursor
-from app.schemas import User, UserCreate, UserUpdate
-from app.security import require_permission
+from app.schemas import User, UserBrief, UserCreate, UserUpdate
+from app.security import require_any_permission, require_permission
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -35,6 +35,26 @@ def create_user(
         request_id=request.headers.get("X-Request-ID"),
     )
     return user
+
+
+DIRECTORY_PERMISSIONS = (
+    "user:view",
+    "abstraction:create",
+    "project:manage",
+    "files:grant_original",
+)
+
+
+@router.get("/directory", response_model=List[UserBrief])
+def user_directory(
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_any_permission(*DIRECTORY_PERMISSIONS)),
+):
+    people = [u for u in crud.list_users(cursor) if u.is_active]
+    return sorted(
+        (UserBrief(**u.model_dump(include={"id", "username", "first_name", "last_name"})) for u in people),
+        key=lambda u: u.username.lower(),
+    )
 
 
 @router.get("", response_model=List[User])

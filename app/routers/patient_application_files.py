@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app import data_dictionary, deid_progress, document_info, file_corrections
-from app import intake, intake_notices, purge, upload_log
+from app import intake, intake_notices, original_access, purge, upload_log
 from app.audit import record_audit
 from app import uploads
 from app.crud import file_metadata as metadata_crud
@@ -512,6 +512,8 @@ def read_application_file(
 
     record = crud.get_file_or_404(cursor, file_id)
     purge.refuse_if_deleted(record)
+    if not deidentified:
+        original_access.assert_can_view(cursor, actor, record)
 
     if deidentified:
         if not record.de_identified_file_path:
@@ -616,6 +618,8 @@ def preview_application_file_image(
 ):
     assert_permission(actor, view_permission(deidentified))
     record = crud.get_file_or_404(cursor, file_id)
+    if not deidentified:
+        original_access.assert_can_view(cursor, actor, record)
     path, extension = _preview_path(record, deidentified)
 
     if extension not in ("dcm", "dicom"):
@@ -636,6 +640,8 @@ def preview_application_file_text(
 ):
     assert_permission(actor, view_permission(deidentified))
     record = crud.get_file_or_404(cursor, file_id)
+    if not deidentified:
+        original_access.assert_can_view(cursor, actor, record)
     path, extension = _preview_path(record, deidentified)
 
     if extension not in ("doc", "docx"):

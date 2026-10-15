@@ -20,6 +20,7 @@ from app.routers import (
     files,
     intake as intake_router,
     me,
+    original_grants as original_grants_router,
     patient_applications,
     patient_application_files,
     patients,
@@ -152,6 +153,7 @@ async def validation_error_handler(request, exc: RequestValidationError):
 
 
 app.include_router(me.router)
+app.include_router(original_grants_router.router)
 app.include_router(projects_router.router)
 app.include_router(consents_router.router)
 app.include_router(zone2_router.router)

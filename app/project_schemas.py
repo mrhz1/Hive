@@ -107,9 +107,23 @@ class Candidate(BaseModel):
     excluded_reason: Optional[str] = None
 
 
+class ProjectMember(BaseModel):
+    id: str
+    project_id: str
+    user_id: str
+    username: Optional[str] = None
+    added_by_id: Optional[str] = None
+    added_at: Optional[datetime] = None
+
+
+class ProjectMemberAdd(BaseModel):
+    user_id: str = Field(min_length=1)
+
+
 class ProjectDetail(Project):
     cohort: List[CohortMember] = Field(default_factory=list)
     releases: List[ProjectRelease] = Field(default_factory=list)
+    members: List[ProjectMember] = Field(default_factory=list)
 
 
 class CohortUpdate(BaseModel):

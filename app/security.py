@@ -11,43 +11,6 @@ from app.schemas import User
 
 log = get_logger(__name__)
 
-PERMISSION_MODELS = ("user", "patient", "role", "log", "application", "files")
-PERMISSION_ACTIONS = ("view", "create", "update", "delete")
-
-MODEL_ACTIONS = {
-    model: PERMISSION_ACTIONS for model in PERMISSION_MODELS if model != "files"
-}
-MODEL_ACTIONS["rejection"] = ("view",)
-MODEL_ACTIONS["deidentifier"] = ("view", "run", "notify")
-MODEL_ACTIONS["project"] = PERMISSION_ACTIONS
-MODEL_ACTIONS["zone2"] = ("prepare", "review")
-MODEL_ACTIONS["consent"] = ("view", "update")
-MODEL_ACTIONS["abstraction"] = PERMISSION_ACTIONS
-MODEL_ACTIONS["security"] = ("view", "manage")
-MODEL_ACTIONS["files"] = (
-    "read",
-    "upload",
-    "download",
-    "delete",
-    "reject",
-    "view_original",
-    "view_deidentified",
-    "metadata",
-    "deid_metadata",
-)
-
-FILE_VIEW_PERMISSIONS = (
-    "files:view_original",
-    "files:view_deidentified",
-    "files:metadata",
-    "files:deid_metadata",
-)
-
-KNOWN_PERMISSIONS = set()
-for model, actions in MODEL_ACTIONS.items():
-    for action in actions:
-        KNOWN_PERMISSIONS.add(f"{model}:{action}")
-
 
 def _current_username(request: Request) -> str:
     username = request.headers.get("REMOTE-USER")
@@ -120,5 +83,15 @@ def require_permission(permission: str):
 
     def dependency(current_user: User = Depends(get_current_user)) -> User:
         return assert_permission(current_user, permission)
+
+    return dependency
+
+
+def require_any_permission(*permissions: str):
+
+    def dependency(current_user: User = Depends(get_current_user)) -> User:
+        if any(p in current_user.permissions for p in permissions):
+            return current_user
+        return assert_permission(current_user, permissions[0])
 
     return dependency

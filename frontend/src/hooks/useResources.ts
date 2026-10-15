@@ -1118,3 +1118,87 @@ export function useRejectRelease() {
     'Could not reject the release'
   )
 }
+
+export function useUserDirectory(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.users.directory(),
+    queryFn: () => usersApi.directory(),
+    enabled,
+    staleTime: 60_000,
+  })
+}
+
+export function useMyOriginalGrants(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.applicationFiles.myGrants(),
+    queryFn: () => applicationFilesApi.myOriginalGrants(),
+    enabled,
+  })
+}
+
+export function useOriginalGrants(fileId: string) {
+  return useQuery({
+    queryKey: queryKeys.applicationFiles.grants(fileId),
+    queryFn: () => applicationFilesApi.originalGrants(fileId),
+  })
+}
+
+function useOriginalGrantMutation<TVariables, TResult>(
+  fileId: string,
+  mutationFn: (variables: TVariables) => Promise<TResult>,
+  success: string,
+  failure: string
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.applicationFiles.grants(fileId),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.applicationFiles.myGrants(),
+      })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success(success)
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, failure))
+    },
+  })
+}
+
+export function useGrantOriginal(fileId: string) {
+  return useOriginalGrantMutation(
+    fileId,
+    (variables: { userId: string; reason: string }) =>
+      applicationFilesApi.grantOriginal(fileId, variables.userId, variables.reason),
+    'Access to the original granted',
+    'Could not grant access'
+  )
+}
+
+export function useRevokeOriginal(fileId: string) {
+  return useOriginalGrantMutation(
+    fileId,
+    (grantId: string) => applicationFilesApi.revokeOriginal(fileId, grantId),
+    'Access taken back',
+    'Could not take the access back'
+  )
+}
+
+export function useAddProjectMember(id: string) {
+  return useProjectMutation(
+    (userId: string) => projectsApi.addMember(id, userId),
+    'Member added',
+    'Could not add the member'
+  )
+}
+
+export function useRemoveProjectMember(id: string) {
+  return useProjectMutation(
+    (userId: string) => projectsApi.removeMember(id, userId),
+    'Member removed',
+    'Could not remove the member'
+  )
+}

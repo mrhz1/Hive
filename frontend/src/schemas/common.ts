@@ -4,7 +4,6 @@ export const MODELS = [
   'user',
   'patient',
   'role',
-  'log',
   'application',
   'project',
   'abstraction',
@@ -18,11 +17,18 @@ export const FILES_ACTIONS = ['read', 'upload', 'download', 'delete'] as const
 
 export const FILE_REVIEW_ACTIONS = [
   'view_original',
+  'grant_original',
   'view_deidentified',
   'metadata',
   'deid_metadata',
   'reject',
 ] as const
+
+export const LOG_ACTIONS = ['view', 'create'] as const
+
+export const PROJECT_EXTRA_ACTIONS = ['workspace', 'manage'] as const
+
+export const ABSTRACTION_EXTRA_ACTIONS = ['manage'] as const
 
 export const REJECTION_ACTIONS = ['view'] as const
 
@@ -40,6 +46,9 @@ export type FilesAction =
 export type Permission =
   | `${Model}:${Action}`
   | `files:${FilesAction}`
+  | `log:${(typeof LOG_ACTIONS)[number]}`
+  | `project:${(typeof PROJECT_EXTRA_ACTIONS)[number]}`
+  | `abstraction:${(typeof ABSTRACTION_EXTRA_ACTIONS)[number]}`
   | `rejection:${(typeof REJECTION_ACTIONS)[number]}`
   | `deidentifier:${(typeof DEIDENTIFIER_ACTIONS)[number]}`
   | `zone2:${(typeof ZONE2_ACTIONS)[number]}`
@@ -52,6 +61,9 @@ export const ALL_PERMISSIONS: Permission[] = [
   ),
   ...FILES_ACTIONS.map((action) => `files:${action}` as Permission),
   ...FILE_REVIEW_ACTIONS.map((action) => `files:${action}` as Permission),
+  ...LOG_ACTIONS.map((action) => `log:${action}` as Permission),
+  ...PROJECT_EXTRA_ACTIONS.map((action) => `project:${action}` as Permission),
+  ...ABSTRACTION_EXTRA_ACTIONS.map((action) => `abstraction:${action}` as Permission),
   ...REJECTION_ACTIONS.map((action) => `rejection:${action}` as Permission),
   ...DEIDENTIFIER_ACTIONS.map((action) => `deidentifier:${action}` as Permission),
   ...ZONE2_ACTIONS.map((action) => `zone2:${action}` as Permission),
@@ -67,6 +79,13 @@ export const PERMISSION_GROUPS: ReadonlyArray<{
   { models: MODELS, actions: ACTIONS },
   { models: ['files'], actions: FILES_ACTIONS },
   { models: ['files'], actions: FILE_REVIEW_ACTIONS, rowLabel: 'documents' },
+  { models: ['log'], actions: LOG_ACTIONS, rowLabel: 'logs' },
+  { models: ['project'], actions: PROJECT_EXTRA_ACTIONS, rowLabel: 'project access' },
+  {
+    models: ['abstraction'],
+    actions: ABSTRACTION_EXTRA_ACTIONS,
+    rowLabel: 'abstraction folders',
+  },
   { models: ['rejection'], actions: REJECTION_ACTIONS, rowLabel: 'rejections' },
   {
     models: ['deidentifier'],
@@ -80,6 +99,8 @@ export const PERMISSION_GROUPS: ReadonlyArray<{
 
 const ACTION_LABELS: Record<string, string> = {
   view_original: 'view original',
+  grant_original: 'grant originals',
+  workspace: 'workspace storage',
   view_deidentified: 'view de-identified',
   metadata: 'metadata',
   deid_metadata: 'de-identified metadata',

@@ -7,21 +7,29 @@ import {
   Save,
   Search,
   Trash2,
+  UserMinus,
+  UserPlus,
   Users,
 } from 'lucide-react'
 import { useState } from 'react'
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { DataTable, type Column } from '@/components/DataTable'
-import { NotFoundPage } from '@/components/ErrorPages'
+import { ForbiddenPage, NotFoundPage } from '@/components/ErrorPages'
 import { ReasonDialog } from '@/components/ReasonDialog'
 import { Can, RequirePermission } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
-import { CheckboxField, TextAreaField, TextField } from '@/components/ui/Field'
+import {
+  CheckboxField,
+  SelectField,
+  TextAreaField,
+  TextField,
+} from '@/components/ui/Field'
 import { Badge, Card, PageHeader } from '@/components/ui/Misc'
 import { LoadingBlock } from '@/components/ui/Spinner'
 import { usePermissions } from '@/hooks/useCurrentUser'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
+  useAddProjectMember,
   useBuildWorkspace,
   useCohortSearch,
   useDeleteProject,
@@ -31,8 +39,10 @@ import {
   usePrepareProject,
   useProject,
   useProjectCandidates,
+  useRemoveProjectMember,
   useSetCohort,
   useUpdateProject,
+  useUserDirectory,
 } from '@/hooks/useResources'
 import { ApiError } from '@/lib/api/client'
 import { daysLeft } from '@/schemas/abstraction'
@@ -65,6 +75,9 @@ function ProjectPage() {
 
   if (query.isLoading) return <LoadingBlock label="Loading project" />
   if (query.error instanceof ApiError && query.error.isNotFound) return <NotFoundPage />
+  if (query.error instanceof ApiError && query.error.isPermissionDenied) {
+    return <ForbiddenPage requiredPermission="membership of this project" />
+  }
   if (!query.data) return <NotFoundPage />
 
   const project = query.data
@@ -112,6 +125,7 @@ function ProjectPage() {
         project={project}
         locked={locked}
       />
+      <MembersCard project={project} />
       <CohortCard project={project} locked={locked} />
       <WorkspaceCard project={project} />
       <ReleaseCard project={project} />
@@ -691,6 +705,87 @@ function CriteriaSearch({
   )
 }
 
+function MembersCard({ project }: { project: ProjectDetail }) {
+  const { can } = usePermissions()
+  const manage = can('project:manage')
+  const add = useAddProjectMember(project.id)
+  const remove = useRemoveProjectMember(project.id)
+  const { data: people = [] } = useUserDirectory(manage)
+  const [picked, setPicked] = useState('')
+  const ended = project.status === 'ended'
+  const members = new Set(project.members.map((m) => m.user_id))
+
+  return (
+    <Card className="p-5">
+      <h2 className={titleClass}>Members</h2>
+      <p className="mt-1 text-xs text-[rgb(var(--foreground-muted))]">
+        Only members can open this project and its workspace. Add the people approved for
+        it.
+      </p>
+
+      <ul className="mt-3 divide-y divide-[rgb(var(--border))] text-sm">
+        {project.members.map((member) => (
+          <li key={member.id} className="flex items-center justify-between gap-3 py-2">
+            <span className="flex items-center gap-2">
+              <Users
+                className="size-4 text-[rgb(var(--foreground-muted))]"
+                aria-hidden="true"
+              />
+              {member.username ?? member.user_id}
+            </span>
+            {manage ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                isLoading={remove.isPending && remove.variables === member.user_id}
+                leadingIcon={<UserMinus className="size-3.5" aria-hidden="true" />}
+                onClick={() => remove.mutate(member.user_id)}
+              >
+                Remove
+              </Button>
+            ) : null}
+          </li>
+        ))}
+        {project.members.length === 0 ? (
+          <li className="py-2 text-[rgb(var(--foreground-muted))]">No members yet.</li>
+        ) : null}
+      </ul>
+
+      {manage && !ended ? (
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <div className="min-w-60 flex-1">
+            <SelectField
+              label="Add a member"
+              value={picked}
+              placeholder="Pick a person"
+              options={people
+                .filter((person) => !members.has(person.id))
+                .map((person) => ({
+                  value: person.id,
+                  label: `${person.first_name} ${person.last_name} (${person.username})`,
+                }))}
+              onChange={(event) => setPicked(event.target.value)}
+            />
+          </div>
+          <Button
+            disabled={!picked}
+            isLoading={add.isPending}
+            leadingIcon={<UserPlus className="size-4" aria-hidden="true" />}
+            onClick={() =>
+              void add
+                .mutateAsync(picked)
+                .then(() => setPicked(''))
+                .catch(() => undefined)
+            }
+          >
+            Add
+          </Button>
+        </div>
+      ) : null}
+    </Card>
+  )
+}
+
 function WorkspaceCard({ project }: { project: ProjectDetail }) {
   const { can } = usePermissions()
   const build = useBuildWorkspace(project.id)
@@ -700,7 +795,7 @@ function WorkspaceCard({ project }: { project: ProjectDetail }) {
   const [dialog, setDialog] = useState<'extend' | 'delete' | null>(null)
   const ended = project.status === 'ended'
   const built = Boolean(project.workspace_path)
-  const manage = can('project:update')
+  const manage = can('project:workspace')
   const expires = (project.workspace_expires_at ?? '').slice(0, 10)
   const left = daysLeft(project.workspace_expires_at)
 
