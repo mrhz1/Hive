@@ -154,6 +154,7 @@ class Heartbeat:
             "set_aside": 0,
             "per_minute": per_minute,
         }
+        self.watching = {}
         self.lock = threading.Lock()
         self.stopped = threading.Event()
         self.thread = threading.Thread(target=self.loop, name="intake-heartbeat", daemon=True)
@@ -183,6 +184,34 @@ class Heartbeat:
                 if int(key) < one_hour_ago:
                     del per_minute[key]
 
+    def watch(self, slot, path, names):
+        with self.lock:
+            self.watching[slot] = (path, names)
+
+    def unwatch(self, slot):
+        with self.lock:
+            self.watching.pop(slot, None)
+
+    def _progress(self, watching):
+        found = []
+        for slot, (path, names) in sorted(watching.items()):
+            info = intake.read_json(path)
+            if not info:
+                continue
+            source = info.get("source") or ""
+            found.append(
+                {
+                    "slot": slot,
+                    "file": names.get(source, source),
+                    "stage": info.get("stage") or "starting",
+                    "page": int(info.get("page") or 0),
+                    "pages": int(info.get("page_total") or 0),
+                    "file_number": int(info.get("file_index") or 0) + 1,
+                    "files": int(info.get("file_total") or 1),
+                }
+            )
+        return found
+
     def set_aside(self):
         with self.lock:
             self.state["set_aside"] += 1
@@ -191,6 +220,8 @@ class Heartbeat:
         with self.lock:
             self.state["last_seen"] = time.time()
             data = dict(self.state)
+            watching = dict(self.watching)
+        data["progress"] = self._progress(watching)
         try:
             intake.write_json(self.path, data)
         except OSError as e:
@@ -201,6 +232,7 @@ class Heartbeat:
         with self.lock:
             self.state["status"] = "idle"
             self.state["current"] = []
+            self.watching.clear()
         self.write()
 
 
@@ -407,7 +439,7 @@ def split_into_runs(tasks, workers=1):
     return runs
 
 
-def run_pipeline(tasks, ocr_batch, workdir):
+def run_pipeline(tasks, ocr_batch, workdir, watch=None):
     input_dir = workdir / "in"
     output_dir = workdir / "out"
     shutil.rmtree(workdir, ignore_errors=True)
@@ -433,18 +465,23 @@ def run_pipeline(tasks, ocr_batch, workdir):
     if links:
         env = worker_env() or {}
         env["DEID_OCR_BATCH_SIZE"] = str(ocr_batch)
-        output = deid.run_pipeline_many([Path(p) for p in links], output_dir, env=env)
+        progress_path = workdir / "progress.json"
+        if watch:
+            watch(progress_path, {Path(link).name: tasks[n].name for link, n in links.items()})
+        output = deid.run_pipeline_many(
+            [Path(p) for p in links], output_dir, env=env, progress_path=progress_path
+        )
         for link, n in links.items():
             results[n] = output.get(link, deid.DeidError("no result"))
     return results
 
 
-def redact_unit(tasks, ocr_batch, workdir):
-    results = run_pipeline(tasks, ocr_batch, workdir / "run")
+def redact_unit(tasks, ocr_batch, workdir, watch=None):
+    results = run_pipeline(tasks, ocr_batch, workdir / "run", watch)
     if len(tasks) > 1:
         for n, task in enumerate(tasks):
             if isinstance(results.get(n), Exception):
-                single = run_pipeline([task], 1, workdir / "one")
+                single = run_pipeline([task], 1, workdir / "one", watch)
                 results[n] = single.get(0)
     outcomes = [finish(task, results.get(n)) for n, task in enumerate(tasks)]
     shutil.rmtree(workdir, ignore_errors=True)
@@ -632,7 +669,10 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
                     return
                 tasks, ocr_batch = item
                 heartbeat.working_on([t.name for t in tasks])
-                outcomes = redact_unit(tasks, ocr_batch, workdir)
+                outcomes = redact_unit(
+                    tasks, ocr_batch, workdir,
+                    lambda path, names: heartbeat.watch(n, path, names),
+                )
                 done = outcomes.count("done")
                 failed = len(outcomes) - done
                 heartbeat.finished(done, failed)
@@ -645,6 +685,7 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
             except Exception as e:
                 log.exception("intake_chunk_error", error=str(e))
             finally:
+                heartbeat.unwatch(n)
                 work.task_done()
 
     threads = []

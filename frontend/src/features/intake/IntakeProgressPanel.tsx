@@ -13,7 +13,12 @@ import {
   useStopIntake,
 } from '@/hooks/useResources'
 import { queryKeys } from '@/lib/queryKeys'
-import { humanDuration, type IntakeRun, type IntakeWorker } from '@/schemas/intake'
+import {
+  describeProgress,
+  humanDuration,
+  type IntakeRun,
+  type IntakeWorker,
+} from '@/schemas/intake'
 
 const formatNumber = (n: number) => n.toLocaleString()
 
@@ -90,6 +95,29 @@ function WorkerRow({ worker }: { worker: IntakeWorker }) {
           {currentFiles}
         </span>
       )}
+      {worker.progress.length > 0 ? (
+        <ul className="basis-full space-y-2 pt-1" aria-label="Files being cleaned">
+          {worker.progress.map((p) => {
+            const { text, percent } = describeProgress(p)
+            return (
+              <li key={p.slot} className="space-y-1">
+                <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
+                  <span
+                    className="min-w-0 truncate font-mono font-semibold"
+                    title={p.file}
+                  >
+                    {p.file}
+                  </span>
+                  <span className="text-[rgb(var(--foreground-muted))] tabular-nums">
+                    {text}
+                  </span>
+                </div>
+                <ProgressBar percent={percent} />
+              </li>
+            )
+          })}
+        </ul>
+      ) : null}
     </li>
   )
 }

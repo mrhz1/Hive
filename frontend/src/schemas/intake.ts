@@ -53,6 +53,33 @@ export type AvailableCode = z.infer<typeof availableCodeSchema>
 
 export const availableCodeListSchema = z.array(availableCodeSchema)
 
+export const fileProgressSchema = z.object({
+  slot: z.number(),
+  file: z.string(),
+  stage: z.string(),
+  page: z.number(),
+  pages: z.number(),
+  file_number: z.number(),
+  files: z.number(),
+})
+
+export type FileProgress = z.infer<typeof fileProgressSchema>
+
+export function describeProgress(p: FileProgress): { text: string; percent: number } {
+  const batch = p.files > 1 ? ` · file ${p.file_number} of ${p.files}` : ''
+  if (p.stage === 'redacting') {
+    return { text: `all pages read, blacking out names${batch}`, percent: 100 }
+  }
+  if (p.pages <= 0) {
+    return { text: `opening${batch}`, percent: 0 }
+  }
+  const left = Math.max(0, p.pages - p.page)
+  return {
+    text: `page ${p.page} of ${p.pages} · ${left} left${batch}`,
+    percent: (p.page / p.pages) * 100,
+  }
+}
+
 export const intakeWorkerSchema = z.object({
   name: z.string().nullable(),
   host: z.string().nullable().optional(),
@@ -64,6 +91,7 @@ export const intakeWorkerSchema = z.object({
   last_seen: z.number(),
   seconds_since_seen: z.number(),
   current: z.array(z.string()),
+  progress: z.array(fileProgressSchema).default([]),
   done: z.number(),
   failed: z.number(),
   per_hour: z.number(),

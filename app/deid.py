@@ -336,6 +336,7 @@ def run_pipeline_many(
     output_dir: Path,
     env: Optional[Dict[str, str]] = None,
     timeout: Optional[float] = None,
+    progress_path: Optional[Path] = None,
 ) -> Dict[str, object]:
     output_dir.mkdir(parents=True, exist_ok=True)
     wanted = [str(s) for s in sources]
@@ -343,6 +344,8 @@ def run_pipeline_many(
     command = [DEID_PYTHON, DEID_SCRIPT, "--output-dir", str(output_dir), "--suffix", DEID_SUFFIX]
     for source in wanted:
         command += ["--input", source]
+    if progress_path is not None:
+        command += ["--progress-file", str(progress_path)]
 
     log.info("deid_batch_start", files=len(wanted))
     limit = timeout if timeout is not None else DEID_TIMEOUT_SECONDS * max(1, len(wanted))

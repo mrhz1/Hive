@@ -74,6 +74,7 @@ def progress():
                 "last_seen": last_seen,
                 "seconds_since_seen": max(0.0, now - last_seen),
                 "current": hb.get("current") or [],
+                "progress": (hb.get("progress") or []) if alive and not stopped_by_hand else [],
                 "done": int(hb.get("done") or 0),
                 "failed": int(hb.get("failed") or 0),
                 "per_hour": round(files_per_minute([hb], now) * 60, 1),

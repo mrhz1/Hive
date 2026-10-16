@@ -216,7 +216,7 @@ def _mark_stopped(by, pids=None):
             continue
         if pids is not None and int(data.get("pid") or 0) not in pids:
             continue
-        data.update(status=STOPPED, current=[], last_seen=time.time())
+        data.update(status=STOPPED, current=[], progress=[], last_seen=time.time())
         intake.write_json(path, data)
 
 
