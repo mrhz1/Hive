@@ -1,6 +1,6 @@
 import { Badge, Card, DescriptionItem } from '@/components/ui/Misc'
 import { LoadingBlock } from '@/components/ui/Spinner'
-import { useApplicationFiles, userHooks } from '@/hooks/useResources'
+import { useApplicationFiles, useUserDirectory } from '@/hooks/useResources'
 import { userLabel } from '@/schemas/user'
 import { patientName, type Patient } from '@/schemas/patient'
 import {
@@ -69,7 +69,7 @@ export function ApplicationSummary({
   const undecided = undecidedCount(files)
   const approved = files.length - rejected - undecided
 
-  const usersQuery = userHooks.useList({ enabled: Boolean(application?.assigned_to_id) })
+  const usersQuery = useUserDirectory(Boolean(application?.assigned_to_id))
   const assignee = usersQuery.data?.find(
     (user) => user.id === application?.assigned_to_id
   )

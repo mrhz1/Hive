@@ -111,7 +111,7 @@ export function OriginalAccessDialog({
             value={person}
             placeholder="Pick a person"
             options={people
-              .filter((p) => !holders.has(p.id))
+              .filter((p) => p.is_active && !holders.has(p.id))
               .map((p) => ({
                 value: p.id,
                 label: `${p.first_name} ${p.last_name} (${p.username})`,

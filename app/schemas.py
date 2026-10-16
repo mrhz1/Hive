@@ -76,6 +76,7 @@ class UserBrief(BaseModel):
     username: str
     first_name: str
     last_name: str
+    is_active: bool
 
 
 class OriginalGrant(BaseModel):

@@ -759,7 +759,7 @@ function MembersCard({ project }: { project: ProjectDetail }) {
               value={picked}
               placeholder="Pick a person"
               options={people
-                .filter((person) => !members.has(person.id))
+                .filter((person) => person.is_active && !members.has(person.id))
                 .map((person) => ({
                   value: person.id,
                   label: `${person.first_name} ${person.last_name} (${person.username})`,

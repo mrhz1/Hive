@@ -1,6 +1,6 @@
 import { SelectField } from '@/components/ui/Field'
 import { Card } from '@/components/ui/Misc'
-import { userHooks } from '@/hooks/useResources'
+import { useUserDirectory } from '@/hooks/useResources'
 import { userLabel } from '@/schemas/user'
 
 export function AssigneeSelect({
@@ -14,7 +14,7 @@ export function AssigneeSelect({
   disabled?: boolean
   hint?: string
 }) {
-  const usersQuery = userHooks.useList()
+  const usersQuery = useUserDirectory()
   const users = usersQuery.data ?? []
 
   const options = users

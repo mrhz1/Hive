@@ -39,6 +39,8 @@ def create_user(
 
 DIRECTORY_PERMISSIONS = (
     "user:view",
+    "application:view",
+    "log:view",
     "abstraction:create",
     "project:manage",
     "files:grant_original",
@@ -50,9 +52,9 @@ def user_directory(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_any_permission(*DIRECTORY_PERMISSIONS)),
 ):
-    people = [u for u in crud.list_users(cursor) if u.is_active]
+    fields = {"id", "username", "first_name", "last_name", "is_active"}
     return sorted(
-        (UserBrief(**u.model_dump(include={"id", "username", "first_name", "last_name"})) for u in people),
+        (UserBrief(**u.model_dump(include=fields)) for u in crud.list_users(cursor)),
         key=lambda u: u.username.lower(),
     )
 

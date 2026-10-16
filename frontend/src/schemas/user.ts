@@ -19,7 +19,9 @@ export type User = z.infer<typeof userSchema>
 
 export const userListSchema = z.array(userSchema)
 
-export function userLabel(user: User): string {
+export function userLabel(
+  user: Pick<User, 'first_name' | 'last_name' | 'username'>
+): string {
   const name = `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim()
   return name ? `${name} (${user.username})` : user.username
 }
@@ -47,6 +49,7 @@ export const userBriefSchema = z.object({
   username: z.string(),
   first_name: z.string(),
   last_name: z.string(),
+  is_active: z.boolean().default(true),
 })
 
 export type UserBrief = z.infer<typeof userBriefSchema>

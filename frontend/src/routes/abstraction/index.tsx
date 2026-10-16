@@ -232,7 +232,7 @@ function NewFolder({ onDone }: { onDone: () => void }) {
               placeholder="Myself"
               hint="The person doing the abstraction or clean-up. Only they and you can open it."
               options={people
-                .filter((person) => person.id !== me?.id)
+                .filter((person) => person.is_active && person.id !== me?.id)
                 .map((person) => ({
                   value: person.id,
                   label: `${person.first_name} ${person.last_name} (${person.username})`,

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { SelectField, TextField } from '@/components/ui/Field'
 import { Badge, PageHeader } from '@/components/ui/Misc'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
-import { useAuditLogs, userHooks } from '@/hooks/useResources'
+import { useAuditLogs, useUserDirectory } from '@/hooks/useResources'
 import { AUDIT_ACTIONS, type AuditAction, type AuditLog } from '@/schemas/log'
 
 const ACTION_TONE: Record<AuditAction, 'success' | 'info' | 'danger' | 'warning'> = {
@@ -27,7 +27,7 @@ function LogsList() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
-  const users = userHooks.useList()
+  const users = useUserDirectory()
   const nameFor = (id?: string | null) =>
     users.data?.find((user) => user.id === id)?.username ?? id ?? '--'
 
