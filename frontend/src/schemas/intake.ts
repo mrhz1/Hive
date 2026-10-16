@@ -96,6 +96,8 @@ export const intakeStatusSchema = z.object({
   workers: z.array(intakeWorkerSchema),
   stalled: z.boolean(),
   stalled_reason: z.string().nullable(),
+  stopped_by: z.string().nullable().optional(),
+  stopped_at: z.number().nullable().optional(),
   as_of: z.number(),
 })
 

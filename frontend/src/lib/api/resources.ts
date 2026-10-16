@@ -695,6 +695,15 @@ export const intakeApi = {
     }
   },
 
+  stop: async () => {
+    try {
+      const response = await api.post('/intake/stop')
+      return response.data as { stopped: boolean; processes: number }
+    } catch (error) {
+      throw toApiError(error)
+    }
+  },
+
   status: () => request(intakeStatusSchema, () => api.get('/intake/status')),
 
   runs: () => request(intakeRunListSchema, () => api.get('/intake/runs')),

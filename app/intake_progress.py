@@ -53,13 +53,14 @@ def progress():
     for hb in heartbeats:
         last_seen = float(hb.get("last_seen") or 0)
         alive = intake_worker.is_alive(hb)
-        clean = hb.get("status") == "idle"
-        if alive:
+        stopped_by_hand = hb.get("status") == intake_run.STOPPED
+        clean = hb.get("status") == "idle" or stopped_by_hand
+        if alive and not stopped_by_hand:
             status = hb.get("status")
-        elif clean:
-            status = "finished"
-        else:
+        elif stopped_by_hand or not clean:
             status = "stopped"
+        else:
+            status = "finished"
         workers.append(
             {
                 "name": hb.get("name"),
@@ -69,7 +70,7 @@ def progress():
                 "workers": hb.get("workers") or 1,
                 "status": status,
                 "crashed_after_last_run": not alive and not clean and last_seen > last_finished,
-                "alive": alive,
+                "alive": alive and not stopped_by_hand,
                 "last_seen": last_seen,
                 "seconds_since_seen": max(0.0, now - last_seen),
                 "current": hb.get("current") or [],
@@ -97,6 +98,7 @@ def progress():
 
     counts = problem_counts(now)
     start = None if running else intake_run.pending_start()
+    stop = {} if running else intake_run.stop_record()
     return {
         "running": running,
         "starting": start is not None,
@@ -110,6 +112,8 @@ def progress():
         "eta_seconds": eta,
         "workers": workers,
         "stalled": stalled,
+        "stopped_by": stop.get("by"),
+        "stopped_at": stop.get("at"),
         "stalled_reason": "A worker stopped in the middle of a run. Click Start to continue." if stalled else None,
         "as_of": now,
         "code_formats": [

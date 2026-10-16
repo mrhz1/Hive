@@ -78,6 +78,20 @@ def start_intake(
     return started
 
 
+@router.post("/stop")
+def stop_intake(
+    actor: User = Depends(require_permission("deidentifier:run")),
+):
+    try:
+        stopped = intake_run.stop(by=actor.username)
+    except ClouderaError as e:
+        raise ValidationError(str(e)) from e
+    if not stopped["stopped"]:
+        raise ConflictError("De-identification is not running")
+    log.info("intake_stop_requested", actor=actor.id, processes=stopped["processes"])
+    return stopped
+
+
 @router.get("/status")
 def intake_status(
     _actor: User = Depends(require_permission("deidentifier:view")),

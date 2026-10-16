@@ -652,6 +652,22 @@ export function useStartIntake() {
   })
 }
 
+export function useStopIntake() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => intakeApi.stop(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
+      toast.success('De-identification stopped', {
+        description: 'Files not finished stay in the incoming folder for the next run.',
+      })
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not stop de-identification'))
+    },
+  })
+}
+
 export function useIntakeFiles(kind: ProblemList, limit: number, code = '') {
   return useQuery({
     queryKey: queryKeys.intake.files(kind, limit, code),

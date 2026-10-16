@@ -1,12 +1,17 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Cpu, Play } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { AlertTriangle, Cpu, Play, Square } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Badge, Card } from '@/components/ui/Misc'
 import { Spinner } from '@/components/ui/Spinner'
 import { Can } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
-import { useIntakeRuns, useIntakeStatus, useStartIntake } from '@/hooks/useResources'
+import {
+  useIntakeRuns,
+  useIntakeStatus,
+  useStartIntake,
+  useStopIntake,
+} from '@/hooks/useResources'
 import { queryKeys } from '@/lib/queryKeys'
 import { humanDuration, type IntakeRun, type IntakeWorker } from '@/schemas/intake'
 
@@ -127,6 +132,8 @@ export function IntakeProgressPanel() {
   const { data: status, isLoading } = useIntakeStatus()
   const { data: runs } = useIntakeRuns()
   const start = useStartIntake()
+  const stop = useStopIntake()
+  const [confirmingStop, setConfirmingStop] = useState(false)
   useFinishedRunToast(Boolean(status?.running || status?.starting), runs)
 
   if (isLoading) {
@@ -174,21 +181,80 @@ export function IntakeProgressPanel() {
             </Badge>
           </div>
           <Can permission="deidentifier:run">
-            <Button
-              size="sm"
-              disabled={status.running || status.starting}
-              isLoading={start.isPending || status.starting}
-              leadingIcon={<Play className="size-3.5" aria-hidden="true" />}
-              onClick={() => start.mutate()}
-            >
-              {status.running
-                ? 'Running...'
-                : status.starting
-                  ? 'Starting...'
-                  : 'Start de-identification'}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {status.running ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  isLoading={stop.isPending}
+                  leadingIcon={<Square className="size-3.5" aria-hidden="true" />}
+                  onClick={() => setConfirmingStop(true)}
+                >
+                  Stop
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                disabled={status.running || status.starting}
+                isLoading={start.isPending || status.starting}
+                leadingIcon={<Play className="size-3.5" aria-hidden="true" />}
+                onClick={() => start.mutate()}
+              >
+                {status.running
+                  ? 'Running...'
+                  : status.starting
+                    ? 'Starting...'
+                    : 'Start de-identification'}
+              </Button>
+            </div>
           </Can>
         </div>
+
+        {confirmingStop && status.running ? (
+          <div
+            role="alertdialog"
+            aria-label="Stop de-identification"
+            className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+          >
+            <span>
+              Stop now? The file being cleaned is dropped and cleaned again on the next
+              run. Files already done are kept.
+            </span>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setConfirmingStop(false)}
+              >
+                Keep running
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                isLoading={stop.isPending}
+                onClick={() =>
+                  void stop
+                    .mutateAsync()
+                    .then(() => setConfirmingStop(false))
+                    .catch(() => setConfirmingStop(false))
+                }
+              >
+                Stop de-identification
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {!status.running && !status.starting && status.stopped_by ? (
+          <p role="status" className="mt-3 text-sm text-[rgb(var(--foreground-muted))]">
+            Stopped by {status.stopped_by}
+            {status.stopped_at
+              ? ` at ${new Date(status.stopped_at * 1000).toLocaleTimeString()}`
+              : ''}
+            . Files not finished are still in the incoming folder; Start continues with
+            them.
+          </p>
+        ) : null}
 
         {status.starting && (
           <div

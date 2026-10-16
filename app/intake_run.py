@@ -1,5 +1,6 @@
 import fcntl
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -14,6 +15,10 @@ log = get_logger(__name__)
 
 LOCK_FILE = "run.lock"
 START_REQUEST_FILE = "start_requested.json"
+STOP_RECORD_FILE = "stopped.json"
+CML_RUN_FILE = "cml_run.json"
+RUN_SCRIPT = "intake_run"
+STOPPED = "stopped"
 START_TIMEOUT_SECONDS = float(os.environ.get("INTAKE_START_TIMEOUT_SECONDS", "900"))
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -64,6 +69,14 @@ def clear_start_request():
     (intake.state_dir() / START_REQUEST_FILE).unlink(missing_ok=True)
 
 
+def clear_stop_record():
+    (intake.state_dir() / STOP_RECORD_FILE).unlink(missing_ok=True)
+
+
+def stop_record():
+    return intake.read_json(intake.state_dir() / STOP_RECORD_FILE)
+
+
 def pending_start():
     request = intake.read_json(intake.state_dir() / START_REQUEST_FILE)
     requested_at = request.get("requested_at") if request else None
@@ -78,6 +91,7 @@ def run(limit=None, pool_size=None, shards=None, of=1, root=None):
     if lock is None:
         return {"outcome": "busy", "detail": "another run is still working"}
     clear_start_request()
+    clear_stop_record()
 
     started = time.time()
     try:
@@ -108,6 +122,7 @@ def start_in_background():
         from app.cloudera import start_intake_job_run
 
         run_id = start_intake_job_run()
+        intake.write_json(intake.state_dir() / CML_RUN_FILE, {"run_id": run_id})
         log.info("intake_job_started", run_id=run_id)
         return {"started": True, "run_id": run_id}
 
@@ -123,3 +138,105 @@ def start_in_background():
         )
     log.info("intake_process_started", pid=process.pid)
     return {"started": True, "pid": process.pid}
+
+
+def _children_by_parent():
+    children = {}
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            stat = (entry / "stat").read_text()
+        except OSError:
+            continue
+        parent = int(stat.rsplit(")", 1)[1].split()[1])
+        children.setdefault(parent, []).append(int(entry.name))
+    return children
+
+
+def process_tree(roots):
+    children = _children_by_parent()
+    found, todo = [], list(roots)
+    while todo:
+        pid = todo.pop()
+        if pid in found:
+            continue
+        found.append(pid)
+        todo.extend(children.get(pid, []))
+    return found
+
+
+def is_run_process(pid):
+    try:
+        command = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return False
+    return RUN_SCRIPT.encode() in command
+
+
+def _send(pids, sig):
+    for pid in pids:
+        try:
+            os.kill(pid, sig)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+def kill_tree(roots):
+    frozen = []
+    for _ in range(5):
+        fresh = [pid for pid in process_tree(roots) if pid not in frozen]
+        if not fresh:
+            break
+        _send(fresh, signal.SIGSTOP)
+        frozen.extend(fresh)
+    _send(frozen, signal.SIGKILL)
+    return frozen
+
+
+def local_runs():
+    host = socket.gethostname()
+    found = []
+    for hb in intake_worker.read_heartbeats():
+        pid = int(hb.get("pid") or 0)
+        if hb.get("host") == host and pid and is_run_process(pid):
+            found.append(pid)
+    return found
+
+
+def _mark_stopped(by, pids=None):
+    clear_start_request()
+    intake.write_json(
+        intake.state_dir() / STOP_RECORD_FILE, {"by": by, "at": time.time()}
+    )
+    folder = intake.state_dir() / "workers"
+    for path in folder.glob("*.json") if folder.is_dir() else []:
+        data = intake.read_json(path)
+        if not data or data.get("status") != "working":
+            continue
+        if pids is not None and int(data.get("pid") or 0) not in pids:
+            continue
+        data.update(status=STOPPED, current=[], last_seen=time.time())
+        intake.write_json(path, data)
+
+
+def stop(by=None):
+    if os.environ.get("DEID_BACKEND", "inline").strip().lower() == "cml_job":
+        from app.cloudera import stop_intake_job_run
+
+        run_id = intake.read_json(intake.state_dir() / CML_RUN_FILE).get("run_id")
+        if not run_id:
+            return {"stopped": False, "processes": 0}
+        stop_intake_job_run(run_id)
+        (intake.state_dir() / CML_RUN_FILE).unlink(missing_ok=True)
+        _mark_stopped(by)
+        log.info("intake_job_stopped", run_id=run_id, by=by)
+        return {"stopped": True, "run_id": run_id, "processes": 0}
+
+    roots = local_runs()
+    if not roots:
+        return {"stopped": False, "processes": 0}
+    killed = kill_tree(roots)
+    _mark_stopped(by, set(roots))
+    log.info("intake_stopped", by=by, processes=len(killed))
+    return {"stopped": True, "processes": len(killed)}

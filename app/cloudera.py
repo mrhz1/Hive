@@ -186,6 +186,28 @@ def start_deid_job_run(
     return run_id
 
 
+def stop_intake_job_run(run_id: str) -> None:
+    config = _config("CML_INTAKE_JOB_ID")
+    url = (
+        f"{config['url']}/projects/{config['project_id']}"
+        f"/jobs/{config['job_id']}/runs/{run_id}:stop"
+    )
+    try:
+        response = httpx.post(
+            url,
+            headers={"Authorization": f"Bearer {config['api_key']}"},
+            timeout=CML_TIMEOUT_SECONDS,
+            verify=_tls_verify(),
+        )
+    except httpx.HTTPError as e:
+        raise ClouderaError(f"Could not reach the Cloudera API: {e}") from e
+    if response.status_code >= 400:
+        raise ClouderaError(
+            f"Cloudera API returned {response.status_code}: {response.text[:300]}"
+        )
+    log.info("cml_job_run_stopped", job_id=config["job_id"], run_id=run_id)
+
+
 def get_job_run_status(run_id: str) -> str:
     if not run_id:
         return ""
