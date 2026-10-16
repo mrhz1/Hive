@@ -153,8 +153,9 @@ def notify_application_rejected(
     ]
     if deleted:
         lines.append(
-            "There is no consent, so all of its documents (originals and "
-            "de-identified copies) were deleted. Only the record is kept."
+            "The patient is not eligible, so all of its documents (originals "
+            "and de-identified copies) were deleted. Only the record is kept; "
+            "the submission has to start again."
         )
     else:
         lines.append("It can be fixed and submitted again.")

@@ -15,7 +15,7 @@ from app.errors import ValidationError
 from app.logging_setup import get_logger
 from app.notifications import notify_assigned
 from app.schemas import (
-    CONSENT_CHECK,
+    PURGE_CHECK,
     ENROLLMENT_CHECKS,
     ApplicationRejection,
     PatientApplication,
@@ -271,7 +271,7 @@ def reject_application(
     if unknown:
         raise ValidationError(f"Unknown checklist items: {', '.join(unknown)}")
 
-    purge_all = CONSENT_CHECK in failed
+    purge_all = PURGE_CHECK in failed
     if purge_all:
         assert_permission(actor, "application:delete")
 
@@ -297,7 +297,7 @@ def reject_application(
     if purge_all:
         rejected = after
         _, after, summary = purge.purge_rejected_application(
-            cursor, application_id, f"No consent: {reason}", actor.id
+            cursor, application_id, f"Not eligible: {reason}", actor.id
         )
         background.add_task(
             record_audit,

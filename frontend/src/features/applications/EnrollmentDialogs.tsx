@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/Button'
 import { CheckboxField, TextAreaField } from '@/components/ui/Field'
 import { usePermissions } from '@/hooks/useCurrentUser'
 import {
-  CONSENT_CHECK,
+  PURGE_CHECK,
   ENROLLMENT_CHECKS,
   type EnrollmentCheck,
 } from '@/schemas/patientApplication'
@@ -130,7 +130,7 @@ export function RejectApplicationDialog({
   const [reason, setReason] = useState('')
   const [touched, setTouched] = useState(false)
 
-  const noConsent = checked.has(CONSENT_CHECK)
+  const notEligible = checked.has(PURGE_CHECK)
   const trimmed = reason.trim()
   const checksError =
     touched && checked.size === 0 ? 'Pick at least one point that failed' : undefined
@@ -150,7 +150,7 @@ export function RejectApplicationDialog({
       <fieldset className="space-y-3">
         <legend className="mb-2 text-sm font-medium">What failed?</legend>
         {ENROLLMENT_CHECKS.map((check) => {
-          const locked = check.key === CONSENT_CHECK && !canDelete
+          const locked = check.key === PURGE_CHECK && !canDelete
           return (
             <CheckboxField
               key={check.key}
@@ -173,14 +173,15 @@ export function RejectApplicationDialog({
         ) : null}
       </fieldset>
 
-      {noConsent ? (
+      {notEligible ? (
         <div
           role="alert"
           className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-sm"
         >
-          <strong>Without consent the data cannot be kept.</strong> Every document of this
-          application, originals and de-identified copies, is deleted now. This cannot be
-          undone; only the record of the application stays.
+          <strong>A patient who is not eligible cannot be kept.</strong> Every document of
+          this application, originals and de-identified copies, is deleted now and the
+          submission has to start again. This cannot be undone; only the record of the
+          application stays.
         </div>
       ) : null}
 
@@ -189,7 +190,7 @@ export function RejectApplicationDialog({
         required
         rows={3}
         value={reason}
-        placeholder="e.g. consent form not in the submission"
+        placeholder="e.g. consent form not in the submission, or patient not eligible"
         error={reasonError}
         onChange={(event) => setReason(event.target.value)}
       />
@@ -199,7 +200,7 @@ export function RejectApplicationDialog({
           Cancel
         </Button>
         <Button variant="danger" isLoading={isBusy} onClick={confirm}>
-          {noConsent ? 'Reject and delete documents' : 'Reject application'}
+          {notEligible ? 'Reject and delete documents' : 'Reject application'}
         </Button>
       </div>
     </Dialog>

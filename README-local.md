@@ -348,7 +348,7 @@ page):
 - **Intake run finished**: done / failed / need attention, from the end of
   every run. With `--shards` each machine sends its own.
 - **Application rejected**: the failed checklist points and the reason, and
-  whether the documents were deleted (no consent).
+  whether the documents were deleted (patient not eligible, protocol 9.1.2).
 - **Document rejected**: the file and the reviewer's note.
 
 They need `SMTP_HOST`, and `APP_BASE_URL` for the links.

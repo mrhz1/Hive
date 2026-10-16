@@ -483,7 +483,7 @@ ENROLLMENT_CHECKS = {
     "consent": "The right consent form is present",
     "no_identifiers": "No identifiers were found",
 }
-CONSENT_CHECK = "consent"
+PURGE_CHECK = "eligible"
 
 
 class PatientApplicationCreate(BaseModel):

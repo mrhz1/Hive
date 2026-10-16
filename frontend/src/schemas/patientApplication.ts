@@ -59,7 +59,7 @@ export const ENROLLMENT_CHECKS = [
 ] as const
 export type EnrollmentCheck = (typeof ENROLLMENT_CHECKS)[number]['key']
 
-export const CONSENT_CHECK: EnrollmentCheck = 'consent'
+export const PURGE_CHECK: EnrollmentCheck = 'eligible'
 
 export function checkLabel(key: string): string {
   return ENROLLMENT_CHECKS.find((check) => check.key === key)?.label ?? key
