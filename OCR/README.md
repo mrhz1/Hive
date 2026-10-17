@@ -112,6 +112,7 @@ to `<REMOVED>` if the analyzer finds nothing. For DICOM:
 | `OCR_MIN_CONFIDENCE` | `0.5` | |
 | `OCR_CPU_THREADS` | `8` | threads per file, split between the page workers |
 | `OCR_PAGE_WORKERS` | `1` | PDF pages read in parallel, each worker loads its own OCR model and peaks at ~3 GB |
+| `DICOM_FRAME_OCR` | `first_last` | which frames of a multi-frame DICOM are OCR'd: `first` (frame 1 only), `first_last` (first and last frame), `all` (every frame, ~10 s each). The boxes found are blacked out on every frame. Unknown values mean `first_last`. Single-frame DICOMs are read once and PDFs are not affected |
 | `DEID_SCORE_THRESHOLD` | `0.35` | low on purpose, better to over-redact |
 | `DEID_ENTITIES` | see `config.py` | comma-separated |
 | `DEID_REDACT_WHOLE_SPAN` | `false` | `true` blacks out the whole line |

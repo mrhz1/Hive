@@ -21,7 +21,7 @@ from deid.documents import (
 )
 from deid.progress import writer as progress_writer
 from deid.results import DocumentResult, PageResult
-from deid.spans import OcrDocument, PageSpans
+from deid.spans import OcrDocument, PageSpans, RedactionBox
 
 log = logging.getLogger(__name__)
 
@@ -200,18 +200,22 @@ class Deidentifier:
             return result
 
         text_pages: List[str] = []
+        frames: Optional[dict] = None
 
         try:
-            if page_count(doc, kind) != len(ocr_document.pages):
-                raise RuntimeError(
-                    f"page count changed since OCR ({len(ocr_document.pages)} "
-                    f"scanned, {page_count(doc, kind)} now); refusing to redact"
-                )
+            if kind == DICOM:
+                frames = self._process_frames(doc, ocr_document, result, text_pages)
+            else:
+                if page_count(doc, kind) != len(ocr_document.pages):
+                    raise RuntimeError(
+                        f"page count changed since OCR ({len(ocr_document.pages)} "
+                        f"scanned, {page_count(doc, kind)} now); refusing to redact"
+                    )
 
-            for page_spans in ocr_document.pages:
-                page_result, page_text = self._process_page(doc, kind, page_spans)
-                result.pages.append(page_result)
-                text_pages.append(page_text)
+                for page_spans in ocr_document.pages:
+                    page_result, page_text = self._process_page(doc, kind, page_spans)
+                    result.pages.append(page_result)
+                    text_pages.append(page_text)
 
             stripped = scrub_metadata(doc, kind, self.redactor())
             if stripped:
@@ -235,7 +239,9 @@ class Deidentifier:
             if output_report and self.config.write_report:
                 _make_parent_dir(output_report)
                 with open(output_report, "w", encoding="utf-8") as f:
-                    json.dump(self._build_report(result, ocr_document), f, indent=2)
+                    json.dump(
+                        self._build_report(result, ocr_document, frames), f, indent=2
+                    )
 
         except Exception as e:
             log.exception("processing failed for %s", source_path)
@@ -258,7 +264,7 @@ class Deidentifier:
         )
         return result
 
-    def _process_page(self, doc, kind: str, page_spans: PageSpans):
+    def _find_boxes(self, page_spans: PageSpans):
         page_text = build_page_text(page_spans.spans)
         pii = analyze_text(self.analyzer, page_text.text, self.config)
 
@@ -268,15 +274,9 @@ class Deidentifier:
             padding=self.config.box_padding,
             whole_span=self.whole_span,
         )
-        applied = apply_redactions(
-            doc,
-            kind,
-            page_spans.page_number,
-            boxes,
-            page_spans.scale,
-            fill=self.config.redaction_fill,
-        )
+        return page_text, pii, boxes
 
+    def _page_result(self, page_spans: PageSpans, page_text, pii, applied: int):
         counts: Dict[str, int] = {}
         for p in pii:
             counts[p.entity_type] = counts.get(p.entity_type, 0) + 1
@@ -302,10 +302,80 @@ class Deidentifier:
         )
         return page_result, redact_text(page_text.text, pii)
 
-    def _build_report(
-        self, result: DocumentResult, ocr_document: OcrDocument
+    def _process_page(self, doc, kind: str, page_spans: PageSpans):
+        page_text, pii, boxes = self._find_boxes(page_spans)
+        applied = apply_redactions(
+            doc,
+            kind,
+            page_spans.page_number,
+            boxes,
+            page_spans.scale,
+            fill=self.config.redaction_fill,
+        )
+        return self._page_result(page_spans, page_text, pii, applied)
+
+    def _process_frames(
+        self,
+        dataset,
+        ocr_document: OcrDocument,
+        result: DocumentResult,
+        text_pages: List[str],
     ) -> dict:
+        from deid.dicom_io import redact_all_frames, redact_frames
+
+        total = page_count(dataset, DICOM)
+        recorded = ocr_document.total_frames
+        if recorded is None:
+            recorded = len(ocr_document.pages)
+        read = [page.page_number for page in ocr_document.pages]
+        if total != recorded or any(not 1 <= number <= total for number in read):
+            raise RuntimeError(
+                f"frame count changed since OCR ({recorded} at OCR, "
+                f"{total} now); refusing to redact"
+            )
+
+        found = [self._find_boxes(page) for page in ocr_document.pages]
+        every_frame_read = sorted(set(read)) == list(range(1, total + 1))
+        scale = ocr_document.pages[0].scale if ocr_document.pages else 1.0
+        fill = self.config.redaction_fill
+
+        if every_frame_read:
+            boxes_by_frame = {
+                page.page_number: boxes
+                for page, (_, _, boxes) in zip(ocr_document.pages, found)
+            }
+            applied = redact_frames(dataset, boxes_by_frame, scale, fill)
+            per_page = [applied.get(page.page_number, 0) for page in ocr_document.pages]
+            per_frame = None
+        else:
+            union = _union_boxes(boxes for _, _, boxes in found)
+            applied = redact_all_frames(dataset, union, scale, fill)
+            per_page = [len(boxes) for _, _, boxes in found]
+            per_frame = max(applied.values(), default=0)
+
+        for page, (page_text, pii, _), count in zip(ocr_document.pages, found, per_page):
+            page_result, text = self._page_result(page, page_text, pii, count)
+            result.pages.append(page_result)
+            text_pages.append(text)
+
         return {
+            "total_frames": total,
+            "frames_ocr": read,
+            "frame_ocr_mode": ocr_document.frame_mode,
+            "boxes_applied_to": "all frames",
+            "boxes_per_frame": (
+                per_frame if per_frame is not None
+                else {str(number): count for number, count in applied.items()}
+            ),
+        }
+
+    def _build_report(
+        self,
+        result: DocumentResult,
+        ocr_document: OcrDocument,
+        frames: Optional[dict] = None,
+    ) -> dict:
+        report = {
             "source_path": result.source_path,
             "output_pdf": result.output_pdf,
             "status": result.status,
@@ -331,6 +401,22 @@ class Deidentifier:
             },
             "pages": [asdict(p) for p in result.pages],
         }
+        if frames is not None:
+            report["frames"] = frames
+        return report
+
+
+def _union_boxes(groups) -> List[RedactionBox]:
+    union: List[RedactionBox] = []
+    seen = set()
+    for boxes in groups:
+        for box in boxes:
+            key = (box.x0, box.y0, box.x1, box.y1)
+            if key in seen:
+                continue
+            seen.add(key)
+            union.append(box)
+    return union
 
 
 PIXELS_AND_TAGS = "pixels and tags"

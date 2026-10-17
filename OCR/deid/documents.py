@@ -63,7 +63,7 @@ def open_document(path: str):
     raise RuntimeError(f"{path} is not a raster document ({kind or 'unknown'})")
 
 
-def render_pages(handle, kind: str, dpi: int):
+def render_pages(handle, kind: str, dpi: int, only=None):
     if kind == PDF:
         from deid.pdf_io import render_pages as render
 
@@ -72,7 +72,7 @@ def render_pages(handle, kind: str, dpi: int):
     if kind == DICOM:
         from deid.dicom_io import render_frames
 
-        return render_frames(handle, dpi)
+        return render_frames(handle, dpi, only)
 
     raise RuntimeError(f"cannot rasterize a {kind or 'unknown'} document")
 

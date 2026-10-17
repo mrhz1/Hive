@@ -68,6 +68,8 @@ class OcrDocument:
     status: str = "ok"
     error: Optional[str] = None
     duration_seconds: float = 0.0
+    total_frames: Optional[int] = None
+    frame_mode: Optional[str] = None
 
     @property
     def total_spans(self) -> int:
@@ -85,6 +87,8 @@ class OcrDocument:
             "status": self.status,
             "error": self.error,
             "duration_seconds": self.duration_seconds,
+            "total_frames": self.total_frames,
+            "frame_mode": self.frame_mode,
             "pages": [p.to_dict() for p in self.pages],
         }
 
@@ -104,6 +108,12 @@ class OcrDocument:
             status=data.get("status", "ok"),
             error=data.get("error"),
             duration_seconds=float(data.get("duration_seconds", 0.0)),
+            total_frames=(
+                int(data["total_frames"])
+                if data.get("total_frames") is not None
+                else None
+            ),
+            frame_mode=data.get("frame_mode"),
         )
 
     def write(self, path: str) -> None:

@@ -1,7 +1,7 @@
 import logging
 import os
 import secrets
-from typing import List
+from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 
@@ -151,10 +151,25 @@ def frames(dataset) -> List[np.ndarray]:
     return [pixels]
 
 
-def render_frames(dataset, _dpi: int = 0):
+def frames_to_ocr(total: int, mode: str) -> List[int]:
+    from deid.config import DICOM_FRAME_OCR_ALL, DICOM_FRAME_OCR_FIRST
+
+    if total <= 0:
+        return []
+    if mode == DICOM_FRAME_OCR_ALL:
+        return list(range(1, total + 1))
+    if mode == DICOM_FRAME_OCR_FIRST:
+        return [1]
+    return sorted({1, total})
+
+
+def render_frames(dataset, _dpi: int = 0, only: Optional[Sequence[int]] = None):
     from deid.pdf_io import RenderedPage
 
+    wanted = set(only) if only is not None else None
     for index, frame in enumerate(frames(dataset)):
+        if wanted is not None and index + 1 not in wanted:
+            continue
         yield RenderedPage(
             page_number=index + 1, image=_to_rgb(frame), scale=1.0
         )
@@ -212,6 +227,85 @@ def apply_redactions(
             dataset.PhotometricInterpretation = "RGB"
 
     return applied
+
+
+def _paint_frames(dataset, boxes_for, scale: float, fill: str) -> Dict[int, int]:
+    if not has_pixels(dataset):
+        log.warning("DICOM has no pixel data; nothing to redact")
+        return {}
+
+    pixels = dataset.pixel_array
+    number_of_frames = int(getattr(dataset, "NumberOfFrames", 1) or 1)
+    samples = int(getattr(dataset, "SamplesPerPixel", 1) or 1)
+    multi_frame = number_of_frames > 1 or (pixels.ndim == 3 and samples == 1)
+    total = pixels.shape[0] if multi_frame else 1
+
+    height = pixels.shape[1] if multi_frame else pixels.shape[0]
+    width = pixels.shape[2] if multi_frame else pixels.shape[1]
+    value = 0 if fill.lower() == "black" else int(np.iinfo(pixels.dtype).max)
+
+    boxes_by_frame = boxes_for(total)
+    applied: Dict[int, int] = {number: 0 for number in boxes_by_frame}
+
+    for number, boxes in boxes_by_frame.items():
+        if not 1 <= number <= total:
+            log.warning("frame %d is not in the DICOM, skipped", number)
+            continue
+        frame = pixels[number - 1] if multi_frame else pixels
+        for box in boxes:
+            x0 = max(0, int(box.x0 / scale))
+            y0 = max(0, int(box.y0 / scale))
+            x1 = min(width, int(round(box.x1 / scale)))
+            y1 = min(height, int(round(box.y1 / scale)))
+
+            if x1 <= x0 or y1 <= y0:
+                log.warning(
+                    "redaction box for %s fell outside frame %d, skipped",
+                    box.entity_type,
+                    number,
+                )
+                continue
+
+            frame[y0:y1, x0:x1] = value
+            applied[number] += 1
+
+    if any(applied.values()):
+        dataset.PixelData = pixels.tobytes()
+        dataset.file_meta.TransferSyntaxUID = _EXPLICIT_VR_LITTLE_ENDIAN()
+        if "PlanarConfiguration" in dataset and samples > 1:
+            dataset.PlanarConfiguration = 0
+        if samples > 1 and str(dataset.PhotometricInterpretation).startswith("YBR"):
+            dataset.PhotometricInterpretation = "RGB"
+
+    return applied
+
+
+def redact_frames(
+    dataset,
+    boxes_by_frame: Dict[int, List[RedactionBox]],
+    scale: float = 1.0,
+    fill: str = "black",
+) -> Dict[int, int]:
+    if not any(boxes_by_frame.values()):
+        return {number: 0 for number in boxes_by_frame}
+    applied = _paint_frames(dataset, lambda total: boxes_by_frame, scale, fill)
+    return {number: applied.get(number, 0) for number in boxes_by_frame}
+
+
+def redact_all_frames(
+    dataset,
+    boxes: List[RedactionBox],
+    scale: float = 1.0,
+    fill: str = "black",
+) -> Dict[int, int]:
+    if not boxes:
+        return {}
+    return _paint_frames(
+        dataset,
+        lambda total: {number: boxes for number in range(1, total + 1)},
+        scale,
+        fill,
+    )
 
 
 def _EXPLICIT_VR_LITTLE_ENDIAN():

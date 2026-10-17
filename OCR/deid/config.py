@@ -29,6 +29,23 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_choice(name: str, choices, default: str) -> str:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    value = value.strip().lower()
+    return value if value in choices else default
+
+
+DICOM_FRAME_OCR_FIRST = "first"
+DICOM_FRAME_OCR_FIRST_LAST = "first_last"
+DICOM_FRAME_OCR_ALL = "all"
+DICOM_FRAME_OCR_MODES = (
+    DICOM_FRAME_OCR_FIRST,
+    DICOM_FRAME_OCR_FIRST_LAST,
+    DICOM_FRAME_OCR_ALL,
+)
+
 DEFAULT_DET_MODEL = "PP-OCRv6_medium_det"
 DEFAULT_REC_MODEL = "PP-OCRv6_medium_rec"
 
@@ -84,6 +101,9 @@ class Config:
         self.enable_mkldnn = _env_bool("OCR_ENABLE_MKLDNN", False)
         self.cpu_threads = _env_int("OCR_CPU_THREADS", 8)
         self.page_workers = max(1, _env_int("OCR_PAGE_WORKERS", 1))
+        self.dicom_frame_ocr = _env_choice(
+            "DICOM_FRAME_OCR", DICOM_FRAME_OCR_MODES, DICOM_FRAME_OCR_FIRST_LAST
+        )
 
         self.spacy_model = os.environ.get("DEID_SPACY_MODEL", DEFAULT_SPACY_MODEL)
         self.transformers_model = os.environ.get(

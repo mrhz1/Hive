@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from deid.config import Config, load_config
 from deid.ocr_engine import OcrEngine
 from deid.documents import (
+    DICOM,
     PDF,
     close_document,
     kind_for,
@@ -98,14 +99,14 @@ def _pages_in_pool(pool, source_path: str, total_pages: int, dpi: int, progress)
             future.cancel()
 
 
-def _pages_in_process(engine: OcrEngine, doc, kind: str, dpi: int, progress):
-    for rendered in render_pages(doc, kind, dpi):
+def _pages_in_process(engine: OcrEngine, doc, kind: str, dpi: int, progress, only=None):
+    for done, rendered in enumerate(render_pages(doc, kind, dpi, only), start=1):
         page = PageSpans(
             page_number=rendered.page_number,
             scale=rendered.scale,
             spans=engine.read_page(rendered.image),
         )
-        progress.page(rendered.page_number)
+        progress.page(done)
         yield page
 
 
@@ -141,13 +142,23 @@ def ocr_document(
         total_pages = page_count(doc, kind)
     except Exception:
         total_pages = 0
-    progress.document(index, source_path, total_pages)
+
+    only = None
+    if kind == DICOM:
+        from deid.dicom_io import frames_to_ocr
+
+        only = frames_to_ocr(total_pages, config.dicom_frame_ocr)
+        document.total_frames = total_pages
+        document.frame_mode = config.dicom_frame_ocr
+        progress.document(index, source_path, len(only))
+    else:
+        progress.document(index, source_path, total_pages)
 
     try:
         if pool is not None and kind == PDF and total_pages > 1:
             pages = _pages_in_pool(pool, source_path, total_pages, config.dpi, progress)
         else:
-            pages = _pages_in_process(engine, doc, kind, config.dpi, progress)
+            pages = _pages_in_process(engine, doc, kind, config.dpi, progress, only)
         for page in pages:
             document.pages.append(page)
     except Exception as exc:
