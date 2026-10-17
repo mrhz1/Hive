@@ -17,6 +17,25 @@ def step(label, action):
         return False
 
 
+def install_smbprotocol():
+    import importlib
+    import site
+    import subprocess
+    import sys
+
+    done = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--user", "smbprotocol"],
+        capture_output=True,
+        text=True,
+    )
+    if done.returncode != 0:
+        raise RuntimeError((done.stderr or done.stdout).strip()[-500:])
+    user_site = site.getusersitepackages()
+    if user_site not in sys.path:
+        sys.path.append(user_site)
+    importlib.invalidate_caches()
+
+
 def main():
     if not step("name lookup", lambda: socket.gethostbyname(SERVER)):
         return
@@ -25,8 +44,9 @@ def main():
     try:
         import smbclient
     except ImportError:
-        print("FAIL  smbprotocol is not installed: run  pip install smbprotocol  and try again")
-        return
+        if not step("install smbprotocol", install_smbprotocol):
+            return
+        import smbclient
 
     password = os.environ.get("CARBON_PASSWORD") or getpass(f"Password for {USER}: ")
     if not step(
