@@ -117,6 +117,7 @@ class Config:
             self.entities = [e.strip() for e in env_entities.split(",") if e.strip()]
 
         self.box_padding = _env_float("DEID_BOX_PADDING", 2.0)
+        self.box_margin_chars = max(0.0, _env_float("DEID_BOX_MARGIN_CHARS", 2.0))
         self.redaction_fill = os.environ.get("DEID_REDACTION_FILL", "black")
         self.write_text = _env_bool("DEID_WRITE_TEXT", True)
         self.write_report = _env_bool("DEID_WRITE_REPORT", True)

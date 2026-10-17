@@ -34,7 +34,11 @@ def build_page_text(spans: List[OcrSpan]) -> PageText:
 
 
 def _sub_box(
-    span: OcrSpan, local_start: int, local_end: int, whole_span: bool
+    span: OcrSpan,
+    local_start: int,
+    local_end: int,
+    whole_span: bool,
+    margin_chars: float = 0.0,
 ) -> Tuple[float, float]:
     if whole_span:
         return span.x0, span.x1
@@ -49,7 +53,8 @@ def _sub_box(
     x_end = span.x0 + min(length, local_end) * char_w
     if x_end <= x_start:
         return span.x0, span.x1
-    return x_start, x_end
+    margin = max(0.0, margin_chars) * char_w
+    return max(span.x0, x_start - margin), min(span.x1, x_end + margin)
 
 
 def map_pii_to_boxes(
@@ -57,6 +62,7 @@ def map_pii_to_boxes(
     pii_spans: List[PiiSpan],
     padding: float = 2.0,
     whole_span: bool = False,
+    margin_chars: float = 0.0,
 ) -> List[RedactionBox]:
     boxes: List[RedactionBox] = []
 
@@ -69,7 +75,9 @@ def map_pii_to_boxes(
 
             local_start = pii.start - start
             local_end = pii.end - start
-            x0, x1 = _sub_box(span, local_start, local_end, whole_span)
+            x0, x1 = _sub_box(
+                span, local_start, local_end, whole_span, margin_chars
+            )
 
             boxes.append(
                 RedactionBox(

@@ -273,6 +273,7 @@ class Deidentifier:
             pii,
             padding=self.config.box_padding,
             whole_span=self.whole_span,
+            margin_chars=self.config.box_margin_chars,
         )
         return page_text, pii, boxes
 
@@ -398,6 +399,7 @@ class Deidentifier:
                 "min_ocr_confidence": self.config.min_ocr_confidence,
                 "redact_whole_span": self.whole_span,
                 "box_padding": self.config.box_padding,
+                "box_margin_chars": self.config.box_margin_chars,
             },
             "pages": [asdict(p) for p in result.pages],
         }

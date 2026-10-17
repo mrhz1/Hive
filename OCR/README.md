@@ -117,6 +117,7 @@ to `<REMOVED>` if the analyzer finds nothing. For DICOM:
 | `DEID_ENTITIES` | see `config.py` | comma-separated |
 | `DEID_REDACT_WHOLE_SPAN` | `false` | `true` blacks out the whole line |
 | `DEID_BOX_PADDING` | `2.0` | pixels |
+| `DEID_BOX_MARGIN_CHARS` | `2.0` | extra characters blacked out on each side of an identifier inside a longer OCR line, on top of the padding; may cover part of the next word |
 | `DEID_REPORT_INCLUDE_VALUES` | `false` | puts the found PII in the report, debugging only |
 | `DEID_MODELS_DIR` | `OCR/models` | |
 | `DEID_OFFLINE` | `true` | |
