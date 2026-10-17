@@ -1,8 +1,9 @@
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 from app.errors import ValidationError
-from app.logging_setup import get_logger
+from app.logging_setup import get_logger, ref
 
 log = get_logger(__name__)
 
@@ -12,31 +13,58 @@ MAX_PARAGRAPHS = 2000
 MAX_TABLE_ROWS = 500
 
 
-def _to_display_array(dataset, frame_index: int):
-    import numpy as np
-
+def _fix_photometric(dataset) -> None:
+    if str(getattr(dataset, "PhotometricInterpretation", "")) != "YBR_FULL_422":
+        return
+    syntax = getattr(getattr(dataset, "file_meta", None), "TransferSyntaxUID", None)
+    if syntax is not None and syntax.is_compressed:
+        return
     try:
+        full = (
+            int(dataset.Rows)
+            * int(dataset.Columns)
+            * int(getattr(dataset, "SamplesPerPixel", 1) or 1)
+            * (int(dataset.BitsAllocated) // 8)
+            * int(getattr(dataset, "NumberOfFrames", 1) or 1)
+        )
+    except (AttributeError, TypeError, ValueError):
+        return
+    if len(dataset.PixelData) >= full:
+        dataset.PhotometricInterpretation = "YBR_FULL"
+
+
+def _decode(dataset, frame_index: int):
+    from pydicom.pixels import pixel_array
+
+    declared = int(getattr(dataset, "NumberOfFrames", 1) or 1)
+    try:
+        if declared > 1:
+            if frame_index < 0 or frame_index >= declared:
+                raise ValidationError(
+                    f"Frame {frame_index} does not exist; this study has {declared}"
+                )
+            return pixel_array(dataset, index=frame_index), declared
         pixels = dataset.pixel_array
+    except ValidationError:
+        raise
     except Exception as exc:
         raise ValidationError(
             f"This DICOM's pixel data could not be decoded: {exc}"
         ) from exc
 
-    frame_count = frame_number(dataset, pixels)
+    total = frame_number(dataset, pixels)
+    if frame_index < 0 or frame_index >= total:
+        raise ValidationError(f"Frame {frame_index} does not exist; this study has {total}")
+    samples = int(getattr(dataset, "SamplesPerPixel", 1) or 1)
+    if pixels.ndim == 3 and samples == 1:
+        return pixels[frame_index], total
+    return pixels, total
 
-    if frame_index < 0 or frame_index >= frame_count:
-        raise ValidationError(
-            f"Frame {frame_index} does not exist; this study has {frame_count}"
-        )
+
+def _to_display_array(dataset, frame):
+    import numpy as np
 
     samples = int(getattr(dataset, "SamplesPerPixel", 1) or 1)
-    if frame_count > 1:
-        frame = pixels[frame_index]
-    elif pixels.ndim == 3 and samples == 1:
-        frame = pixels[frame_index]
-    else:
-        frame = pixels
-
     if samples == 1:
         try:
             from pydicom.pixels import apply_voi_lut
@@ -75,18 +103,26 @@ def frame_number(dataset, pixels=None) -> int:
 
 
 def render_dicom_png(path: Path, frame_index: int = 0) -> Tuple[bytes, int]:
+    stat = Path(path).stat()
+    return _render_dicom_png(str(path), stat.st_mtime_ns, stat.st_size, frame_index)
+
+
+@lru_cache(maxsize=96)
+def _render_dicom_png(path: str, _mtime_ns: int, _size: int, frame_index: int) -> Tuple[bytes, int]:
     import pydicom
     from PIL import Image
 
     try:
-        dataset = pydicom.dcmread(str(path), force=True)
+        dataset = pydicom.dcmread(path, force=True)
     except Exception as exc:
         raise ValidationError(f"This file is not readable as DICOM: {exc}") from exc
 
     if not hasattr(dataset, "PixelData"):
         raise ValidationError("This DICOM carries no image data to display")
 
-    array = _to_display_array(dataset, frame_index)
+    _fix_photometric(dataset)
+    frame, total = _decode(dataset, frame_index)
+    array = _to_display_array(dataset, frame)
 
     image = Image.fromarray(array)
     if image.mode not in ("L", "RGB"):
@@ -98,16 +134,9 @@ def render_dicom_png(path: Path, frame_index: int = 0) -> Tuple[bytes, int]:
     from io import BytesIO
 
     buffer = BytesIO()
-    image.save(buffer, format="PNG", optimize=True)
+    image.save(buffer, format="PNG")
 
-    total = frame_number(dataset, dataset.pixel_array)
-    log.info(
-        "dicom_rendered",
-        path=str(path),
-        frame=frame_index,
-        frames=total,
-        size=image.size,
-    )
+    log.info("dicom_rendered", file_ref=ref(path), frame=frame_index, frames=total, size=image.size)
     return buffer.getvalue(), total
 
 
