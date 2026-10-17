@@ -79,6 +79,12 @@ class UserBrief(BaseModel):
     is_active: bool
 
 
+class DicomLoop(BaseModel):
+    frames: int
+    fps: float
+    images: List[str]
+
+
 class OriginalGrant(BaseModel):
     id: str
     file_id: str

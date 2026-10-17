@@ -29,11 +29,12 @@ from app.access_log import DOWNLOAD, EXPORT, READ, record_access
 from app.file_metadata import extract as extract_metadata
 from app.filetype import SNIFF_BYTES, resolve_extension
 from app.logging_setup import get_logger
-from app.preview import read_word_document, render_dicom_png
+from app.preview import read_word_document, render_dicom_loop, render_dicom_png
 from app.schemas import (
     BulkResult,
     DeidProgress,
     DeidProgressList,
+    DicomLoop,
     DocumentInfoUpdate,
     FileMetadata,
     FileReview,
@@ -629,6 +630,30 @@ def preview_application_file_image(
         cursor, record, actor, READ, deidentified=deidentified, note=f"frame {frame}"
     )
     return _dicom_response(path, frame)
+
+
+@router.get("/files/{file_id}/frames", response_model=DicomLoop)
+def preview_application_file_frames(
+    file_id: str,
+    deidentified: bool = False,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("application:view")),
+):
+    assert_permission(actor, view_permission(deidentified))
+    record = crud.get_file_or_404(cursor, file_id)
+    if not deidentified:
+        original_access.assert_can_view(cursor, actor, record)
+    path, extension = _preview_path(record, deidentified)
+
+    if extension not in ("dcm", "dicom"):
+        raise ValidationError(f"'{extension}' files are not rendered as images")
+
+    loop = render_dicom_loop(path)
+    _record_file_access(
+        cursor, record, actor, READ, deidentified=deidentified,
+        note=f"all {loop['frames']} frames",
+    )
+    return loop
 
 
 @router.get("/files/{file_id}/text", response_model=WordPreview)

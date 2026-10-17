@@ -29,9 +29,10 @@ from app.embed import embed_metadata, generated_facts
 from app.errors import NotFoundError, ValidationError
 from app.filetype import SNIFF_BYTES, resolve_extension
 from app.logging_setup import get_logger
-from app.preview import read_word_document, render_dicom_png
+from app.preview import read_word_document, render_dicom_loop, render_dicom_png
 from app.schemas import (
     DeidentifiedFile,
+    DicomLoop,
     PatientApplicationFileUpdate,
     User,
     WordPreview,
@@ -182,6 +183,21 @@ def preview_deidentified_image(
             "Access-Control-Expose-Headers": "X-Frame-Count",
         },
     )
+
+
+@router.get("/{file_id}/frames", response_model=DicomLoop)
+def preview_deidentified_frames(
+    file_id: str,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("files:view_deidentified")),
+):
+    record, path, extension = _redacted_path(cursor, file_id)
+    if extension not in ("dcm", "dicom"):
+        raise ValidationError(f"'{extension}' files are not rendered as images")
+
+    loop = render_dicom_loop(path)
+    _record_library_access(cursor, record, actor, READ)
+    return loop
 
 
 @router.get("/{file_id}/text", response_model=WordPreview)

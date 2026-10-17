@@ -140,6 +140,70 @@ def _render_dicom_png(path: str, _mtime_ns: int, _size: int, frame_index: int) -
     return buffer.getvalue(), total
 
 
+DEFAULT_FPS = 15.0
+LOOP_QUALITY = 90
+
+
+def _frames_per_second(dataset) -> float:
+    for keyword in ("CineRate", "RecommendedDisplayFrameRate"):
+        value = getattr(dataset, keyword, None)
+        try:
+            if value and float(value) > 0:
+                return float(value)
+        except (TypeError, ValueError):
+            pass
+    frame_time = getattr(dataset, "FrameTime", None)
+    try:
+        if frame_time and float(frame_time) > 0:
+            return 1000.0 / float(frame_time)
+    except (TypeError, ValueError):
+        pass
+    return DEFAULT_FPS
+
+
+def render_dicom_loop(path: Path) -> Dict[str, object]:
+    stat = Path(path).stat()
+    return _render_dicom_loop(str(path), stat.st_mtime_ns, stat.st_size)
+
+
+@lru_cache(maxsize=4)
+def _render_dicom_loop(path: str, _mtime_ns: int, _size: int) -> Dict[str, object]:
+    import base64
+    from io import BytesIO
+
+    import pydicom
+    from PIL import Image
+
+    try:
+        dataset = pydicom.dcmread(path, force=True)
+    except Exception as exc:
+        raise ValidationError(f"This file is not readable as DICOM: {exc}") from exc
+    if not hasattr(dataset, "PixelData"):
+        raise ValidationError("This DICOM carries no image data to display")
+
+    _fix_photometric(dataset)
+    try:
+        pixels = dataset.pixel_array
+    except Exception as exc:
+        raise ValidationError(f"This DICOM's pixel data could not be decoded: {exc}") from exc
+
+    total = frame_number(dataset, pixels)
+    images = []
+    for index in range(total):
+        frame = pixels[index] if total > 1 else pixels
+        image = Image.fromarray(_to_display_array(dataset, frame))
+        if image.mode not in ("L", "RGB"):
+            image = image.convert("RGB")
+        if max(image.size) > MAX_DIMENSION:
+            image.thumbnail((MAX_DIMENSION, MAX_DIMENSION))
+        buffer = BytesIO()
+        image.save(buffer, format="JPEG", quality=LOOP_QUALITY)
+        images.append("data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii"))
+
+    log.info("dicom_loop_rendered", file_ref=ref(path), frames=total)
+    return {"frames": total, "fps": round(_frames_per_second(dataset), 2), "images": images}
+
+
 def _table_rows(table) -> List[List[str]]:
     rows = []
     for row in table.rows[:MAX_TABLE_ROWS]:

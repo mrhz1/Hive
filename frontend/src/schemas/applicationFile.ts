@@ -390,3 +390,11 @@ export const originalGrantSchema = z.object({
 export type OriginalGrant = z.infer<typeof originalGrantSchema>
 
 export const originalGrantListSchema = z.array(originalGrantSchema)
+
+export const dicomLoopSchema = z.object({
+  frames: z.number(),
+  fps: z.number(),
+  images: z.array(z.string()),
+})
+
+export type DicomLoop = z.infer<typeof dicomLoopSchema>

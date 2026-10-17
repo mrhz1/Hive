@@ -1,12 +1,26 @@
-import { ChevronLeft, ChevronRight, Download, Eye, ShieldCheck, X } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Eye,
+  Pause,
+  Play,
+  ShieldCheck,
+  X,
+} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 import { usePermissions } from '@/hooks/useCurrentUser'
 import { ApiError } from '@/lib/api/client'
 import { applicationFilesApi, deidentifiedFilesApi } from '@/lib/api/resources'
-import { formatFileSize, previewKind, type WordPreview } from '@/schemas/applicationFile'
+import {
+  formatFileSize,
+  previewKind,
+  type DicomLoop,
+  type WordPreview,
+} from '@/schemas/applicationFile'
 import { PdfViewer } from './PdfViewer'
 
 export type ViewableFile = {
@@ -29,77 +43,10 @@ function errorText(error: unknown, fallback: string): string {
   return fallback
 }
 
-type FrameState =
+type LoopState =
   | { status: 'loading' }
-  | { status: 'ready'; url: string }
+  | { status: 'ready'; loop: DicomLoop }
   | { status: 'error'; message: string }
-
-function DicomFrame({
-  fileId,
-  source,
-  isDeidentified,
-  frame,
-  alt,
-  onFrameCount,
-}: {
-  fileId: string
-  source: ViewerSource
-  isDeidentified: boolean
-  frame: number
-  alt: string
-  onFrameCount: (frames: number) => void
-}) {
-  const [state, setState] = useState<FrameState>({ status: 'loading' })
-
-  useEffect(() => {
-    let cancelled = false
-    let objectUrl: string | null = null
-
-    const load =
-      source === 'library'
-        ? deidentifiedFilesApi.previewImage(fileId, frame)
-        : applicationFilesApi.previewImage(fileId, frame, isDeidentified)
-
-    load
-      .then((preview) => {
-        if (cancelled) {
-          URL.revokeObjectURL(preview.url)
-          return
-        }
-        objectUrl = preview.url
-        setState({ status: 'ready', url: preview.url })
-        onFrameCount(preview.frames)
-      })
-      .catch((caught) => {
-        if (!cancelled) {
-          setState({
-            status: 'error',
-            message: errorText(caught, 'Could not render this image'),
-          })
-        }
-      })
-
-    return () => {
-      cancelled = true
-
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [fileId, frame, isDeidentified, source, onFrameCount])
-
-  if (state.status === 'error') {
-    return <ViewerMessage tone="error">{state.message}</ViewerMessage>
-  }
-
-  return (
-    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-black p-4">
-      {state.status === 'loading' ? (
-        <Spinner size="lg" label="Rendering image" />
-      ) : (
-        <img src={state.url} alt={alt} className="max-h-full max-w-full object-contain" />
-      )}
-    </div>
-  )
-}
 
 function DicomViewer({
   fileId,
@@ -112,22 +59,83 @@ function DicomViewer({
   isDeidentified: boolean
   name: string
 }) {
+  const [state, setState] = useState<LoopState>({ status: 'loading' })
   const [frame, setFrame] = useState(0)
-  const [frames, setFrames] = useState(1)
+  const [playing, setPlaying] = useState(false)
 
-  const onFrameCount = useCallback((count: number) => setFrames(count), [])
+  useEffect(() => {
+    let cancelled = false
+    const load =
+      source === 'library'
+        ? deidentifiedFilesApi.frames(fileId)
+        : applicationFilesApi.frames(fileId, isDeidentified)
+    load
+      .then((loop) => {
+        if (!cancelled) setState({ status: 'ready', loop })
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setState({
+            status: 'error',
+            message: errorText(caught, 'Could not render this image'),
+          })
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [fileId, isDeidentified, source])
+
+  const frames = state.status === 'ready' ? state.loop.frames : 1
+  const fps = state.status === 'ready' ? state.loop.fps : 15
+
+  useEffect(() => {
+    if (!playing || frames <= 1) return
+    const timer = window.setInterval(
+      () => setFrame((current) => (current + 1) % frames),
+      Math.max(20, 1000 / fps)
+    )
+    return () => window.clearInterval(timer)
+  }, [playing, frames, fps])
+
+  useEffect(() => {
+    if (frames <= 1) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'ArrowRight')
+        setFrame((current) => Math.min(frames - 1, current + 1))
+      else if (event.key === 'ArrowLeft') setFrame((current) => Math.max(0, current - 1))
+      else if (event.key === ' ') {
+        event.preventDefault()
+        setPlaying((current) => !current)
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [frames])
+
+  if (state.status === 'error') {
+    return <ViewerMessage tone="error">{state.message}</ViewerMessage>
+  }
+
+  if (state.status === 'loading') {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center bg-black p-4">
+        <Spinner size="lg" label="Loading every frame" />
+      </div>
+    )
+  }
+
+  const current = Math.min(frame, frames - 1)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <DicomFrame
-        key={frame}
-        fileId={fileId}
-        source={source}
-        isDeidentified={isDeidentified}
-        frame={frame}
-        alt={`${name}${frames > 1 ? `, frame ${frame + 1} of ${frames}` : ''}`}
-        onFrameCount={onFrameCount}
-      />
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-black p-4">
+        <img
+          src={state.loop.images[current]}
+          alt={`${name}${frames > 1 ? `, frame ${current + 1} of ${frames}` : ''}`}
+          className="max-h-full max-w-full object-contain"
+        />
+      </div>
 
       {frames > 1 ? (
         <div className="flex items-center justify-center gap-3 border-t border-[rgb(var(--border))] px-5 py-2">
@@ -135,23 +143,41 @@ function DicomViewer({
             size="sm"
             variant="outline"
             aria-label="Previous frame"
-            disabled={frame === 0}
-            onClick={() => setFrame((current) => Math.max(0, current - 1))}
+            disabled={current === 0}
+            onClick={() => {
+              setPlaying(false)
+              setFrame(Math.max(0, current - 1))
+            }}
           >
             <ChevronLeft className="size-4" aria-hidden="true" />
           </Button>
-          <span
-            className="text-xs font-semibold text-[rgb(var(--foreground-muted))] tabular-nums"
-            aria-live="polite"
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label={playing ? 'Pause' : 'Play'}
+            onClick={() => setPlaying((value) => !value)}
           >
-            Frame {frame + 1} of {frames}
+            {playing ? (
+              <Pause className="size-4" aria-hidden="true" />
+            ) : (
+              <Play className="size-4" aria-hidden="true" />
+            )}
+          </Button>
+          <span
+            className="min-w-28 text-center text-xs font-semibold text-[rgb(var(--foreground-muted))] tabular-nums"
+            aria-live={playing ? 'off' : 'polite'}
+          >
+            Frame {current + 1} of {frames}
           </span>
           <Button
             size="sm"
             variant="outline"
             aria-label="Next frame"
-            disabled={frame >= frames - 1}
-            onClick={() => setFrame((current) => Math.min(frames - 1, current + 1))}
+            disabled={current >= frames - 1}
+            onClick={() => {
+              setPlaying(false)
+              setFrame(Math.min(frames - 1, current + 1))
+            }}
           >
             <ChevronRight className="size-4" aria-hidden="true" />
           </Button>

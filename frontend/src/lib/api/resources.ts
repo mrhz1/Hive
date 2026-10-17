@@ -54,6 +54,7 @@ import {
   applicationFileListSchema,
   applicationFileSchema,
   bulkResultSchema,
+  dicomLoopSchema,
   fileMetadataSchema,
   originalGrantListSchema,
   originalGrantSchema,
@@ -346,8 +347,12 @@ export const applicationFilesApi = {
   uploadJob: (jobId: string) =>
     request(uploadJobSchema, () => api.get(`/upload-jobs/${jobId}`)),
 
-  previewImage: (fileId: string, frame = 0, deidentified = false) =>
-    fetchImagePreview(`/files/${fileId}/image`, frame, deidentified),
+  frames: (fileId: string, deidentified = false) =>
+    request(dicomLoopSchema, () =>
+      api.get(`/files/${fileId}/frames`, {
+        params: deidentified ? { deidentified: true } : {},
+      })
+    ),
 
   previewText: (fileId: string, deidentified = false) =>
     request(wordPreviewSchema, () =>
@@ -678,8 +683,8 @@ export const deidentifiedFilesApi = {
     }
   },
 
-  previewImage: (fileId: string, frame = 0) =>
-    fetchImagePreview(`/files-library/${fileId}/image`, frame, false),
+  frames: (fileId: string) =>
+    request(dicomLoopSchema, () => api.get(`/files-library/${fileId}/frames`)),
 
   previewText: (fileId: string) =>
     request(wordPreviewSchema, () => api.get(`/files-library/${fileId}/text`)),
