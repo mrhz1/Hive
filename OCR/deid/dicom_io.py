@@ -68,9 +68,40 @@ def open_dicom(path: str):
     import pydicom
 
     try:
-        return pydicom.dcmread(path, force=True)
+        dataset = pydicom.dcmread(path, force=True)
     except Exception as exc:
         raise RuntimeError(f"Could not open DICOM {path}: {exc}") from exc
+    if fix_photometric(dataset):
+        log.info("%s says YBR_FULL_422 but holds full-size pixels; read as YBR_FULL", path)
+    return dataset
+
+
+def _full_size_bytes(dataset) -> int:
+    return (
+        int(dataset.Rows)
+        * int(dataset.Columns)
+        * int(getattr(dataset, "SamplesPerPixel", 1) or 1)
+        * (int(dataset.BitsAllocated) // 8)
+        * int(getattr(dataset, "NumberOfFrames", 1) or 1)
+    )
+
+
+def fix_photometric(dataset) -> bool:
+    if getattr(dataset, "PhotometricInterpretation", "") != "YBR_FULL_422":
+        return False
+    if "PixelData" not in dataset:
+        return False
+    syntax = getattr(getattr(dataset, "file_meta", None), "TransferSyntaxUID", None)
+    if syntax is not None and syntax.is_compressed:
+        return False
+    try:
+        full = _full_size_bytes(dataset)
+    except (AttributeError, TypeError, ValueError):
+        return False
+    if len(dataset.PixelData) < full:
+        return False
+    dataset.PhotometricInterpretation = "YBR_FULL"
+    return True
 
 
 def has_pixels(dataset) -> bool:
@@ -177,6 +208,8 @@ def apply_redactions(
         dataset.file_meta.TransferSyntaxUID = _EXPLICIT_VR_LITTLE_ENDIAN()
         if "PlanarConfiguration" in dataset and samples > 1:
             dataset.PlanarConfiguration = 0
+        if samples > 1 and str(dataset.PhotometricInterpretation).startswith("YBR"):
+            dataset.PhotometricInterpretation = "RGB"
 
     return applied
 

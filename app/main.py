@@ -125,7 +125,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Request-ID"],
+    expose_headers=["X-Request-ID", "X-Frame-Count"],
 )
 
 app.add_exception_handler(AppError, app_error_handler)
