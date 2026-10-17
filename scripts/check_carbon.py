@@ -1,10 +1,12 @@
 import os
 import socket
-from getpass import getpass
+import subprocess
+import sys
 
-SERVER = "carbon.research.sickkids.ca"
-SHARE = rf"\\{SERVER}\expedition"
-USER = r"SICKKIDS\dap_carbon"
+SERVER = os.environ.get("CARBON_SERVER", "carbon.research.sickkids.ca")
+SHARE = os.environ.get("CARBON_SHARE", rf"\\{SERVER}\expedition")
+USER = os.environ.get("CARBON_USER", "")
+PASSWORD = os.environ.get("CARBON_PASSWORD", "")
 
 
 def step(label, action):
@@ -17,14 +19,12 @@ def step(label, action):
         return False
 
 
-def install_smbprotocol():
+def install(package):
     import importlib
     import site
-    import subprocess
-    import sys
 
     done = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--user", "smbprotocol"],
+        [sys.executable, "-m", "pip", "install", "--user", package],
         capture_output=True,
         text=True,
     )
@@ -36,7 +36,16 @@ def install_smbprotocol():
     importlib.invalidate_caches()
 
 
+def kerberos_ticket():
+    try:
+        done = subprocess.run(["klist"], capture_output=True, text=True, timeout=10)
+    except FileNotFoundError:
+        return "klist not found"
+    return (done.stdout or done.stderr).strip()[:400] or "no output"
+
+
 def main():
+    print(f"server {SERVER}, share {SHARE}")
     if not step("name lookup", lambda: socket.gethostbyname(SERVER)):
         return
     if not step("port 445 open", lambda: socket.create_connection((SERVER, 445), timeout=10).close()):
@@ -44,17 +53,31 @@ def main():
     try:
         import smbclient
     except ImportError:
-        if not step("install smbprotocol", install_smbprotocol):
+        if not step("install smbprotocol", lambda: install("smbprotocol[kerberos]")):
             return
         import smbclient
+    try:
+        import gssapi
+    except ImportError:
+        step("install kerberos support", lambda: install("smbprotocol[kerberos]"))
 
-    password = os.environ.get("CARBON_PASSWORD") or getpass(f"Password for {USER}: ")
-    if not step(
-        "login",
-        lambda: smbclient.register_session(SERVER, username=USER, password=password),
+    print(f"kerberos ticket:\n{kerberos_ticket()}")
+
+    if step(
+        "login with kerberos (no password)",
+        lambda: smbclient.register_session(SERVER, auth_protocol="kerberos"),
     ):
+        step("list share", lambda: sorted(smbclient.listdir(SHARE))[:20])
         return
-    step("list share", lambda: sorted(smbclient.listdir(SHARE))[:20])
+
+    if not (USER and PASSWORD):
+        print("SKIP  login with password: set CARBON_USER and CARBON_PASSWORD to try it")
+        return
+    if step(
+        f"login as {USER}",
+        lambda: smbclient.register_session(SERVER, username=USER, password=PASSWORD),
+    ):
+        step("list share", lambda: sorted(smbclient.listdir(SHARE))[:20])
 
 
 if __name__ == "__main__":
