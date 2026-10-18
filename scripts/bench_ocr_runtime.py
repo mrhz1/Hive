@@ -33,9 +33,18 @@ threads, pages = int(threads), int(pages)
 sys.path.insert(0, ocr_root)
 logging.disable(logging.WARNING)
 
+import fitz
+import numpy as np
+
 from deid.config import load_config
 from deid.ocr_engine import OcrEngine
-from deid.pdf_io import open_pdf, render_page
+
+
+def render_page(doc, index, dpi):
+    scale = dpi / 72.0
+    pix = doc[index].get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+    image = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+    return np.ascontiguousarray(image[:, :, :3])
 
 config = load_config()
 config.cpu_threads = threads
@@ -67,11 +76,11 @@ engine._load()
 result = {"engine": engine_name, "threads": threads, "load_s": round(time.perf_counter() - started, 1), "docs": {}}
 for number, path in enumerate(json.load(open(files)), start=1):
     name = f"file {number}"
-    doc = open_pdf(path)
-    engine.read_page(render_page(doc, 0, config.dpi).image)
+    doc = fitz.open(path)
+    engine.read_page(render_page(doc, 0, config.dpi))
     done = []
     for index in range(min(pages, doc.page_count)):
-        image = render_page(doc, index, config.dpi).image
+        image = render_page(doc, index, config.dpi)
         t = time.perf_counter()
         spans = engine.read_page(image)
         done.append({"seconds": round(time.perf_counter() - t, 2), "lines": [s.text for s in spans]})
