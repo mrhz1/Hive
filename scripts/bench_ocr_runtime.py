@@ -88,18 +88,30 @@ def say(text):
 
 
 def cpu_limit():
+    for name in ("CDSW_CPU_MILLICORES", "CML_CPU_MILLICORES"):
+        try:
+            return round(int(os.environ[name]) / 1000, 1)
+        except (KeyError, ValueError):
+            pass
     try:
         quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
         if quota != "max":
             return round(int(quota) / int(period), 1)
     except (OSError, ValueError):
         pass
+    for folder in ("/sys/fs/cgroup/cpu", "/sys/fs/cgroup/cpu,cpuacct", "/sys/fs/cgroup/cpuacct,cpu"):
+        try:
+            quota = int(Path(folder, "cpu.cfs_quota_us").read_text())
+            period = int(Path(folder, "cpu.cfs_period_us").read_text())
+            if quota > 0:
+                return round(quota / period, 1)
+        except (OSError, ValueError):
+            pass
     try:
-        quota = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read_text())
-        period = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read_text())
-        if quota > 0:
-            return round(quota / period, 1)
-    except (OSError, ValueError):
+        usable = len(os.sched_getaffinity(0))
+        if usable < (os.cpu_count() or usable):
+            return float(usable)
+    except (AttributeError, OSError):
         pass
     return None
 
@@ -137,6 +149,7 @@ def install():
     done = subprocess.run(
         [str(VENV_PYTHON), "-m", "pip", "install", "-q", "--target", str(LIB),
          "paddle2onnx==2.0.2rc3", "onnxruntime", "onnx_graphsurgeon==0.6.1", "ml_dtypes==0.6.0"],
+        env={**os.environ, "PIP_USER": "0"},
         capture_output=True,
         text=True,
     )
@@ -166,7 +179,7 @@ def convert():
         )
         done = subprocess.run(
             [str(VENV_PYTHON), "-c", code],
-            env={**os.environ, "PYTHONPATH": str(LIB), "PIP_TARGET": str(LIB)},
+            env={**os.environ, "PYTHONPATH": str(LIB), "PIP_TARGET": str(LIB), "PIP_USER": "0"},
             capture_output=True,
             text=True,
         )
@@ -182,6 +195,7 @@ def run(engine, threads):
         **os.environ,
         "PYTHONPATH": str(LIB),
         "PIP_TARGET": str(LIB),
+        "PIP_USER": "0",
         "OCR_CPU_THREADS": str(threads),
         "OMP_NUM_THREADS": str(threads),
         "MKL_NUM_THREADS": str(threads),
@@ -278,6 +292,9 @@ def report(results, files):
 
 def main():
     say(f"cpu: {cpu_model()}, cores seen {os.cpu_count()}, session limit {cpu_limit() or 'none found'} vCPU")
+    say("      cpu settings: " + ", ".join(
+        f"{k}={v}" for k, v in sorted(os.environ.items()) if "CPU" in k or k.endswith("_THREADS")
+    ))
     if not VENV_PYTHON.exists():
         say(f"FAIL  missing {VENV_PYTHON}")
         return
