@@ -134,6 +134,30 @@ def checksums():
     return found
 
 
+def python_path():
+    existing = os.environ.get("PYTHONPATH", "")
+    return os.pathsep.join([str(LIB)] + ([existing] if existing else []))
+
+
+def check_imports():
+    code = (
+        "import google.protobuf as p, paddle, numpy; "
+        "print('protobuf', p.__version__, p.__file__); print('paddle', paddle.__version__); "
+        "print('numpy', numpy.__version__, numpy.__file__)"
+    )
+    for label, env in (
+        ("without the temp folder", dict(os.environ)),
+        ("with the temp folder", {**os.environ, "PYTHONPATH": python_path()}),
+    ):
+        done = subprocess.run([str(VENV_PYTHON), "-c", code], env=env, capture_output=True, text=True)
+        if done.returncode == 0:
+            say(f"OK    imports {label}: " + " | ".join(done.stdout.split("\n")).strip(" |"))
+        else:
+            say(f"FAIL  imports {label}: {(done.stderr or done.stdout).strip().splitlines()[-1]}")
+            return False
+    return True
+
+
 def venv_packages():
     done = subprocess.run(
         [str(VENV_PYTHON), "-m", "pip", "freeze"], capture_output=True, text=True
@@ -179,7 +203,7 @@ def convert():
         )
         done = subprocess.run(
             [str(VENV_PYTHON), "-c", code],
-            env={**os.environ, "PYTHONPATH": str(LIB), "PIP_TARGET": str(LIB), "PIP_USER": "0"},
+            env={**os.environ, "PYTHONPATH": python_path(), "PIP_TARGET": str(LIB), "PIP_USER": "0"},
             capture_output=True,
             text=True,
         )
@@ -193,7 +217,7 @@ def run(engine, threads):
     say(f"...   {engine} with {threads} threads")
     env = {
         **os.environ,
-        "PYTHONPATH": str(LIB),
+        "PYTHONPATH": python_path(),
         "PIP_TARGET": str(LIB),
         "PIP_USER": "0",
         "OCR_CPU_THREADS": str(threads),
@@ -314,6 +338,9 @@ def main():
     packages = venv_packages()
     try:
         install()
+        if not check_imports():
+            say(f"      PYTHONPATH in this session: {os.environ.get('PYTHONPATH') or '(not set)'}")
+            return
         convert()
     except Exception as exc:
         say(f"FAIL  {exc}")
