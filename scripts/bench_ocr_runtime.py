@@ -10,14 +10,14 @@ import time
 from pathlib import Path
 
 OCR_ROOT = Path(os.environ.get("BENCH_OCR_ROOT", "/home/cdsw/OCR"))
-SAMPLES = Path(os.environ.get("BENCH_SAMPLES", str(OCR_ROOT / "samples" / "AA1234")))
+FILES = Path(os.environ.get("BENCH_FILES", str(OCR_ROOT / "samples" / "AA1234")))
+MAX_FILES = int(os.environ.get("BENCH_MAX_FILES", "4"))
 WORK = Path(os.environ.get("BENCH_WORK", "/tmp/ocr-runtime-bench"))
 PAGES = int(os.environ.get("BENCH_PAGES", "3"))
 ONNX_THREADS = [int(t) for t in os.environ.get("BENCH_THREADS", "2,3,4,8").split(",")]
 PADDLE_THREADS = [int(t) for t in os.environ.get("BENCH_PADDLE_THREADS", "3,8").split(",")]
 VENV_PYTHON = OCR_ROOT / ".venv-ocr" / "bin" / "python"
 MODELS = ["PP-OCRv6_medium_det", "PP-OCRv6_medium_rec"]
-DOCS = ["ocr_test_printed_20p", "ocr_test_handwritten_aged_20p"]
 LIB = WORK / "onnxlib"
 ONNX_MODELS = WORK / "onnx_models"
 
@@ -28,7 +28,7 @@ import resource
 import sys
 import time
 
-ocr_root, engine_name, threads, pages, samples, onnx_dir, out = sys.argv[1:8]
+ocr_root, engine_name, threads, pages, files, onnx_dir, out = sys.argv[1:8]
 threads, pages = int(threads), int(pages)
 sys.path.insert(0, ocr_root)
 logging.disable(logging.WARNING)
@@ -65,11 +65,12 @@ if engine_name == "onnx":
 started = time.perf_counter()
 engine._load()
 result = {"engine": engine_name, "threads": threads, "load_s": round(time.perf_counter() - started, 1), "docs": {}}
-for name in ["ocr_test_printed_20p", "ocr_test_handwritten_aged_20p"]:
-    doc = open_pdf(f"{samples}/{name}.pdf")
+for number, path in enumerate(json.load(open(files)), start=1):
+    name = f"file {number}"
+    doc = open_pdf(path)
     engine.read_page(render_page(doc, 0, config.dpi).image)
     done = []
-    for index in range(pages):
+    for index in range(min(pages, doc.page_count)):
         image = render_page(doc, index, config.dpi).image
         t = time.perf_counter()
         spans = engine.read_page(image)
@@ -187,7 +188,7 @@ def run(engine, threads):
     }
     done = subprocess.run(
         [str(VENV_PYTHON), str(WORK / "worker.py"), str(OCR_ROOT), engine, str(threads),
-         str(PAGES), str(SAMPLES), str(ONNX_MODELS), str(out)],
+         str(PAGES), str(WORK / "files.json"), str(ONNX_MODELS), str(out)],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -207,12 +208,24 @@ def norm(text):
     return re.sub(r"[^a-z0-9]+", "", text.lower())
 
 
-def expected_identifiers(name):
-    truth = (SAMPLES / f"{name}.groundtruth.txt").read_text(encoding="utf-8")
-    pages = [p for p in re.split(r"=== PAGE \d+ ===", truth) if p.strip()]
-    on_pages = norm(" ".join(pages[:PAGES]))
+def pdfs():
+    found = sorted(
+        p for p in FILES.rglob("*.pdf")
+        if not any(part.startswith(".") for part in p.relative_to(FILES).parts)
+    )
+    return found[:MAX_FILES]
+
+
+def expected_identifiers(path, pages):
+    truth_file = path.with_suffix(".groundtruth.txt")
+    phi_file = path.with_suffix(".phi.txt")
+    if not (truth_file.is_file() and phi_file.is_file()):
+        return None
+    truth = truth_file.read_text(encoding="utf-8")
+    split = [p for p in re.split(r"=== PAGE \d+ ===", truth) if p.strip()]
+    on_pages = norm(" ".join(split[:pages]))
     items = []
-    for line in (SAMPLES / f"{name}.phi.txt").read_text(encoding="utf-8").splitlines():
+    for line in phi_file.read_text(encoding="utf-8").splitlines():
         if line.startswith("#") or "\t" not in line:
             continue
         value = line.split("\t", 1)[1]
@@ -221,28 +234,40 @@ def expected_identifiers(name):
     return items
 
 
-def report(results):
+def report(results, files):
     base = next((r for r in results if r["engine"] == "paddle" and r["threads"] == max(PADDLE_THREADS)), results[0])
     summary = []
-    for name in DOCS:
-        expected = expected_identifiers(name)
-        say(f"\n{name} (first {PAGES} pages, {len(expected)} identifiers)")
+    for number, path in enumerate(files, start=1):
+        name = f"file {number}"
+        base_doc = base["docs"].get(name)
+        if not base_doc:
+            continue
+        pages = len(base_doc)
+        expected = expected_identifiers(path, pages)
+        title = f"{name}: {path.stem}" if expected is not None else name
+        found_text = f", {len(expected)} identifiers" if expected is not None else ", no answer files"
+        say(f"\n{title} (first {pages} pages{found_text})")
         say(f"  {'engine':14s}{'s/page':>8s}{'vs paddle':>11s}{'identifiers':>13s}{'text same':>11s}")
-        base_pages = [" ".join(p["lines"]) for p in base["docs"][name]]
-        base_speed = sum(p["seconds"] for p in base["docs"][name]) / PAGES
+        base_pages = [" ".join(p["lines"]) for p in base_doc]
+        base_speed = sum(p["seconds"] for p in base_doc) / pages
         for r in results:
-            doc = r["docs"][name]
-            speed = sum(p["seconds"] for p in doc) / PAGES
+            doc = r["docs"].get(name)
+            if not doc:
+                continue
+            speed = sum(p["seconds"] for p in doc) / len(doc)
             text = norm(" ".join(" ".join(p["lines"]) for p in doc))
-            found = sum(norm(v) in text for v in expected)
+            if expected is None:
+                identifiers = "-"
+            else:
+                identifiers = f"{sum(norm(v) in text for v in expected)}/{len(expected)}"
             same = sum(
                 difflib.SequenceMatcher(None, a, " ".join(p["lines"])).ratio()
                 for a, p in zip(base_pages, doc)
-            ) / PAGES * 100
+            ) / len(doc) * 100
             label = f"{r['engine']} {r['threads']}t"
-            say(f"  {label:14s}{speed:8.2f}{base_speed / speed:10.2f}x{found:>8d}/{len(expected):<4d}{same:10.2f}%")
-            summary.append({"doc": name, "engine": r["engine"], "threads": r["threads"],
-                            "seconds_per_page": round(speed, 2), "identifiers": f"{found}/{len(expected)}",
+            say(f"  {label:14s}{speed:8.2f}{base_speed / speed:10.2f}x{identifiers:>13s}{same:10.2f}%")
+            summary.append({"file": name, "pages": pages, "engine": r["engine"], "threads": r["threads"],
+                            "seconds_per_page": round(speed, 2), "identifiers": identifiers,
                             "text_same_percent": round(same, 2)})
     say("")
     for r in results:
@@ -253,16 +278,21 @@ def report(results):
 
 def main():
     say(f"cpu: {cpu_model()}, cores seen {os.cpu_count()}, session limit {cpu_limit() or 'none found'} vCPU")
-    for path in [VENV_PYTHON] + [SAMPLES / f"{d}{s}" for d in DOCS for s in (".pdf", ".groundtruth.txt", ".phi.txt")]:
-        if not path.exists():
-            say(f"FAIL  missing {path}")
-            return
+    if not VENV_PYTHON.exists():
+        say(f"FAIL  missing {VENV_PYTHON}")
+        return
+    files = pdfs()
+    if not files:
+        say(f"FAIL  no PDFs found in {FILES} (set BENCH_FILES to a folder with a few PDFs)")
+        return
+    say(f"OK    {len(files)} PDF(s) from {FILES}, first {PAGES} pages of each")
     limit = cpu_limit()
     if limit and max(ONNX_THREADS + PADDLE_THREADS) > limit:
         say(f"NOTE  the largest thread count is above the session's {limit} vCPU; those timings will be slow")
 
     WORK.mkdir(parents=True, exist_ok=True)
     (WORK / "worker.py").write_text(WORKER)
+    (WORK / "files.json").write_text(json.dumps([str(p) for p in files]))
     before = checksums()
     packages = venv_packages()
     try:
@@ -288,7 +318,9 @@ def main():
     else:
         say(f"FAIL  OCR venv changed: added {sorted(now - packages)}, removed {sorted(packages - now)}")
     if results:
-        report(results)
+        report(results, files)
+    for item in list(WORK.glob("result_*.json")) + [WORK / "files.json"]:
+        item.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
