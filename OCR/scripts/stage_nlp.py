@@ -14,15 +14,18 @@ model_store.apply_offline_env()
 
 from deid.config import load_config
 from deid.spans import read_manifest
-from deid.stage_nlp import run_stage
+from deid.stage_nlp import run_stage, serve
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="PII detection + redaction stage")
-    parser.add_argument("--manifest", required=True)
-    parser.add_argument("--result", required=True)
+    parser.add_argument("--manifest")
+    parser.add_argument("--result")
+    parser.add_argument("--serve", action="store_true")
     parser.add_argument("--log-level", default=os.environ.get("DEID_LOG_LEVEL", "INFO"))
     args = parser.parse_args(argv)
+    if not args.serve and not (args.manifest and args.result):
+        parser.error("--manifest and --result are required unless --serve is given")
 
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), logging.INFO),
@@ -37,6 +40,12 @@ def main(argv=None) -> int:
         message="Skipping annotation.*",
         module="spacy_huggingface_pipelines.*",
     )
+
+    if args.serve:
+        out = os.fdopen(os.dup(1), "w", encoding="utf-8")
+        os.dup2(2, 1)
+        serve(load_config(), sys.stdin, out)
+        return 0
 
     jobs = read_manifest(args.manifest)
     results = run_stage(jobs, load_config())

@@ -62,6 +62,20 @@ def worker_env():
     }
 
 
+def page_pool_enabled():
+    return (os.environ.get("INTAKE_PAGE_POOL") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def page_pool_env(pool):
+    threads = max(1, int(worker_cpu_threads() or 8))
+    return {
+        "OCR_PAGE_WORKERS": str(pool),
+        "OCR_CPU_THREADS": str(pool * threads),
+        "OMP_NUM_THREADS": str(threads),
+        "MKL_NUM_THREADS": str(threads),
+    }
+
+
 def free_memory_gb():
     try:
         pages = os.sysconf("SC_AVPHYS_PAGES")
@@ -439,6 +453,16 @@ def split_into_runs(tasks, workers=1):
     return runs
 
 
+def link_input(task, input_dir, n):
+    if not task.path.is_file():
+        raise deid.DeidError("the file is no longer in the incoming folder")
+    if image_convert.is_image(task.extension):
+        return deid.pipeline_input(task.path, input_dir, task.code, f"f{n:05d}")
+    link = input_dir / f"f{n:05d}.{(task.extension or 'bin').lower()}"
+    link.symlink_to(task.path.resolve())
+    return link
+
+
 def run_pipeline(tasks, ocr_batch, workdir, watch=None):
     input_dir = workdir / "in"
     output_dir = workdir / "out"
@@ -448,18 +472,11 @@ def run_pipeline(tasks, ocr_batch, workdir, watch=None):
     links = {}
     results = {}
     for n, task in enumerate(tasks):
-        if not task.path.is_file():
-            results[n] = deid.DeidError("the file is no longer in the incoming folder")
+        try:
+            link = link_input(task, input_dir, n)
+        except deid.DeidError as e:
+            results[n] = e
             continue
-        if image_convert.is_image(task.extension):
-            try:
-                link = deid.pipeline_input(task.path, input_dir, task.code, f"f{n:05d}")
-            except deid.DeidError as e:
-                results[n] = e
-                continue
-        else:
-            link = input_dir / f"f{n:05d}.{(task.extension or 'bin').lower()}"
-            link.symlink_to(task.path.resolve())
         links[str(link)] = n
 
     if links:
@@ -484,6 +501,32 @@ def redact_unit(tasks, ocr_batch, workdir, watch=None):
                 single = run_pipeline([task], 1, workdir / "one", watch)
                 results[n] = single.get(0)
     outcomes = [finish(task, results.get(n)) for n, task in enumerate(tasks)]
+    shutil.rmtree(workdir, ignore_errors=True)
+    return outcomes
+
+
+def run_in_pool(task, service, workdir, watch=None):
+    input_dir = workdir / "in"
+    shutil.rmtree(workdir, ignore_errors=True)
+    input_dir.mkdir(parents=True)
+    try:
+        link = link_input(task, input_dir, 0)
+    except deid.DeidError as e:
+        return e
+    progress_path = workdir / "progress.json"
+    if watch:
+        watch(progress_path, {link.name: task.name})
+    return service.deidentify(link, workdir / "out", progress_path=progress_path)
+
+
+def redact_in_pool(tasks, service, workdir, watch=None):
+    outcomes = []
+    for task in tasks:
+        result = run_in_pool(task, service, workdir / "run", watch)
+        if isinstance(result, deid.DeidInterrupted):
+            log.warning("intake_file_retried", file_ref=ref(task.relative_path), error=str(result))
+            result = run_in_pool(task, service, workdir / "run", watch)
+        outcomes.append(finish(task, result))
     shutil.rmtree(workdir, ignore_errors=True)
     return outcomes
 
@@ -641,9 +684,21 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
     shards = my_shards(shards, of)
     is_main = 0 in shards
 
+    service = None
+    in_flight = pool
+    if page_pool_enabled():
+        name = worker_name()
+        service = deid.PipelineService(
+            env=page_pool_env(pool),
+            work_dir=intake.state_dir() / "work" / f"{name}-pool",
+            log_path=intake.state_dir() / "work" / f"{name}-pool.log",
+        )
+        in_flight = pool * 2
+        log.info("intake_page_pool", workers=pool, files_at_once=in_flight, **page_pool_env(pool))
+
     totals = {"done": 0, "failed": 0, "set_aside": 0, "skipped_unsettled": 0}
     totals_lock = threading.Lock()
-    work = queue.Queue(maxsize=pool)
+    work = queue.Queue(maxsize=in_flight)
     if is_main:
         forget_dead_workers()
     heartbeat = Heartbeat(shards, of, pool).start()
@@ -669,10 +724,13 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
                     return
                 tasks, ocr_batch = item
                 heartbeat.working_on([t.name for t in tasks])
-                outcomes = redact_unit(
-                    tasks, ocr_batch, workdir,
-                    lambda path, names: heartbeat.watch(n, path, names),
-                )
+                def watch(path, names):
+                    heartbeat.watch(n, path, names)
+
+                if service is not None:
+                    outcomes = redact_in_pool(tasks, service, workdir, watch)
+                else:
+                    outcomes = redact_unit(tasks, ocr_batch, workdir, watch)
                 done = outcomes.count("done")
                 failed = len(outcomes) - done
                 heartbeat.finished(done, failed)
@@ -689,7 +747,7 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
                 work.task_done()
 
     threads = []
-    for n in range(pool):
+    for n in range(in_flight):
         t = threading.Thread(target=worker, args=(n,), name=f"intake-worker-{n}", daemon=True)
         t.start()
         threads.append(t)
@@ -700,7 +758,11 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
 
     def flush():
         if state["batch"]:
-            for run in split_into_runs(state["batch"], pool):
+            if service is not None:
+                runs = [([task], 1) for task in state["batch"]]
+            else:
+                runs = split_into_runs(state["batch"], pool)
+            for run in runs:
                 work.put(run)
             state["batch"] = []
 
@@ -753,6 +815,9 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
             work.put(None)
         for t in threads:
             t.join(timeout=5)
+        if service is not None:
+            service.close()
+            shutil.rmtree(service.work_dir, ignore_errors=True)
         heartbeat.stop()
         if not creator.wait(PATIENT_WAIT_SECONDS):
             log.warning("intake_patients_pending", waited_seconds=PATIENT_WAIT_SECONDS)

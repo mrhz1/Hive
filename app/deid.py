@@ -1,10 +1,13 @@
 import json
+from concurrent.futures import Future
 from dataclasses import dataclass
 import os
 import signal
 import shutil
 import subprocess
 import sys
+import threading
+import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -157,6 +160,10 @@ def remove_deid_artifacts(source_stored_path: str, deidentified_name: str = "") 
 
 
 class DeidError(Exception):
+    pass
+
+
+class DeidInterrupted(DeidError):
     pass
 
 
@@ -388,6 +395,120 @@ def run_pipeline_many(
     for source in wanted:
         results.setdefault(source, DeidError("De-identification produced no output"))
     return results
+
+
+class PipelineService:
+    def __init__(self, env: Optional[Dict[str, str]] = None, work_dir: Optional[Path] = None,
+                 log_path: Optional[Path] = None):
+        self.env = env or {}
+        self.work_dir = work_dir
+        self.log_path = log_path
+        self.process = None
+        self.waiting: Dict[str, tuple] = {}
+        self.lock = threading.Lock()
+
+    def _start(self) -> None:
+        command = [DEID_PYTHON, DEID_SCRIPT, "--serve", "--suffix", DEID_SUFFIX]
+        if self.work_dir is not None:
+            command += ["--work-dir", str(self.work_dir)]
+        log_file = subprocess.DEVNULL
+        if self.log_path is not None:
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_file = open(self.log_path, "a", encoding="utf-8")
+        try:
+            self.process = subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=log_file,
+                text=True,
+                bufsize=1,
+                env={**os.environ, **self.env},
+            )
+        finally:
+            if log_file is not subprocess.DEVNULL:
+                log_file.close()
+        log.info("deid_service_started", pid=self.process.pid, **self.env)
+        threading.Thread(
+            target=self._read, args=(self.process,), name="deid-service", daemon=True
+        ).start()
+
+    def _read(self, process) -> None:
+        for line in process.stdout:
+            try:
+                data = json.loads(line)
+            except ValueError:
+                continue
+            with self.lock:
+                future, _ = self.waiting.pop(str(data.get("id")), (None, None))
+            if future is not None:
+                future.set_result(self._result(data))
+        returncode = process.wait()
+        with self.lock:
+            lost = [
+                self.waiting.pop(job_id)[0]
+                for job_id, (_, owner) in list(self.waiting.items())
+                if owner is process
+            ]
+        if lost:
+            log.error("deid_service_stopped", returncode=returncode, files=len(lost))
+        for future in lost:
+            future.set_result(
+                DeidInterrupted(f"De-identification stopped ({_describe_exit(returncode)})")
+            )
+
+    @staticmethod
+    def _result(data: dict) -> object:
+        if data.get("status") == "ok":
+            produced = Path(data.get("output_pdf") or "")
+            if produced.is_file():
+                return Produced(produced, data.get("method"))
+            return DeidError("De-identification produced no output")
+        stage = data.get("stage") or "unknown stage"
+        error_class = DeidInterrupted if data.get("retry") else DeidError
+        return error_class(
+            f"De-identification failed at the {stage} stage: {data.get('error') or 'no detail'}"
+        )
+
+    def deidentify(self, source: Path, output_dir: Path,
+                   progress_path: Optional[Path] = None) -> object:
+        job_id = uuid.uuid4().hex
+        future: Future = Future()
+        request = {
+            "id": job_id,
+            "source": str(source),
+            "output_dir": str(output_dir),
+            "progress": str(progress_path) if progress_path is not None else None,
+        }
+        with self.lock:
+            try:
+                if self.process is None or self.process.poll() is not None:
+                    self._start()
+                self.waiting[job_id] = (future, self.process)
+                self.process.stdin.write(json.dumps(request) + "\n")
+                self.process.stdin.flush()
+            except FileNotFoundError:
+                self.waiting.pop(job_id, None)
+                return DeidError(RUNTIME_NOT_FOUND)
+            except (BrokenPipeError, OSError) as e:
+                self.waiting.pop(job_id, None)
+                return DeidInterrupted(f"De-identification is not running: {e}")
+        return future.result()
+
+    def close(self) -> None:
+        with self.lock:
+            process, self.process = self.process, None
+        if process is None:
+            return
+        try:
+            process.stdin.close()
+        except OSError:
+            pass
+        try:
+            process.wait(timeout=DEID_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
 
 
 def _lookup_patient_id(cursor, application_id: str) -> str:

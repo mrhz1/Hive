@@ -214,6 +214,18 @@ workers = min(cores / cores_per_worker, RAM / RAM_per_worker)
 Measured with 8 threads: about 18 s per handwritten page and 31 s per
 printed page (OCR is almost all of it).
 
+With `INTAKE_PAGE_POOL=on` the workers are shared across files instead of
+each taking a file: one pool of `DEID_WORKERS` OCR processes, each with
+`DEID_WORKER_CPU_THREADS` threads, reads the pages of every file in the
+order they arrive. When there are fewer files than workers (the end of a
+run, or one big PDF), the idle workers read the remaining pages of the
+files still going, so a single 400-page PDF gets all of them. Twice as many
+files as workers are in progress at once to keep the pool busy. Each file
+is redacted by the NER stage as soon as its last page is read; models load
+once per run. A file whose OCR worker was killed (exit -9) is tried once
+more before it goes to `failed/`. The stage logs go to
+`.intake/work/<host>-pool.log`. Redacted output is the same as without it.
+
 #### Intake page
 
 `/intake` (needs `application:view`):

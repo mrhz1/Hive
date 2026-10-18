@@ -12,6 +12,7 @@ from deid.pipeline import (
     describe_environment,
     preflight,
     run_pipeline,
+    serve,
 )
 from deid.documents import (
     EXTENSIONS,
@@ -104,6 +105,16 @@ def parse_args(argv=None):
         help="Check both stage interpreters exist, print them, and exit.",
     )
     parser.add_argument(
+        "--serve",
+        action="store_true",
+        help=(
+            "Keep the models loaded and read one JSON request per line on "
+            "stdin ({id, source, output_dir, progress}); answer each with "
+            "one JSON line on stdout. Pages of all files share one pool of "
+            "OCR_PAGE_WORKERS processes."
+        ),
+    )
+    parser.add_argument(
         "--log-level", default=os.environ.get("DEID_LOG_LEVEL", "INFO")
     )
     args = parser.parse_args(argv)
@@ -121,6 +132,9 @@ def main(argv=None) -> int:
     args = parse_args(argv)
     configure_logging(args.log_level)
     log = logging.getLogger("run_deid")
+
+    if args.serve:
+        return serve(sys.stdin, sys.stdout, suffix=args.suffix, work_dir=args.work_dir)
 
     problems = preflight()
 

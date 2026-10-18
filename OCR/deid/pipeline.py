@@ -2,9 +2,11 @@ import json
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -281,6 +283,252 @@ def _run(
         progress.finish()
 
     return ordered
+
+
+def _describe_exit(returncode: int) -> str:
+    if returncode >= 0:
+        return f"exit {returncode}"
+    try:
+        name = signal.Signals(-returncode).name
+    except ValueError:
+        name = f"signal {-returncode}"
+    if returncode == -9:
+        return f"killed by {name}, most likely out of memory"
+    return f"killed by {name}"
+
+
+class _StageServer:
+    def __init__(self, stage: str, interpreter: str, script: str, on_result, on_stop):
+        self.stage = stage
+        self.interpreter = interpreter
+        self.script = script
+        self.on_result = on_result
+        self.on_stop = on_stop
+        self.process = None
+        self.lock = threading.Lock()
+
+    def _start(self) -> None:
+        command = [self.interpreter, str(OCR_ROOT / "scripts" / self.script), "--serve"]
+        log.info("stage %s server: %s", self.stage, " ".join(command))
+        try:
+            self.process = subprocess.Popen(
+                command,
+                cwd=str(OCR_ROOT),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+                env=os.environ.copy(),
+            )
+        except FileNotFoundError as e:
+            raise StageError(
+                f"{self.stage} stage interpreter not found at '{self.interpreter}'. "
+                f"Set DEID_{self.stage.upper()}_PYTHON to the venv that has the "
+                f"{self.stage} dependencies installed."
+            ) from e
+        threading.Thread(
+            target=self._read, args=(self.process,), name=f"deid-{self.stage}", daemon=True
+        ).start()
+
+    def _read(self, process) -> None:
+        for line in process.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                self.on_result(json.loads(line))
+            except Exception:
+                log.exception("bad reply from the %s stage", self.stage)
+        returncode = process.wait()
+        self.on_stop(self.stage, process.pid, returncode)
+
+    def send(self, job: Dict[str, Any]) -> int:
+        with self.lock:
+            if self.process is None or self.process.poll() is not None:
+                self._start()
+            try:
+                self.process.stdin.write(json.dumps(job) + "\n")
+                self.process.stdin.flush()
+            except (BrokenPipeError, OSError) as e:
+                raise StageError(f"the {self.stage} stage is not running: {e}") from e
+            return self.process.pid
+
+    def close(self) -> None:
+        with self.lock:
+            process, self.process = self.process, None
+        if process is None:
+            return
+        try:
+            process.stdin.close()
+        except OSError:
+            pass
+        process.wait()
+
+
+class Service:
+    def __init__(self, out, suffix: str, work: Path, keep_work: bool = False, problems=None):
+        self.problems = problems or []
+        self.out = out
+        self.out_lock = threading.Lock()
+        self.suffix = suffix
+        self.work = work
+        self.keep_work = keep_work
+        self.jobs: Dict[str, Dict[str, Any]] = {}
+        self.lock = threading.Condition()
+        self.ocr = _StageServer("ocr", ocr_python(), "stage_ocr.py", self._ocr_done, self._stopped)
+        self.nlp = _StageServer("nlp", nlp_python(), "stage_nlp.py", self._nlp_done, self._stopped)
+
+    def submit(self, request: Dict[str, Any]) -> None:
+        job_id = str(request["id"])
+        source = request["source"]
+        output_root = Path(request["output_dir"]).expanduser()
+        stem = Path(source).stem + self.suffix
+        job = {
+            "id": job_id,
+            "source": source,
+            "spans": str(self.work / f"{job_id}.spans.json"),
+            "output_pdf": str(output_root / f"{stem}{output_extension(source)}"),
+            "output_text": str(output_root / f"{stem}.txt"),
+            "output_report": str(output_root / f"{stem}.report.json"),
+            "progress": request.get("progress"),
+        }
+        stage = "ocr" if needs_ocr(source) else "nlp"
+        with self.lock:
+            self.jobs[job_id] = dict(job, stage=stage, pid=None)
+        if self.problems:
+            self._reply(job_id, error="; ".join(self.problems), stage="preflight")
+            return
+        try:
+            output_root.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            self._reply(job_id, error=str(e), stage=stage)
+            return
+        if stage == "ocr":
+            self._send(self.ocr, job_id, {key: job[key] for key in ("id", "source", "spans", "progress")})
+        else:
+            self._send(self.nlp, job_id, job)
+
+    def _send(self, server: "_StageServer", job_id: str, job: Dict[str, Any]) -> None:
+        try:
+            pid = server.send(job)
+        except StageError as e:
+            self._reply(job_id, error=str(e), stage=server.stage, retry=True)
+            return
+        with self.lock:
+            if job_id in self.jobs:
+                self.jobs[job_id]["pid"] = pid
+
+    def _ocr_done(self, outcome: Dict[str, Any]) -> None:
+        job_id = str(outcome.get("id"))
+        with self.lock:
+            job = self.jobs.get(job_id)
+            if job is None:
+                return
+            if outcome.get("status") == "ok":
+                job["stage"] = "nlp"
+                job["pid"] = None
+        if job["stage"] != "nlp":
+            self._reply(
+                job_id,
+                error=outcome.get("error") or "OCR stage returned no result",
+                stage="ocr",
+                retry=bool(outcome.get("retry")),
+            )
+            return
+        self._send(self.nlp, job_id, {key: value for key, value in job.items() if key not in ("stage", "pid")})
+
+    def _nlp_done(self, data: Dict[str, Any]) -> None:
+        result = DocumentResult.from_dict(data)
+        if result.status == "ok":
+            self._reply(str(data.get("id")), output_pdf=result.output_pdf, method=result.method)
+        else:
+            self._reply(str(data.get("id")), error=result.error, stage=result.failed_stage or "nlp")
+
+    def _stopped(self, stage: str, pid: int, returncode: int) -> None:
+        with self.lock:
+            lost = [
+                job_id
+                for job_id, job in self.jobs.items()
+                if job["stage"] == stage and job["pid"] in (pid, None)
+            ]
+        if not lost:
+            return
+        log.error("the %s stage stopped (%s)", stage, _describe_exit(returncode))
+        for job_id in lost:
+            self._reply(
+                job_id,
+                error=f"the {stage} stage stopped ({_describe_exit(returncode)})",
+                stage=stage,
+                retry=True,
+            )
+
+    def _reply(self, job_id: str, output_pdf=None, method=None, error=None, stage=None, retry=False):
+        with self.lock:
+            job = self.jobs.pop(job_id, None)
+            self.lock.notify_all()
+        if job is None:
+            return
+        if not self.keep_work:
+            Path(job["spans"]).unlink(missing_ok=True)
+        progress = progress_writer(job.get("progress"), file_total=1).load()
+        if error:
+            progress.fail(error)
+        else:
+            progress.finish()
+        reply = {
+            "id": job_id,
+            "source": job["source"],
+            "status": "error" if error else "ok",
+            "output_pdf": output_pdf,
+            "method": method,
+            "stage": stage,
+            "error": error,
+            "retry": retry,
+        }
+        with self.out_lock:
+            self.out.write(json.dumps(reply) + "\n")
+            self.out.flush()
+
+    def wait(self) -> None:
+        with self.lock:
+            while self.jobs:
+                self.lock.wait()
+
+    def close(self) -> None:
+        self.ocr.close()
+        self.nlp.close()
+
+
+def serve(lines, out, suffix: str = "_deid", work_dir: Optional[str] = None) -> int:
+    problems = preflight()
+
+    keep_work = _is_on("DEID_KEEP_WORK_DIR")
+    if work_dir:
+        work = Path(work_dir).expanduser()
+        work.mkdir(parents=True, mode=0o700, exist_ok=True)
+        owned = False
+    else:
+        work = Path(tempfile.mkdtemp(prefix="deid-serve-"))
+        owned = True
+
+    service = Service(out, suffix, work, keep_work, problems)
+    try:
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                request = json.loads(line)
+            except ValueError:
+                log.error("ignoring a request that is not JSON")
+                continue
+            service.submit(request)
+        service.wait()
+    finally:
+        service.close()
+        if owned and not keep_work:
+            shutil.rmtree(work, ignore_errors=True)
+    return 1 if problems else 0
 
 
 def preflight() -> List[str]:

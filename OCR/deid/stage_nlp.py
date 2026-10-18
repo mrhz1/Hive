@@ -434,50 +434,66 @@ def dicom_method(result: DocumentResult) -> str:
     return TAGS_ONLY_NO_TEXT
 
 
+def _run_job(deidentifier: Deidentifier, job: Dict[str, Any]) -> DocumentResult:
+    source = job["source"]
+
+    if kind_for(source) == DOCX:
+        return deidentifier.process_word(
+            source,
+            output_path=job["output_pdf"],
+            output_text=job.get("output_text"),
+            output_report=job.get("output_report"),
+        )
+
+    try:
+        ocr_document = OcrDocument.read(job["spans"])
+    except Exception as e:
+        log.error("could not read OCR handoff for %s: %s", source, e)
+        return DocumentResult(
+            source_path=source,
+            status="error",
+            error=f"could not read OCR handoff: {e}",
+            failed_stage="nlp",
+        )
+
+    return deidentifier.process_document(
+        ocr_document,
+        output_pdf=job["output_pdf"],
+        output_text=job.get("output_text"),
+        output_report=job.get("output_report"),
+    )
+
+
 def run_stage(jobs: List[Dict[str, Any]], config: Config) -> List[DocumentResult]:
     deidentifier = Deidentifier(config)
-    results: List[DocumentResult] = []
 
     first = jobs[0] if jobs else {}
     file_total = int(first.get("file_total") or len(jobs) or 1)
     progress = progress_writer(first.get("progress"), file_total=file_total).load()
     progress.stage("redacting")
 
-    for job in jobs:
-        source = job["source"]
+    return [_run_job(deidentifier, job) for job in jobs]
 
-        if kind_for(source) == DOCX:
-            results.append(
-                deidentifier.process_word(
-                    source,
-                    output_path=job["output_pdf"],
-                    output_text=job.get("output_text"),
-                    output_report=job.get("output_report"),
-                )
-            )
+
+def serve(config: Config, lines, out) -> None:
+    deidentifier = Deidentifier(config)
+    for line in lines:
+        line = line.strip()
+        if not line:
             continue
-
         try:
-            ocr_document = OcrDocument.read(job["spans"])
-        except Exception as e:
-            log.error("could not read OCR handoff for %s: %s", source, e)
-            results.append(
-                DocumentResult(
-                    source_path=source,
-                    status="error",
-                    error=f"could not read OCR handoff: {e}",
-                    failed_stage="nlp",
-                )
-            )
+            job = json.loads(line)
+        except ValueError:
+            log.error("ignoring a request that is not JSON")
             continue
 
-        results.append(
-            deidentifier.process_document(
-                ocr_document,
-                output_pdf=job["output_pdf"],
-                output_text=job.get("output_text"),
-                output_report=job.get("output_report"),
+        progress_writer(job.get("progress"), file_total=1).load().stage("redacting")
+        try:
+            result = _run_job(deidentifier, job)
+        except Exception as e:
+            log.exception("NLP failed for %s", job["source"])
+            result = DocumentResult(
+                source_path=job["source"], status="error", error=str(e), failed_stage="nlp"
             )
-        )
-
-    return results
+        out.write(json.dumps({"id": job.get("id"), **result.to_dict()}) + "\n")
+        out.flush()
