@@ -198,7 +198,10 @@ export function ApplicationSummary({
             No documents were attached to this application.
           </p>
         ) : (
-          <ul className="mt-4 space-y-2">
+          <ul
+            className="mt-4 max-h-96 space-y-2 overflow-y-auto pr-1"
+            aria-label="Attached documents"
+          >
             {files.map((file) => (
               <li
                 key={file.id}
