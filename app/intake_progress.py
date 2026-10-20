@@ -123,3 +123,113 @@ def progress():
         "code_pattern": patient_code_pattern(),
         "code_pattern_is_default": patient_code_pattern() == DEFAULT_PATIENT_CODE_PATTERN,
     }
+
+
+FINISHED_LIMIT = 500
+_pages_cache = {}
+
+
+def run_started_at(heartbeats=None):
+    heartbeats = intake_worker.read_heartbeats() if heartbeats is None else heartbeats
+    starts = [float(hb.get("started_at") or 0) for hb in heartbeats if hb.get("started_at")]
+    return min(starts) if starts else None
+
+
+def page_count(path):
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None
+    key = str(path)
+    cached = _pages_cache.get(key)
+    if cached and cached[0] == mtime:
+        return cached[1]
+    pages = None
+    suffix = path.suffix.lower()
+    try:
+        if suffix == ".pdf":
+            import fitz
+
+            with fitz.open(key) as document:
+                pages = document.page_count
+        elif suffix in (".dcm", ".dicom"):
+            import pydicom
+
+            dataset = pydicom.dcmread(key, stop_before_pixels=True)
+            pages = int(getattr(dataset, "NumberOfFrames", 1) or 1)
+    except Exception:
+        pages = None
+    if len(_pages_cache) > 5000:
+        _pages_cache.clear()
+    _pages_cache[key] = (mtime, pages)
+    return pages
+
+
+def _done_since(since):
+    root = intake.deidentified_root()
+    found = []
+    if not root.is_dir():
+        return found
+    for sidecar in root.rglob(f"*{intake.SIDECAR_SUFFIX}"):
+        if sidecar.name.endswith(intake.REASON_SUFFIX):
+            continue
+        try:
+            if sidecar.stat().st_mtime < since:
+                continue
+        except OSError:
+            continue
+        info = intake.read_json(sidecar)
+        finished = float(info.get("created_at") or 0)
+        if finished < since:
+            continue
+        document = sidecar.with_name(sidecar.name[: -len(intake.SIDECAR_SUFFIX)])
+        found.append(
+            {
+                "status": "done",
+                "path": info.get("relative_path") or document.name,
+                "output": document.name,
+                "finished_at": finished,
+                "document": document,
+                "detail": info.get("method"),
+            }
+        )
+    return found
+
+
+def _problems_since(kind, status, since):
+    found = []
+    for item in intake.list_problem_files(kind):
+        finished = float(item.get("moved_at") or 0)
+        if finished < since:
+            continue
+        found.append(
+            {
+                "status": status,
+                "path": item["path"],
+                "output": None,
+                "finished_at": finished,
+                "document": None,
+                "detail": item.get("reason"),
+            }
+        )
+    return found
+
+
+def finished_files(limit=FINISHED_LIMIT):
+    since = run_started_at()
+    if since is None:
+        return {"since": None, "total": 0, "files": []}
+    rows = (
+        _done_since(since)
+        + _problems_since("failed", "failed", since)
+        + _problems_since("attention", "excluded", since)
+    )
+    rows.sort(key=lambda r: r["finished_at"], reverse=True)
+    total = len(rows)
+    files = []
+    for number, row in zip(range(total, 0, -1), rows[:limit]):
+        document = row.pop("document")
+        row["number"] = number
+        row["pages"] = page_count(document) if document is not None else None
+        files.append(row)
+    return {"since": since, "total": total, "files": files}

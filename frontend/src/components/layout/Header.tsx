@@ -4,6 +4,7 @@ import { useCallback } from 'react'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useTheme } from '@/hooks/useTheme'
 import { Logo } from '@/components/Logo'
+import { APP_NAME } from '@/lib/brand'
 import { UserSwitcher } from './UserSwitcher'
 
 function ThemeToggle() {
@@ -85,7 +86,7 @@ export function Header({
         <div className="flex items-center gap-2">
           <Logo className="size-7 sm:size-8" />
           <span className="text-lg font-bold tracking-tight text-[rgb(var(--brand))] sm:text-xl">
-            Hive Admin
+            {APP_NAME}
           </span>
         </div>
       </div>

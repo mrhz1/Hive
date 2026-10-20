@@ -1,8 +1,7 @@
+import { APP_LOGO } from '@/lib/brand'
 import { cn } from '@/lib/cn'
 
-const LOGO_FILE = 'logo.svg'
-
-export const LOGO_URL = `${import.meta.env.BASE_URL}${LOGO_FILE}`
+export const LOGO_URL = `${import.meta.env.BASE_URL}${APP_LOGO}`
 
 export function Logo({ className, label }: { className?: string; label?: string }) {
   return (

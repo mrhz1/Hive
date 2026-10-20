@@ -234,3 +234,21 @@ export const carbonStatusSchema = z.object({
 })
 
 export type CarbonStatus = z.infer<typeof carbonStatusSchema>
+
+export const finishedFileSchema = z.object({
+  number: z.number(),
+  status: z.enum(['done', 'failed', 'excluded']),
+  path: z.string(),
+  output: z.string().nullable().optional(),
+  finished_at: z.number(),
+  pages: z.number().nullable().optional(),
+  detail: z.string().nullable().optional(),
+})
+
+export type FinishedFile = z.infer<typeof finishedFileSchema>
+
+export const finishedFilesSchema = z.object({
+  since: z.number().nullable(),
+  total: z.number(),
+  files: z.array(finishedFileSchema),
+})

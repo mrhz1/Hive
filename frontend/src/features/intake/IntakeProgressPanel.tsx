@@ -7,18 +7,14 @@ import { Spinner } from '@/components/ui/Spinner'
 import { Can } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
 import {
+  useIntakeFinished,
   useIntakeRuns,
   useIntakeStatus,
   useStartIntake,
   useStopIntake,
 } from '@/hooks/useResources'
 import { queryKeys } from '@/lib/queryKeys'
-import {
-  describeProgress,
-  humanDuration,
-  type IntakeRun,
-  type IntakeWorker,
-} from '@/schemas/intake'
+import { humanDuration, type IntakeRun, type IntakeWorker } from '@/schemas/intake'
 
 const formatNumber = (n: number) => n.toLocaleString()
 
@@ -71,14 +67,6 @@ function WorkerRow({ worker }: { worker: IntakeWorker }) {
       ? `${Math.round(worker.seconds_since_seen)}s ago`
       : `${humanDuration(worker.seconds_since_seen)} ago`
 
-  let currentFiles = ''
-  if (worker.alive && worker.current.length > 0) {
-    currentFiles = 'on ' + worker.current.slice(0, 3).join(', ')
-    if (worker.current.length > 3) {
-      currentFiles += ` +${worker.current.length - 3}`
-    }
-  }
-
   return (
     <li className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[rgb(var(--border))] py-2 first:border-0">
       <span className="flex min-w-48 items-center gap-2">
@@ -93,38 +81,60 @@ function WorkerRow({ worker }: { worker: IntakeWorker }) {
       </Badge>
       <span className="text-xs tabular-nums">{formatNumber(worker.per_hour)}/h</span>
       <span className={labelClass}>seen {lastSeen}</span>
-      {currentFiles && (
-        <span
-          className="min-w-0 flex-1 truncate font-mono text-[11px] text-[rgb(var(--foreground-muted))]"
-          title={worker.current.join(', ')}
-        >
-          {currentFiles}
-        </span>
-      )}
-      {worker.progress.length > 0 ? (
-        <ul className="basis-full space-y-2 pt-1" aria-label="Files being cleaned">
-          {worker.progress.map((p) => {
-            const { text, percent } = describeProgress(p)
-            return (
-              <li key={p.slot} className="space-y-1">
-                <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
-                  <span
-                    className="min-w-0 truncate font-mono font-semibold"
-                    title={p.file}
-                  >
-                    {p.file}
-                  </span>
-                  <span className="text-[rgb(var(--foreground-muted))] tabular-nums">
-                    {text}
-                  </span>
-                </div>
-                <ProgressBar percent={percent} />
-              </li>
-            )
-          })}
-        </ul>
-      ) : null}
     </li>
+  )
+}
+
+const FINISHED_TONE = { done: 'success', failed: 'danger', excluded: 'neutral' } as const
+
+function FinishedList({ running }: { running: boolean }) {
+  const { data } = useIntakeFinished(running)
+  if (!data || data.since === null) return null
+
+  return (
+    <Card className="p-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className={titleClass}>Finished this run</h2>
+        <span className={`${labelClass} tabular-nums`}>
+          {formatNumber(data.total)} files
+          {data.total > data.files.length
+            ? ` · last ${formatNumber(data.files.length)} shown`
+            : ''}
+        </span>
+      </div>
+      {data.files.length === 0 ? (
+        <p className="mt-2 text-sm text-[rgb(var(--foreground-muted))]">
+          No file finished yet.
+        </p>
+      ) : (
+        <ol
+          className="mt-2 max-h-96 divide-y divide-[rgb(var(--border))] overflow-y-auto text-xs"
+          aria-label="Finished files"
+        >
+          {data.files.map((file) => (
+            <li
+              key={`${file.number}-${file.path}`}
+              className="flex items-center gap-3 py-1.5 pr-2"
+            >
+              <span className="w-12 shrink-0 text-right text-[rgb(var(--foreground-muted))] tabular-nums">
+                {file.number}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-mono" title={file.path}>
+                {file.path}
+              </span>
+              <span className="w-20 shrink-0 text-right text-[rgb(var(--foreground-muted))] tabular-nums">
+                {file.pages
+                  ? `${formatNumber(file.pages)} page${file.pages > 1 ? 's' : ''}`
+                  : ''}
+              </span>
+              <span className="w-20 shrink-0 text-right" title={file.detail ?? undefined}>
+                <Badge tone={FINISHED_TONE[file.status]}>{file.status}</Badge>
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
   )
 }
 
@@ -367,6 +377,8 @@ export function IntakeProgressPanel() {
           </ul>
         )}
       </Card>
+
+      <FinishedList running={Boolean(status.running)} />
 
       {runs && runs.length > 0 && (
         <Card className="p-5">

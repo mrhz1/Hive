@@ -99,6 +99,14 @@ def intake_status(
     return intake_progress.progress()
 
 
+@router.get("/finished")
+def intake_finished(
+    limit: int = 500,
+    _actor: User = Depends(require_permission("deidentifier:view")),
+):
+    return intake_progress.finished_files(min(max(1, limit), 2000))
+
+
 @router.get("/runs")
 def intake_runs(
     limit: int = 20,

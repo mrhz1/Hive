@@ -42,6 +42,7 @@ import {
   carbonCheckSchema,
   carbonFolderSchema,
   carbonStatusSchema,
+  finishedFilesSchema,
   intakeRunListSchema,
   intakeStatusSchema,
   problemCodeListSchema,
@@ -715,6 +716,8 @@ export const intakeApi = {
   status: () => request(intakeStatusSchema, () => api.get('/intake/status')),
 
   runs: () => request(intakeRunListSchema, () => api.get('/intake/runs')),
+
+  finished: () => request(finishedFilesSchema, () => api.get('/intake/finished')),
 
   files: async (kind: ProblemList, limit: number, code?: string) => {
     try {

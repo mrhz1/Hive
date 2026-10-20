@@ -2,6 +2,7 @@ import { createRootRoute, Outlet } from '@tanstack/react-router'
 import { AppErrorPage, NotFoundPage } from '@/components/ErrorPages'
 import { AppShell } from '@/components/layout/AppShell'
 import { Logo } from '@/components/Logo'
+import { APP_NAME } from '@/lib/brand'
 import { LoadingBlock } from '@/components/ui/Spinner'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Misc'
@@ -14,7 +15,7 @@ function IdentityGate({ children }: { children: React.ReactNode }) {
   if (isLoading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-6">
-        <Logo className="size-14" label="Hive Admin" />
+        <Logo className="size-14" label={APP_NAME} />
         <LoadingBlock label="Loading your account" />
       </div>
     )
@@ -27,7 +28,7 @@ function IdentityGate({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
         <Card className="w-full max-w-md p-8 text-center">
-          <Logo className="mx-auto mb-4 size-12" label="Hive Admin" />
+          <Logo className="mx-auto mb-4 size-12" label={APP_NAME} />
           <h1 className="text-lg font-semibold">
             {isIdentityProblem ? 'We could not identify you' : 'Cannot reach the API'}
           </h1>

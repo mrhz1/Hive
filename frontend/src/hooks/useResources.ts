@@ -636,6 +636,14 @@ export function useIntakeRuns() {
   })
 }
 
+export function useIntakeFinished(running: boolean) {
+  return useQuery({
+    queryKey: queryKeys.intake.finished(),
+    queryFn: () => intakeApi.finished(),
+    refetchInterval: running ? 5_000 : 30_000,
+  })
+}
+
 export function useStartIntake() {
   const queryClient = useQueryClient()
   return useMutation({
