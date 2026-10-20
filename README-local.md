@@ -174,11 +174,13 @@ one machine.
 
 #### Finding the code
 
-- **Folder:** a folder name that is a full code (`A/B/C/AA1234/x.dcm`).
-  The deepest one wins.
-- **File name:** a code at the start of the name, followed by a
-  non-alphanumeric character or the end (`AA1234.pdf`, `AA1234_chest.pdf`).
-  `AVDD12005_x.pdf` and `chest_AA1234.pdf` don't count.
+- **Folder:** a code anywhere in a folder name (`A/AA1234/x.dcm`,
+  `AVSD0136_Baseline and Pre-Discharge/0001/x`). The deepest one wins.
+- **File name:** a code anywhere in the name (`AA1234_chest.pdf`,
+  `chest_AA1234.pdf`).
+- The code must not be glued to more letters before it or more digits
+  after it: `AVDD12005_x.pdf` and `SCANNERAA1234.pdf` don't count. A name
+  with two different codes counts as none.
 - **File type** comes from the file content when there is no extension
   (PACS exports like `IM000001`).
 

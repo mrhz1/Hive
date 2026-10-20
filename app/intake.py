@@ -15,7 +15,13 @@ from app.crud import patient_applications as applications_crud
 from app.crud import patients as patients_crud
 from app.deid import DEIDENTIFIABLE_LABEL, is_deidentifiable
 from app.filetype import read_header, resolve_extension
-from app.ids import clean_patient_code, code_formats, describe_code_formats, is_patient_code
+from app.ids import (
+    clean_patient_code,
+    code_formats,
+    describe_code_formats,
+    is_patient_code,
+    patient_code_pattern,
+)
 from app.logging_setup import get_logger, ref
 from app.schemas import PatientApplicationCreate, PatientApplicationFileUpdate
 
@@ -33,7 +39,6 @@ REASON_SUFFIX = ".reason.json"
 SIDECAR_SUFFIX = ".json"
 PARTIAL_SUFFIX = ".partial"
 
-CODE_AT_START = re.compile(r"^([A-Za-z0-9]+)")
 
 _overrides_lock = threading.Lock()
 
@@ -161,29 +166,33 @@ class Candidate:
         return self.path.name
 
 
+def codes_in_text(text):
+    if not isinstance(text, str) or not text:
+        return set()
+    pattern = re.compile(rf"(?<![A-Z0-9])({patient_code_pattern()})(?![0-9])")
+    return {match.group(1) for match in pattern.finditer(text.upper())}
+
+
+def code_in_segment(segment):
+    code = clean_patient_code(segment)
+    if is_patient_code(code):
+        return code
+    found = codes_in_text(segment)
+    return found.pop() if len(found) == 1 else None
+
+
 def code_in_name(name):
     stem = Path(name).stem
     if not stem:
         return None
-
-    code = clean_patient_code(stem)
-    if is_patient_code(code):
-        return code
-
-    match = CODE_AT_START.match(stem)
-    if not match:
-        return None
-    code = clean_patient_code(match.group(1))
-    if is_patient_code(code):
-        return code
-    return None
+    return code_in_segment(stem)
 
 
 def code_in_path(relative_path):
     folders = Path(relative_path).parts[:-1]
     for folder in reversed(folders):
-        code = clean_patient_code(folder)
-        if is_patient_code(code):
+        code = code_in_segment(folder)
+        if code:
             return code
     return None
 
@@ -191,7 +200,7 @@ def code_in_path(relative_path):
 def deidentified_subfolder(relative_path, code):
     folders = Path(relative_path).parts[:-1]
     for index in range(len(folders) - 1, -1, -1):
-        if clean_patient_code(folders[index]) == code:
+        if code_in_segment(folders[index]) == code:
             return Path(*folders[index + 1 :])
     return Path(*folders)
 
