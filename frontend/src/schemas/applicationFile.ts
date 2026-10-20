@@ -45,11 +45,8 @@ export const applicationFileSchema = z.object({
 
 export const UNKNOWN = 'UNKNOWN'
 
-export function hasCoveredImageText(file: {
-  file_extension: string
-  redaction_boxes?: number | null
-}): boolean {
-  return previewKind(file.file_extension) === 'image' && (file.redaction_boxes ?? 0) > 0
+export function hasCoveredText(file: { redaction_boxes?: number | null }): boolean {
+  return (file.redaction_boxes ?? 0) > 0
 }
 
 const COMMON_MODALITIES = [

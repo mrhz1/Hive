@@ -33,7 +33,7 @@ import {
   deidTone,
   fileTally,
   fileSearchText,
-  hasCoveredImageText,
+  hasCoveredText,
   formatFileSize,
   hasExtractableMetadata,
   isDeletedFile,
@@ -121,10 +121,10 @@ export function FileReviewPanel({
 
   const files = filesQuery.data ?? []
   const searchText = search.trim().toLowerCase()
-  const coveredCount = files.filter(hasCoveredImageText).length
+  const coveredCount = files.filter(hasCoveredText).length
   const visible = files
     .filter((file) => !searchText || fileSearchText(file).includes(searchText))
-    .filter((file) => !onlyCoveredText || hasCoveredImageText(file))
+    .filter((file) => !onlyCoveredText || hasCoveredText(file))
 
   const tally = fileTally(files)
 
@@ -351,8 +351,12 @@ export function FileReviewPanel({
             <Badge tone="warning">contains PII</Badge>
           )}
           {file.redaction === 'RR' ? <Badge tone="neutral">by hand</Badge> : null}
-          {hasCoveredImageText(file) ? (
-            <Badge tone="warning">text covered in picture ({file.redaction_boxes})</Badge>
+          {hasCoveredText(file) ? (
+            <Badge tone="neutral">
+              <span title="Text that looked like PHI was covered with a black box. Checking is optional.">
+                {file.redaction_boxes} area{file.redaction_boxes === 1 ? '' : 's'} covered
+              </span>
+            </Badge>
           ) : null}
           {file.leaded_phi ? <Badge tone="danger">leaded · not for Zone 2</Badge> : null}
         </div>
@@ -392,14 +396,14 @@ export function FileReviewPanel({
         {coveredCount > 0 ? (
           <label
             className="flex items-center gap-2 text-sm"
-            title="Images where text, possibly a name or number, was covered in the picture. Checking them is optional; reject one if an identifier still shows."
+            title="Files where text that looked like PHI was covered. Checking them is optional; reject one if an identifier still shows."
           >
             <input
               type="checkbox"
               checked={onlyCoveredText}
               onChange={(event) => setOnlyCoveredText(event.target.checked)}
             />
-            Only images with covered text ({coveredCount})
+            Only files with covered areas ({coveredCount})
           </label>
         ) : null}
       </div>
