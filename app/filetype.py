@@ -13,6 +13,8 @@ PDF_MAGIC = b"%PDF-"
 
 OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
+OLE_WORD_STREAM = "WordDocument".encode("utf-16-le")
+
 ZIP_MAGIC = b"PK\x03\x04"
 
 IMAGE_MAGIC = (
@@ -51,7 +53,7 @@ def sniff_extension(head: bytes) -> Optional[str]:
         return "pdf"
 
     if head.startswith(OLE_MAGIC):
-        return "doc"
+        return "doc" if OLE_WORD_STREAM in head else None
 
     if head.startswith(ZIP_MAGIC) and b"word/" in head:
         return "docx"
