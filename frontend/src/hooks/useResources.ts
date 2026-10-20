@@ -739,7 +739,8 @@ export function useIntakeFileCodes(kind: ProblemList) {
 export function useRetryAllIntakeFiles() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (code?: string) => intakeApi.retryAll(code),
+    mutationFn: ({ kind, code }: { kind: ProblemList; code?: string }) =>
+      intakeApi.retryAll(kind, code),
     onSuccess: ({ moved }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
       toast.success(
@@ -756,7 +757,8 @@ export function useRetryAllIntakeFiles() {
 export function useRetryIntakeFile() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (path: string) => intakeApi.retry(path),
+    mutationFn: ({ kind, path }: { kind: ProblemList; path: string }) =>
+      intakeApi.retry(kind, path),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.intake.all })
       toast.success('Moved back to the incoming folder, it will be done in the next run')

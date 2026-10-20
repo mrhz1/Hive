@@ -749,18 +749,21 @@ export const intakeApi = {
     }
   },
 
-  retryAll: async (code?: string): Promise<{ moved: number }> => {
+  retryAll: async (kind: ProblemList, code?: string): Promise<{ moved: number }> => {
     try {
-      const response = await api.post('/intake/files/retry-all', { code: code ?? null })
+      const response = await api.post('/intake/files/retry-all', {
+        kind,
+        code: code ?? null,
+      })
       return response.data as { moved: number }
     } catch (error) {
       throw toApiError(error)
     }
   },
 
-  retry: async (path: string) => {
+  retry: async (kind: ProblemList, path: string) => {
     try {
-      await api.post('/intake/files/retry', { path })
+      await api.post('/intake/files/retry', { kind, path })
     } catch (error) {
       throw toApiError(error)
     }

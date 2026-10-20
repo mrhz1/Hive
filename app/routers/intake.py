@@ -27,6 +27,7 @@ LISTS = ["failed", "attention"]
 
 class FilePath(BaseModel):
     path: str
+    kind: str = "failed"
 
 
 class ConflictChoice(BaseModel):
@@ -163,6 +164,7 @@ def export_files(
 
 class RetryAll(BaseModel):
     code: Optional[str] = None
+    kind: str = "failed"
 
 
 @router.post("/files/retry-all")
@@ -172,7 +174,8 @@ def retry_all_files(
     request: Request,
     actor: User = Depends(require_permission("deidentifier:run")),
 ):
-    moved = intake.retry_all_failed(payload.code or None)
+    _check_list(payload.kind)
+    moved = intake.retry_all(payload.kind, payload.code or None)
     intake_progress.clear_cache()
     background.add_task(
         record_audit,
@@ -180,7 +183,7 @@ def retry_all_files(
         entity_type="intake_file",
         entity_id=payload.code or "all",
         user_id=actor.id,
-        old_values={"status": "failed"},
+        old_values={"status": payload.kind},
         new_values={"status": "incoming", "files": moved},
         request_id=request.headers.get("X-Request-ID"),
     )
@@ -192,8 +195,9 @@ def retry_file(
     payload: FilePath,
     actor: User = Depends(require_permission("deidentifier:run")),
 ):
+    _check_list(payload.kind)
     try:
-        new_path = intake.retry_failed(payload.path)
+        new_path = intake.send_back(payload.kind, payload.path)
     except ValueError as e:
         raise ValidationError(str(e)) from e
     intake_progress.clear_cache()

@@ -500,15 +500,15 @@ def retry_failed(relative):
     return send_back("failed", relative)
 
 
-def retry_all_failed(code=None):
+def retry_all(kind="failed", code=None):
     moved = 0
-    for item in filter_by_code(list_problem_files("failed"), code):
+    for item in filter_by_code(list_problem_files(kind), code):
         try:
-            send_back("failed", item["path"])
+            send_back(kind, item["path"])
             moved += 1
         except (ValueError, OSError) as e:
             log.warning("intake_retry_failed", file_ref=ref(item["path"]), error=str(e))
-    log.info("intake_retry_all", code=code, moved=moved)
+    log.info("intake_retry_all", kind=kind, code=code, moved=moved)
     return moved
 
 

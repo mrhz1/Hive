@@ -210,24 +210,22 @@ function IntakePage() {
   ]
 
   function rowActions(file: ProblemFile) {
-    if (view === 'failed') {
+    if (view === 'failed' || file.reason !== CONFLICT_REASON) {
       return (
         <Can permission="deidentifier:run">
           <Button
             size="sm"
             variant="outline"
             aria-label={`Retry ${file.file_name}`}
-            isLoading={retry.isPending && retry.variables === file.path}
+            isLoading={retry.isPending && retry.variables?.path === file.path}
             leadingIcon={<RotateCcw className="size-3.5" aria-hidden="true" />}
-            onClick={() => retry.mutate(file.path)}
+            onClick={() => retry.mutate({ kind: view, path: file.path })}
           >
             Retry
           </Button>
         </Can>
       )
     }
-
-    if (file.reason !== CONFLICT_REASON) return null
 
     const choices = []
     if (file.path_code) choices.push({ code: file.path_code, source: 'path' })
@@ -260,6 +258,7 @@ function IntakePage() {
   }
 
   const total = files.data?.total ?? 0
+  const noun = view === 'failed' ? 'failed' : 'excluded'
   const loaded = allRows.length
 
   return (
@@ -344,7 +343,7 @@ function IntakePage() {
                 placeholder="Path, code or reason..."
                 aria-label="Search intake files"
               />
-              {view === 'failed' ? (
+              {total > 0 ? (
                 <Can permission="deidentifier:run">
                   <Button
                     size="sm"
@@ -353,8 +352,8 @@ function IntakePage() {
                     leadingIcon={<RotateCcw className="size-3.5" aria-hidden="true" />}
                     title={
                       code
-                        ? `Move every failed file for ${code === NO_CODE ? 'no code' : code} back to the incoming folder`
-                        : 'Move every failed file back to the incoming folder, not just the ones shown'
+                        ? `Move every ${noun} file for ${code === NO_CODE ? 'no code' : code} back to the incoming folder`
+                        : `Move every ${noun} file back to the incoming folder, not just the ones shown`
                     }
                     onClick={() => {
                       const scope = code
@@ -362,10 +361,10 @@ function IntakePage() {
                         : ''
                       if (
                         window.confirm(
-                          `Move all ${total.toLocaleString()} failed file${total === 1 ? '' : 's'}${scope} back to the incoming folder? They will be done in the next run.`
+                          `Move all ${total.toLocaleString()} ${noun} file${total === 1 ? '' : 's'}${scope} back to the incoming folder? They will be done in the next run.`
                         )
                       )
-                        retryAll.mutate(code || undefined)
+                        retryAll.mutate({ kind: view, code: code || undefined })
                     }}
                   >
                     Retry all{total ? ` (${total.toLocaleString()})` : ''}
