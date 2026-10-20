@@ -8,7 +8,7 @@ from app.access_log import READ, record_access
 from app.audit import record_audit
 from app.crud import patient_applications as applications_crud
 from app.crud import projects as projects_crud
-from app.db import get_cursor
+from app.db import authoritative, get_cursor
 from app.preview import render_dicom_png
 from app.project_schemas import (
     ProjectRelease,
@@ -53,8 +53,9 @@ def list_releases(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("zone2:review")),
 ):
-    releases = projects_crud.list_releases(cursor, status=status or None)
-    return [_with_project(cursor, r) for r in releases]
+    with authoritative(cursor):
+        releases = projects_crud.list_releases(cursor, status=status or None)
+        return [_with_project(cursor, r) for r in releases]
 
 
 @router.get("/releases/{release_id}", response_model=ReleaseSummary)
@@ -63,8 +64,9 @@ def get_release(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("zone2:review")),
 ):
-    release = projects_crud.get_release_or_404(cursor, release_id)
-    return _with_project(cursor, release, detail=True)
+    with authoritative(cursor):
+        release = projects_crud.get_release_or_404(cursor, release_id)
+        return _with_project(cursor, release, detail=True)
 
 
 @router.post("/releases/{release_id}/approve", response_model=ReleaseSummary)

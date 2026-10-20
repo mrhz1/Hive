@@ -7,7 +7,7 @@ from app.audit import record_audit
 from app.crud import patients as patients_crud
 from app.crud import projects as crud
 from app.crud import users as users_crud
-from app.db import get_cursor
+from app.db import authoritative, get_cursor
 from app.errors import PermissionDeniedError, ValidationError
 from app.logging_setup import get_logger
 from app.project_schemas import (
@@ -107,10 +107,11 @@ def list_projects(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("project:view")),
 ):
-    projects = crud.list_projects(cursor)
-    if MANAGE in actor.permissions:
-        return projects
-    mine = crud.member_project_ids(cursor, actor.id)
+    with authoritative(cursor):
+        projects = crud.list_projects(cursor)
+        if MANAGE in actor.permissions:
+            return projects
+        mine = crud.member_project_ids(cursor, actor.id)
     return [p for p in projects if p.id in mine]
 
 
@@ -164,7 +165,8 @@ def get_project(
     cursor=Depends(get_cursor),
     actor: User = Depends(require_permission("project:view")),
 ):
-    return _detail(cursor, _project_for(cursor, project_id, actor))
+    with authoritative(cursor):
+        return _detail(cursor, _project_for(cursor, project_id, actor))
 
 
 @router.put("/{project_id}", response_model=ProjectDetail)
