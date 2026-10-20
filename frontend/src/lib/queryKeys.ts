@@ -109,6 +109,9 @@ export const queryKeys = {
     fileCodes: (kind: string) => [...queryKeys.intake.all, 'file-codes', kind] as const,
     codes: () => [...queryKeys.intake.all, 'codes'] as const,
     codeFiles: (code: string) => [...queryKeys.intake.all, 'code-files', code] as const,
+    carbonFolder: (path: string) =>
+      [...queryKeys.intake.all, 'carbon', 'folder', path] as const,
+    carbonStatus: () => [...queryKeys.intake.all, 'carbon', 'status'] as const,
   },
 
   deidentifiedFiles: {

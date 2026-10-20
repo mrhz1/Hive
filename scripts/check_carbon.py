@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 SERVER = os.environ.get("CARBON_SERVER", "carbon.research.sickkids.ca")
-SHARE = os.environ.get("CARBON_SHARE", rf"\\{SERVER}\expedition")
+SHARE = os.environ.get("CARBON_SHARE", rf"\\{SERVER}\imagecorelab")
 USER = os.environ.get("CARBON_USER", "")
 PASSWORD = os.environ.get("CARBON_PASSWORD", "")
 

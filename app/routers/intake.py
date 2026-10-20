@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.safe_cells import row as safe_row
-from app import intake, intake_progress, intake_run
+from app import carbon, intake, intake_progress, intake_run
 from app.audit import record_audit
 from app.cloudera import ClouderaError
 from app.db import get_cursor
@@ -235,3 +235,57 @@ def intake_code_files(
     _actor: User = Depends(require_permission("application:view")),
 ):
     return intake.files_for_code(cursor, code)
+
+
+class CarbonSelection(BaseModel):
+    paths: List[str]
+
+
+@router.get("/carbon/browse")
+def carbon_browse(
+    path: str = "",
+    _actor: User = Depends(require_permission("deidentifier:run")),
+):
+    return carbon.list_folder(path)
+
+
+@router.post("/carbon/check")
+def carbon_check(
+    payload: CarbonSelection,
+    _actor: User = Depends(require_permission("deidentifier:run")),
+):
+    found = carbon.plan(payload.paths)
+    return {"files": found["files"], "bytes": found["bytes"], "skipped": found["skipped"]}
+
+
+@router.post("/carbon/copy")
+def carbon_copy(
+    payload: CarbonSelection,
+    background: BackgroundTasks,
+    request: Request,
+    actor: User = Depends(require_permission("deidentifier:run")),
+):
+    started = carbon.start_copy(payload.paths, by=actor.username)
+    background.add_task(
+        record_audit,
+        action="CREATE",
+        entity_type="intake_import",
+        entity_id="carbon",
+        user_id=actor.id,
+        new_values={
+            "share": carbon.share(),
+            "paths": payload.paths,
+            "files": started["total"],
+            "bytes": started["bytes_total"],
+        },
+        request_id=request.headers.get("X-Request-ID"),
+    )
+    log.info("carbon_copy_started", actor=actor.id, files=started["total"])
+    return started
+
+
+@router.get("/carbon/status")
+def carbon_status(
+    _actor: User = Depends(require_permission("deidentifier:run")),
+):
+    return carbon.status()

@@ -265,6 +265,22 @@ and run `scripts/migration_report.py` during and after the migration. Both
 write to `REPORTS_DIR`, which holds patient codes: keep it restricted like
 the data folders.
 
+### Copy from Carbon
+
+The De-Identifier page has a **Copy from Carbon** panel (needs
+`deidentifier:run`): browse the share, tick folders or files, **Check**
+counts the new ones, **Copy** puts them in `INTAKE_DIR` with the same
+folder layout. Files already in incoming or already processed are skipped,
+nothing on Carbon is changed, and each copy is in the audit log. From a
+session, `python scripts/carbon_to_intake.py <folder> [--apply]` does the
+same; `python scripts/check_carbon.py` tests the connection.
+
+| setting | |
+|---|---|
+| `CARBON_SERVER` | default `carbon.research.sickkids.ca` |
+| `CARBON_SHARE` | default `\\<server>\imagecorelab` |
+| `CARBON_USER`, `CARBON_PASSWORD` | e.g. a service account `SICKKIDS\...`; without them the API logs in with Kerberos |
+
 ### New columns on an existing database
 
 `init_db.py` drops and recreates tables, so don't run it on a live

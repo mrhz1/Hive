@@ -194,3 +194,43 @@ export function humanDuration(seconds: number | null): string {
   if (minutes) parts.push(`${minutes} minute${minutes === 1 ? '' : 's'}`)
   return parts.slice(0, 2).join(' ')
 }
+
+export const carbonEntrySchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  is_dir: z.boolean(),
+  size: z.number(),
+})
+
+export type CarbonEntry = z.infer<typeof carbonEntrySchema>
+
+export const carbonFolderSchema = z.object({
+  path: z.string(),
+  share: z.string(),
+  entries: z.array(carbonEntrySchema),
+})
+
+export const carbonCheckSchema = z.object({
+  files: z.number(),
+  bytes: z.number(),
+  skipped: z.number(),
+})
+
+export type CarbonCheck = z.infer<typeof carbonCheckSchema>
+
+export const carbonStatusSchema = z.object({
+  running: z.boolean(),
+  started_by: z.string().nullable().optional(),
+  started_at: z.number().nullable().optional(),
+  finished_at: z.number().nullable().optional(),
+  total: z.number().default(0),
+  done: z.number().default(0),
+  failed: z.number().default(0),
+  skipped: z.number().default(0),
+  bytes_total: z.number().default(0),
+  bytes_done: z.number().default(0),
+  current: z.string().nullable().optional(),
+  errors: z.array(z.string()).default([]),
+})
+
+export type CarbonStatus = z.infer<typeof carbonStatusSchema>

@@ -668,6 +668,50 @@ export function useStopIntake() {
   })
 }
 
+export function useCarbonFolder(path: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.intake.carbonFolder(path),
+    queryFn: () => intakeApi.carbonBrowse(path),
+    enabled,
+    retry: false,
+    staleTime: 30_000,
+  })
+}
+
+export function useCarbonStatus(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.intake.carbonStatus(),
+    queryFn: () => intakeApi.carbonStatus(),
+    enabled,
+    refetchInterval: (query) => (query.state.data?.running ? 2_000 : false),
+  })
+}
+
+export function useCarbonCheck() {
+  return useMutation({
+    mutationFn: (paths: string[]) => intakeApi.carbonCheck(paths),
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not check the selected folders'))
+    },
+  })
+}
+
+export function useCarbonCopy() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (paths: string[]) => intakeApi.carbonCopy(paths),
+    onSuccess: (state) => {
+      queryClient.setQueryData(queryKeys.intake.carbonStatus(), state)
+      toast.success('Copy from Carbon started', {
+        description: `${state.total.toLocaleString()} files are being copied to incoming.`,
+      })
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, 'Could not start the copy'))
+    },
+  })
+}
+
 export function useIntakeFiles(kind: ProblemList, limit: number, code = '') {
   return useQuery({
     queryKey: queryKeys.intake.files(kind, limit, code),

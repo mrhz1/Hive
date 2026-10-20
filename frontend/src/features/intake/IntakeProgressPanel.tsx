@@ -26,7 +26,13 @@ const titleClass =
   'text-[11px] font-bold tracking-widest text-[rgb(var(--foreground-muted))] uppercase'
 const labelClass = 'text-xs text-[rgb(var(--foreground-muted))]'
 
-function ProgressBar({ percent, red = false }: { percent: number; red?: boolean }) {
+export function ProgressBar({
+  percent,
+  red = false,
+}: {
+  percent: number
+  red?: boolean
+}) {
   const width = Math.max(0, Math.min(100, percent))
   const color = red ? 'bg-rose-500' : 'bg-[rgb(var(--primary))]'
 

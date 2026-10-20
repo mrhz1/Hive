@@ -39,6 +39,9 @@ import {
 import { rejectedFileListSchema } from '@/schemas/rejection'
 import {
   availableCodeListSchema,
+  carbonCheckSchema,
+  carbonFolderSchema,
+  carbonStatusSchema,
   intakeRunListSchema,
   intakeStatusSchema,
   problemCodeListSchema,
@@ -781,6 +784,19 @@ export const intakeApi = {
         intake_file_ids: fileIds,
       })
     ),
+
+  carbonBrowse: (path: string) =>
+    request(carbonFolderSchema, () =>
+      api.get('/intake/carbon/browse', { params: { path } })
+    ),
+
+  carbonCheck: (paths: string[]) =>
+    request(carbonCheckSchema, () => api.post('/intake/carbon/check', { paths })),
+
+  carbonCopy: (paths: string[]) =>
+    request(carbonStatusSchema, () => api.post('/intake/carbon/copy', { paths })),
+
+  carbonStatus: () => request(carbonStatusSchema, () => api.get('/intake/carbon/status')),
 }
 
 export type { ApplicationFile, AuditLog, Patient, Role, User }

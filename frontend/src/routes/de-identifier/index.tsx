@@ -7,6 +7,7 @@ import { Can, RequirePermission } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
 import { SelectField, TextField } from '@/components/ui/Field'
 import { Badge, Card, PageHeader } from '@/components/ui/Misc'
+import { CarbonImportPanel } from '@/features/intake/CarbonImportPanel'
 import { IntakeProgressPanel } from '@/features/intake/IntakeProgressPanel'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
@@ -272,6 +273,10 @@ function IntakePage() {
         {status ? <AcceptedCodes status={status} /> : null}
 
         <IntakeProgressPanel />
+
+        <Can permission="deidentifier:run">
+          <CarbonImportPanel />
+        </Can>
 
         <div className="grid grid-cols-2 gap-3">
           {VIEWS.map((option) => {
