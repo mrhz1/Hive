@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from app import consent, data_dictionary, storage
+from app import consent, data_dictionary, redcap, storage
 from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as applications_crud
 from app.crud import patients as patients_crud
@@ -32,7 +32,7 @@ APPLICATION_COLUMNS = [
 ]
 DOCUMENT_COLUMNS = [
     "project_document_id", "project_application_id", "project_patient_id",
-    "file_type", "file_size_bytes", "created_date", "file",
+    "file_type", "modality", "document_date", "file_size_bytes", "created_date", "file",
 ]
 
 README = """Zone 2 safe copy for project {name} ({code}), release {release}.
@@ -40,6 +40,8 @@ README = """Zone 2 safe copy for project {name} ({code}), release {release}.
 patients.csv      one row per patient, by project ID
 applications.csv  their submitted applications
 documents.csv     the documents on those applications{documents_note}
+redcap_<name>.csv REDCap data, one file per dataset: coded, number and date
+                  fields only; identifier and free-text fields are left out
 data_dictionary.csv  what every column means
 
 Patient IDs are project-only and cannot be matched to CHSS IDs here. Every
@@ -404,6 +406,61 @@ def prepare(cursor, project_id: str, actor_id: str) -> ProjectRelease:
     return release
 
 
+def _name_day(value) -> str:
+    text = str(value or "")
+    if len(text) == 8 and text.isdigit():
+        return f"{text[:4]}-{text[4:6]}-{text[6:]}"
+    return ""
+
+
+def _release_redcap(cursor, cohort, archive: Path, safe: Path) -> List[List[str]]:
+    members = {m.patient_id: m for m in cohort}
+    codes = list(members)
+    rows_out: List[List[str]] = []
+    for dataset in redcap.datasets_with_values(cursor, codes):
+        defined = {f.field_name: f for f in redcap.fields(cursor, dataset)}
+        columns, rows = redcap.wide_rows(cursor, dataset, codes)
+        _write_csv(
+            archive / "original" / f"redcap_{dataset}.csv",
+            ["patient_id", "event", "instance"] + columns,
+            rows,
+        )
+        kept = []
+        for column in columns:
+            field = defined.get(column.split("___")[0])
+            kind = redcap.release_kind(field) if field else None
+            if kind:
+                kept.append((column, kind, field))
+        name = f"redcap_{dataset}.csv"
+        released = []
+        for row in rows:
+            member = members[row["patient_id"]]
+            out = {
+                "project_patient_id": member.project_patient_id,
+                "event": row.get("event", ""),
+                "instance": row.get("instance", ""),
+            }
+            for column, kind, _ in kept:
+                value = row.get(column, "")
+                out[column] = shift_date(value, member.date_shift_days) if kind == "date" else value
+            released.append(out)
+        _write_csv(
+            safe / name,
+            ["project_patient_id", "event", "instance"] + [c for c, _, _ in kept],
+            released,
+        )
+        rows_out += [
+            [name, "project_patient_id", "text", "The patient's ID in this project only", "See patients.csv"],
+            [name, "event", "text", "REDCap event, if the project has events", ""],
+            [name, "instance", "text", "Repeat number, if the form repeats", ""],
+        ]
+        for column, kind, field in kept:
+            kinds = field.field_type + (f" ({field.validation})" if field.validation else "")
+            notes = data_dictionary.SHIFTED if kind == "date" else (field.choices or "")
+            rows_out.append([name, column, kinds, field.label or "", notes])
+    return rows_out
+
+
 def _build(cursor, project, cohort, release_id, archive: Path, safe: Path) -> dict:
     original = {"patients": [], "applications": [], "documents": []}
     zone2 = {"patients": [], "applications": [], "documents": []}
@@ -462,6 +519,8 @@ def _build(cursor, project, cohort, release_id, archive: Path, safe: Path) -> di
                         "project_application_id": app_id,
                         "project_patient_id": pid,
                         "file_type": (record.file_extension or "").lower(),
+                        "modality": record.modality or "",
+                        "document_date": shift_date(_name_day(record.document_date), days),
                         "file_size_bytes": record.file_size,
                         "created_date": shift_date(record.created_at, days),
                         "file": released_file,
@@ -482,10 +541,12 @@ def _build(cursor, project, cohort, release_id, archive: Path, safe: Path) -> di
     _write_csv(safe / "patients.csv", PATIENT_COLUMNS, zone2["patients"])
     _write_csv(safe / "applications.csv", APPLICATION_COLUMNS, zone2["applications"])
     _write_csv(safe / "documents.csv", DOCUMENT_COLUMNS, zone2["documents"])
+    dictionary_rows = data_dictionary.release_rows()
+    dictionary_rows += _release_redcap(cursor, cohort, archive, safe)
     _write_csv(
         safe / "data_dictionary.csv",
         data_dictionary.RELEASE_HEADER,
-        [dict(zip(data_dictionary.RELEASE_HEADER, row)) for row in data_dictionary.release_rows()],
+        [dict(zip(data_dictionary.RELEASE_HEADER, row)) for row in dictionary_rows],
     )
     (safe / "README.txt").write_text(
         README.format(

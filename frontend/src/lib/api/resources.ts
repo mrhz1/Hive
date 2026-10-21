@@ -12,6 +12,12 @@ import {
 } from '@/schemas/abstraction'
 import { accessLogListSchema, type AccessLogFilters } from '@/schemas/accessLog'
 import {
+  followupSummarySchema,
+  redcapImportSchema,
+  redcapStatusSchema,
+  type RedcapKind,
+} from '@/schemas/redcap'
+import {
   incidentListSchema,
   incidentSchema,
   lockdownSchema,
@@ -576,6 +582,51 @@ export const consentsApi = {
     return request(consentImportSchema, () =>
       api.post(apply ? '/consents/import' : '/consents/import/preview', form)
     )
+  },
+}
+
+export const redcapApi = {
+  status: () => request(redcapStatusSchema, () => api.get('/redcap/status')),
+
+  importFile: (kind: RedcapKind, dataset: string, file: File, apply: boolean) => {
+    const form = new FormData()
+    form.append('kind', kind)
+    form.append('dataset', dataset)
+    form.append('file', file)
+    return request(redcapImportSchema, () =>
+      api.post(apply ? '/redcap/import' : '/redcap/import/preview', form)
+    )
+  },
+
+  followup: (currentVersion: string, recentDays: number) =>
+    request(followupSummarySchema, () =>
+      api.get('/redcap/followup', {
+        params: { current_version: currentVersion || undefined, recent_days: recentDays },
+      })
+    ),
+
+  followupExport: async (currentVersion: string, recentDays: number): Promise<Blob> => {
+    try {
+      const response = await api.get('/redcap/followup/export', {
+        params: { current_version: currentVersion || undefined, recent_days: recentDays },
+        responseType: 'blob',
+      })
+      return response.data as Blob
+    } catch (error) {
+      throw await blobError(error)
+    }
+  },
+
+  newRecordsExport: async (dataset: string): Promise<Blob> => {
+    try {
+      const response = await api.get('/redcap/new-records/export', {
+        params: { dataset },
+        responseType: 'blob',
+      })
+      return response.data as Blob
+    } catch (error) {
+      throw await blobError(error)
+    }
   },
 }
 

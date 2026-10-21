@@ -148,13 +148,14 @@ class ReleaseSummary(ProjectRelease):
     samples: dict = Field(default_factory=dict)
 
 
-CONSENT_TYPES = ("research", "documents")
+PROJECT_CONSENT_TYPES = ("research", "documents")
+CONSENT_TYPES = PROJECT_CONSENT_TYPES + ("online_followup",)
 CONSENT_STATUSES = ("granted", "refused", "withdrawn")
 
 
 class ConsentCreate(BaseModel):
     patient_id: str
-    consent_type: str = Field(pattern="^(research|documents)$")
+    consent_type: str = Field(pattern="^(research|documents|online_followup)$")
     status: str = Field(pattern="^(granted|refused|withdrawn)$")
     version: Optional[str] = None
     consent_date: Optional[date] = None

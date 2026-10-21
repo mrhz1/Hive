@@ -1,0 +1,6 @@
+record_id,site_mrn,dx_primary,dx_date,surgery_date,surgery_type,weight_kg,bypass_minutes,surgeon_notes,echo_date,av_regurg,lv_ef,discharge_date,complications___1,complications___2,complications___3,enrollment_complete,diagnosis_complete,surgery_complete,echo_complete,discharge_complete
+AVSD0136,1002345,1,2019-01-04,2019-05-14,1,5.2,142,"Smooth repair, cleft closed",2019-05-20,1,64,2019-05-27,0,0,0,2,2,2,2,2
+AVSD0161,1004410,1,2018-11-22,2019-03-02,1,4.8,165,"Residual VSD noted",2019-03-09,2,58,2019-03-19,1,0,0,2,2,2,2,2
+AVSD0167,1007781,2,2020-02-10,2020-08-21,1,6.1,98,,2020-08-27,0,67,2020-09-01,0,0,0,2,2,2,2,2
+AVSD0142,1003390,1,2019-06-30,2019-10-11,2,4.1,,"Banding first, repair planned",2019-10-17,1,61,2019-10-25,0,1,0,2,2,2,2,1
+AVSD9999,1009999,3,2021-01-01,2021-04-01,1,5.0,120,,2021-04-07,0,65,2021-04-12,0,0,0,2,2,2,2,2

@@ -1007,7 +1007,7 @@ function ReleaseCard({ project }: { project: ProjectDetail }) {
             leadingIcon={<PackageCheck className="size-4" aria-hidden="true" />}
             onClick={() => prepare.mutate()}
           >
-            Prepare safe copy
+            {waiting ? 'Waiting for review in the Zone 2 inbox' : 'Prepare safe copy'}
           </Button>
         </Can>
       </div>

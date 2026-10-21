@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from app import abstraction, cleaning, consent, profiling, storage, zone2
+from app import abstraction, cleaning, consent, profiling, redcap, storage, zone2
 from app.crud import patients as patients_crud
 from app.crud import projects as crud
 from app.errors import ValidationError
@@ -30,6 +30,7 @@ README = """Zone 1X workspace for project {name} ({code}), built {built}.
 patients.csv       the cohort: CHSS code, project ID, dates, place
 applications.csv   their submitted applications
 documents.csv      their de-identified documents{documents_note}
+redcap_<name>.csv  REDCap data of the cohort, one file per dataset (identifier fields left out)
 cleaning_log.csv   the standard cleanup rules applied to the tables
 profile.xlsx       missing values, frequencies and outliers of each column
 
@@ -139,6 +140,18 @@ def _tables(cursor, project: Project, target: Path, include_documents: bool) -> 
     return tables
 
 
+def _redcap_tables(cursor, codes: List[str]) -> Dict[str, tuple]:
+    out = {}
+    for dataset in redcap.datasets_with_values(cursor, codes):
+        hidden = {f.field_name for f in redcap.fields(cursor, dataset) if f.identifier}
+        columns, rows = redcap.wide_rows(cursor, dataset, codes)
+        columns = ["patient_id", "event", "instance"] + [
+            c for c in columns if c.split("___")[0] not in hidden
+        ]
+        out[f"redcap_{dataset}"] = (columns, [{c: row.get(c, "") for c in columns} for row in rows])
+    return out
+
+
 def build(cursor, project: Project, include_documents: bool = True) -> Project:
     if project.status == zone2.ENDED:
         raise ValidationError("The project has ended")
@@ -156,10 +169,14 @@ def build(cursor, project: Project, include_documents: bool = True) -> Project:
     expires = current if current and current > now else now + timedelta(days=expiry_days())
     try:
         tables = _tables(cursor, project, staging, include_documents)
+        extra = _redcap_tables(cursor, [m.patient_id for m in cohort])
+        tables.update({name: rows for name, (_, rows) in extra.items()})
         tables, cleaning_log = cleaning.apply(tables)
         _write_csv(staging / "patients.csv", PATIENT_COLUMNS, tables["patients"])
         _write_csv(staging / "applications.csv", APPLICATION_COLUMNS, tables["applications"])
         _write_csv(staging / "documents.csv", DOCUMENT_COLUMNS, tables["documents"])
+        for name, (columns, _) in extra.items():
+            _write_csv(staging / f"{name}.csv", columns, tables[name])
         _write_csv(staging / "cleaning_log.csv", cleaning.LOG_COLUMNS, cleaning_log)
         profiling.write(staging / "profile.xlsx", tables)
         (staging / "README.txt").write_text(

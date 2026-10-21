@@ -1,0 +1,8 @@
+Patient code,Consent type,Status,Version,Consent date,Note
+AVSD0136,research,granted,v3,2024-02-10,
+AVSD0136,documents,granted,v3,2024-02-10,
+AVSD0136,online_followup,granted,v3,2024-02-10,prefers email
+AVSD0161,research,granted,v2,2019-02-01,
+AVSD0161,documents,refused,v2,2019-02-01,
+AVSD0167,research,granted,v3,2025-06-15,
+AVSD0167,online_followup,refused,v3,2025-06-15,prefers paper

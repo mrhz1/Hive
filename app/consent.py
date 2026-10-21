@@ -11,6 +11,7 @@ from app.patient_import import _date, _key, _read_rows, _text
 from app.project_schemas import (
     CONSENT_STATUSES,
     CONSENT_TYPES,
+    PROJECT_CONSENT_TYPES,
     Consent,
     ConsentCreate,
     ConsentImportResult,
@@ -38,7 +39,7 @@ def latest(cursor, patient_id: Optional[str] = None) -> Latest:
 
 
 def needed_types(project: Project) -> Tuple[str, ...]:
-    return CONSENT_TYPES if project.documents_approved else ("research",)
+    return PROJECT_CONSENT_TYPES if project.documents_approved else ("research",)
 
 
 def exclusion_reason(project: Project, decisions: Dict[str, Consent]) -> Optional[str]:

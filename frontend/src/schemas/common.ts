@@ -38,6 +38,8 @@ export const ZONE2_ACTIONS = ['prepare', 'review'] as const
 
 export const CONSENT_ACTIONS = ['view', 'update'] as const
 
+export const REDCAP_ACTIONS = ['view', 'import', 'export'] as const
+
 export const SECURITY_ACTIONS = ['view', 'manage'] as const
 
 export type FilesAction =
@@ -53,6 +55,7 @@ export type Permission =
   | `deidentifier:${(typeof DEIDENTIFIER_ACTIONS)[number]}`
   | `zone2:${(typeof ZONE2_ACTIONS)[number]}`
   | `consent:${(typeof CONSENT_ACTIONS)[number]}`
+  | `redcap:${(typeof REDCAP_ACTIONS)[number]}`
   | `security:${(typeof SECURITY_ACTIONS)[number]}`
 
 export const ALL_PERMISSIONS: Permission[] = [
@@ -68,6 +71,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   ...DEIDENTIFIER_ACTIONS.map((action) => `deidentifier:${action}` as Permission),
   ...ZONE2_ACTIONS.map((action) => `zone2:${action}` as Permission),
   ...CONSENT_ACTIONS.map((action) => `consent:${action}` as Permission),
+  ...REDCAP_ACTIONS.map((action) => `redcap:${action}` as Permission),
   ...SECURITY_ACTIONS.map((action) => `security:${action}` as Permission),
 ]
 
@@ -98,6 +102,7 @@ export const PERMISSION_SECTIONS: readonly PermissionSection[] = [
         actions: DEIDENTIFIER_ACTIONS,
         rowLabel: 'de-identifier',
       },
+      { models: ['redcap'], actions: REDCAP_ACTIONS, rowLabel: 'REDCap exchange' },
     ],
   },
   {

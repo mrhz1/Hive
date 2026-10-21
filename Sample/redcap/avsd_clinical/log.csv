@@ -1,0 +1,6 @@
+"Time / Date","Username","Action","List of Data Changes OR Fields Exported"
+"2026-10-01 09:12","coordinator.site01","Created Record AVSD0136","record_id = 'AVSD0136', dx_primary = '1'"
+"2026-10-01 09:20","coordinator.site01","Updated Record AVSD0136","surgery_date = '2019-05-14', surgery_type = '1'"
+"2026-10-03 14:02","coordinator.site04","Created Record AVSD0161","record_id = 'AVSD0161', dx_primary = '1'"
+"2026-10-05 11:45","crq.analyst","Updated Record AVSD0161","lv_ef = '58'"
+"2026-10-07 16:30","coordinator.site02","Created Record AVSD0167","record_id = 'AVSD0167', dx_primary = '2'"

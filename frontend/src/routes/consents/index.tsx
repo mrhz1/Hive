@@ -267,9 +267,9 @@ function ImportCard() {
         <div>
           <h2 className="text-sm font-bold">Import from a spreadsheet</h2>
           <p className="text-xs text-[rgb(var(--foreground-muted))]">
-            Columns: Patient code, Consent type (research or documents), Status (granted,
-            refused or withdrawn), Version, Consent date, Note. Rows that match the latest
-            decision are skipped.
+            Columns: Patient code, Consent type (research, documents or online_followup),
+            Status (granted, refused or withdrawn), Version, Consent date, Note. Rows that
+            match the latest decision are skipped.
           </p>
         </div>
         <Button

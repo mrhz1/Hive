@@ -100,6 +100,11 @@ export const queryKeys = {
       [...queryKeys.fileMetadata.all, 'list', filters] as const,
   },
 
+  redcap: {
+    all: ['redcap'] as const,
+    status: () => [...queryKeys.redcap.all, 'status'] as const,
+  },
+
   intake: {
     all: ['intake'] as const,
     status: () => [...queryKeys.intake.all, 'status'] as const,

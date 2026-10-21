@@ -8,6 +8,7 @@ MODEL_ACTIONS["deidentifier"] = ("view", "run", "notify")
 MODEL_ACTIONS["project"] = PERMISSION_ACTIONS + ("workspace", "manage")
 MODEL_ACTIONS["zone2"] = ("prepare", "review")
 MODEL_ACTIONS["consent"] = ("view", "update")
+MODEL_ACTIONS["redcap"] = ("view", "import", "export")
 MODEL_ACTIONS["abstraction"] = PERMISSION_ACTIONS + ("manage",)
 MODEL_ACTIONS["security"] = ("view", "manage")
 MODEL_ACTIONS["files"] = (

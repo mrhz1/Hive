@@ -281,6 +281,31 @@ same; `python scripts/check_carbon.py` tests the connection.
 | `CARBON_SHARE` | default `\\<server>\imagecorelab` |
 | `CARBON_USER`, `CARBON_PASSWORD` | e.g. a service account `SICKKIDS\...`; without them the API logs in with Kerberos |
 
+### REDCap exchange
+
+The REDCap page (Zone 1, needs `redcap:view`, `redcap:import`,
+`redcap:export`) imports REDCap exports in REDCap's own formats: the data
+dictionary, records (flat, raw) and the logging export, per dataset (one
+REDCap project, e.g. `avsd_clinical`). It also exports the follow-up list
+(protocol 9.1.14-9.1.15) and the patient codes a dataset has no record for.
+
+- The dictionary decides what reaches Zone 2: coded (radio, dropdown,
+  checkbox, yes/no, calc, slider), number and date fields only; identifier
+  and free-text fields never. Dates are shifted like every other date.
+- Imported data appears as `redcap_<dataset>.csv` in the Zone 1X workspace
+  (identifier fields left out) and in each safe copy, with its rows in
+  `data_dictionary.csv`.
+- `online_followup` is a consent type: granted means the patient chose
+  online follow-up.
+- `scripts/redcap_sync.py` is the nightly Job. Without `REDCAP_URL` it reads
+  `REDCAP_DROP_DIR` (default `storage/redcap_drop`: `consent.csv` plus one
+  folder per dataset with `dictionary.csv`, `records.csv`, `log.csv`). With
+  `REDCAP_URL`, `REDCAP_DATASETS=avsd_clinical,...` and
+  `REDCAP_TOKEN_<DATASET>` it calls the REDCap API and runs the same imports.
+- `Sample/redcap/` holds synthetic test files in these formats.
+
+Create the tables with `python scripts/migrate_columns.py --apply`.
+
 ### New columns on an existing database
 
 `init_db.py` drops and recreates tables, so don't run it on a live

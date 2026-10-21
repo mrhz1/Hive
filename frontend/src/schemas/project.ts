@@ -185,12 +185,13 @@ export const cohortSearchSchema = z.object({
 
 export type CohortSearchResult = z.infer<typeof cohortSearchSchema>
 
-export const CONSENT_TYPES = ['research', 'documents'] as const
+export const CONSENT_TYPES = ['research', 'documents', 'online_followup'] as const
 export const CONSENT_STATUSES = ['granted', 'refused', 'withdrawn'] as const
 
 export const CONSENT_TYPE_LABELS: Record<string, string> = {
   research: 'Research use of data',
   documents: 'PDFs and images',
+  online_followup: 'Online follow-up preferred',
 }
 
 export const consentSchema = z.object({

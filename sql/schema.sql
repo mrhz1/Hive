@@ -304,3 +304,50 @@ CREATE TABLE `incidents` (
   `closed_at` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
+
+DROP TABLE IF EXISTS `redcap_fields`;
+
+CREATE TABLE `redcap_fields` (
+  `id` STRING,
+  `dataset` STRING,
+  `field_name` STRING,
+  `form_name` STRING,
+  `field_type` STRING,
+  `validation` STRING,
+  `label` STRING,
+  `choices` STRING,
+  `identifier` BOOLEAN,
+  `imported_by_id` STRING,
+  `imported_at` STRING
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
+DROP TABLE IF EXISTS `redcap_values`;
+
+CREATE TABLE `redcap_values` (
+  `id` STRING,
+  `dataset` STRING,
+  `patient_id` STRING,
+  `event` STRING,
+  `instance` STRING,
+  `field_name` STRING,
+  `value` STRING,
+  `imported_by_id` STRING,
+  `imported_at` STRING
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
+DROP TABLE IF EXISTS `redcap_log`;
+
+CREATE TABLE `redcap_log` (
+  `id` STRING,
+  `dataset` STRING,
+  `logged_at` STRING,
+  `username` STRING,
+  `action` STRING,
+  `record` STRING,
+  `details` STRING,
+  `imported_by_id` STRING,
+  `imported_at` STRING
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');

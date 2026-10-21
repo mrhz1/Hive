@@ -27,6 +27,7 @@ import { Route as PatientsImportRouteImport } from './routes/patients/import'
 import { Route as PatientsNewRouteImport } from './routes/patients/new'
 import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
+import { Route as RedcapIndexRouteImport } from './routes/redcap/index'
 import { Route as RejectionsIndexRouteImport } from './routes/rejections/index'
 import { Route as RolesIndexRouteImport } from './routes/roles/index'
 import { Route as RolesNewRouteImport } from './routes/roles/new'
@@ -129,6 +130,11 @@ const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
   path: '/projects/$projectId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RedcapIndexRoute = RedcapIndexRouteImport.update({
+  id: '/redcap/',
+  path: '/redcap/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RejectionsIndexRoute = RejectionsIndexRouteImport.update({
   id: '/rejections/',
   path: '/rejections/',
@@ -201,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/metadata/': typeof MetadataIndexRoute
   '/patients/': typeof PatientsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
+  '/redcap/': typeof RedcapIndexRoute
   '/rejections/': typeof RejectionsIndexRoute
   '/roles/': typeof RolesIndexRoute
   '/security/': typeof SecurityIndexRoute
@@ -231,6 +238,7 @@ export interface FileRoutesByTo {
   '/metadata': typeof MetadataIndexRoute
   '/patients': typeof PatientsIndexRoute
   '/projects': typeof ProjectsIndexRoute
+  '/redcap': typeof RedcapIndexRoute
   '/rejections': typeof RejectionsIndexRoute
   '/roles': typeof RolesIndexRoute
   '/security': typeof SecurityIndexRoute
@@ -262,6 +270,7 @@ export interface FileRoutesById {
   '/metadata/': typeof MetadataIndexRoute
   '/patients/': typeof PatientsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
+  '/redcap/': typeof RedcapIndexRoute
   '/rejections/': typeof RejectionsIndexRoute
   '/roles/': typeof RolesIndexRoute
   '/security/': typeof SecurityIndexRoute
@@ -294,6 +303,7 @@ export interface FileRouteTypes {
     | '/metadata/'
     | '/patients/'
     | '/projects/'
+    | '/redcap/'
     | '/rejections/'
     | '/roles/'
     | '/security/'
@@ -324,6 +334,7 @@ export interface FileRouteTypes {
     | '/metadata'
     | '/patients'
     | '/projects'
+    | '/redcap'
     | '/rejections'
     | '/roles'
     | '/security'
@@ -354,6 +365,7 @@ export interface FileRouteTypes {
     | '/metadata/'
     | '/patients/'
     | '/projects/'
+    | '/redcap/'
     | '/rejections/'
     | '/roles/'
     | '/security/'
@@ -385,6 +397,7 @@ export interface RootRouteChildren {
   MetadataIndexRoute: typeof MetadataIndexRoute
   PatientsIndexRoute: typeof PatientsIndexRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
+  RedcapIndexRoute: typeof RedcapIndexRoute
   RejectionsIndexRoute: typeof RejectionsIndexRoute
   RolesIndexRoute: typeof RolesIndexRoute
   SecurityIndexRoute: typeof SecurityIndexRoute
@@ -523,6 +536,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/redcap/': {
+      id: '/redcap/'
+      path: '/redcap'
+      fullPath: '/redcap/'
+      preLoaderRoute: typeof RedcapIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/rejections/': {
       id: '/rejections/'
       path: '/rejections'
@@ -617,6 +637,7 @@ const rootRouteChildren: RootRouteChildren = {
   MetadataIndexRoute: MetadataIndexRoute,
   PatientsIndexRoute: PatientsIndexRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
+  RedcapIndexRoute: RedcapIndexRoute,
   RejectionsIndexRoute: RejectionsIndexRoute,
   RolesIndexRoute: RolesIndexRoute,
   SecurityIndexRoute: SecurityIndexRoute,

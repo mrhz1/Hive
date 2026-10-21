@@ -38,6 +38,8 @@ RELEASE: Dict[str, Dict[str, Definition]] = {
         "project_application_id": ("text", "The submission it came with", "See applications.csv"),
         "project_patient_id": ("text", "The patient it belongs to", "See patients.csv"),
         "file_type": ("text", "File format", "pdf, dcm, docx, ..."),
+        "modality": ("text", "Type of document or imaging modality", "e.g. ECHO, MR, DISCHARGE; UNKNOWN if it could not be read"),
+        "document_date": ("date YYYY-MM-DD", "Date of the document itself", SHIFTED),
         "file_size_bytes": ("integer", "Size of the original file in bytes", ""),
         "created_date": ("date YYYY-MM-DD", "Date the document was added", SHIFTED),
         "file": (
