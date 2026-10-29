@@ -11,24 +11,49 @@ release_to_main:
     - git config --global user.name "GitLab CI"
     - git config --global user.email "ci@gitlab.local"
   script:
+    # Clean up leftovers from previous runs
+    - rm -rf /tmp/dist /tmp/Backend /tmp/main /tmp/frontend_files
+
     # Build React
-    - cd frontend
+    - cd Frontend
     - npm ci
     - npm run build
     - cd ..
+
     # Save what goes to main
-    - cp -r frontend/dist /tmp/dist
-    - cp -r backend /tmp/backend
+    - cp -r Frontend/dist /tmp/dist
+    - cp -r Backend /tmp/Backend
+    - mkdir -p /tmp/frontend_files
+    - cp Frontend/app.py Frontend/lunch_app.py Frontend/serve_frontend.py Frontend/start_dashboard.sh Frontend/test.py /tmp/frontend_files/
+
     # Get main branch
     - git clone --branch main "https://oauth2:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" /tmp/main
     - cd /tmp/main
-    # Replace backend and dist
-    - rm -rf backend frontend/dist
-    - mkdir -p frontend
-    - cp -r /tmp/backend backend
-    - cp -r /tmp/dist frontend/dist
-    - git add -A backend
-    - git add -f frontend/dist
+
+    # Replace Backend, dist and Frontend files
+    - rm -rf Backend Frontend/dist
+    - mkdir -p Frontend
+    - cp -r /tmp/Backend Backend
+    - cp -r /tmp/dist Frontend/dist
+    - cp /tmp/frontend_files/* Frontend/
+
+    # Commit and push to main (stops here if nothing changed)
+    - git add -A Backend Frontend
+    - git add -f Frontend/dist
     - git diff --cached --quiet && echo "No changes to release" && exit 0
     - git commit -m "Release from development ${CI_COMMIT_SHORT_SHA} [skip ci]"
     - git push origin main
+
+    # Tell Cloudera project 1 (CHSS) to update
+    - |
+      curl -sS --fail -X POST "${CML_URL}/api/v2/projects/${CML_PROJECT_ID}/jobs/${CML_JOB_ID}/runs" \
+        -H "Authorization: Bearer ${CML_API_KEY}" \
+        -H "Content-Type: application/json" \
+        -d '{}'
+
+    # Tell Cloudera project 2 to update
+    - |
+      curl -sS --fail -X POST "${CML_URL}/api/v2/projects/${CML_PROJECT_ID_2}/jobs/${CML_JOB_ID_2}/runs" \
+        -H "Authorization: Bearer ${CML_API_KEY}" \
+        -H "Content-Type: application/json" \
+        -d '{}'
