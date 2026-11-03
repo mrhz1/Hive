@@ -531,6 +531,8 @@ export const caiApi = {
     ),
   releaseStatus: (projectId: string) =>
     request(caiReleaseStatusSchema, () => api.get(`/cai/release-status/${projectId}`)),
+  syncStaging: (projectId: string) =>
+    request(caiReleaseStatusSchema, () => api.post(`/cai/release-status/${projectId}/sync`)),
   create: (projectId: string, userId: string) =>
     request(caiProjectSchema, () =>
       api.post('/cai/projects', { project_id: projectId, user_id: userId })

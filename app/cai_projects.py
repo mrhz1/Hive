@@ -6,13 +6,15 @@ project's approved Zone 2 release, laid out in staging as
 the protocol's 6 months) unless extended; at expiry, or when the Hive project
 ends, the CAI project is deleted.
 
-Until Ozone works from Cloudera AI sessions, the approved release folder
-(ZONE2_DIR/<project code>/<release id>/) is uploaded to staging by hand, at
-that same path. Provisioning refuses a release that isn't in staging yet.
+The approved release folder (ZONE2_DIR/<project code>/<release id>/) is
+copied to staging at that same path by the API itself: in the background
+right after approval, and again (missing files only) before each researcher
+project is made, so nobody copies files by hand.
 """
 
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import List, Optional
 
 from app import cai_provisioning as cai
@@ -110,6 +112,8 @@ def provision(cursor, payload: CaiProvision, actor_id: str) -> CaiProject:
 
     cai_username = (payload.cai_username or person.username or "").strip()
     try:
+        # Make sure staging holds the whole release first; only missing files are sent.
+        push_release(project.short_code, release.id, release.release_path)
         result = cai.provision_researcher(
             cai_username,
             f"{project.short_code} {cai_username}",
@@ -136,6 +140,39 @@ def provision(cursor, payload: CaiProvision, actor_id: str) -> CaiProject:
     )
     record.username = person.username
     return record
+
+
+def push_release(short_code: str, release_id: str, release_path: Optional[str]) -> dict:
+    """Copy an approved release from the API's disk to staging at <code>/<release>/."""
+    if not release_path:
+        raise cai.ProvisioningError(f"Release {release_id} has no folder on the API's disk")
+    return cai.upload_folder(Path(release_path), release_folder(short_code, release_id))
+
+
+def push_after_approval(short_code: str, release_id: str, release_path: Optional[str]) -> None:
+    """Background step after a release is approved. Never fails the approval:
+    if staging isn't set up here (e.g. local runs) or the copy fails, it is
+    logged and the project page offers to copy again."""
+    if not (os.environ.get("STAGING_PROJECT_ID") or "").strip():
+        return
+    try:
+        result = push_release(short_code, release_id, release_path)
+        log.info("cai_release_pushed", release_id=release_id, **result)
+    except Exception as exc:
+        log.error("cai_release_push_failed", release_id=release_id, error=str(exc)[:300])
+
+
+def sync_staging(cursor, project_id: str) -> dict:
+    """Copy the project's latest approved release to staging (missing files only)."""
+    project = projects_crud.get_project_or_404(cursor, project_id)
+    release = _latest_approved(cursor, project.id)
+    if release is None:
+        raise ValidationError("The project has no approved Zone 2 release yet")
+    try:
+        push_release(project.short_code, release.id, release.release_path)
+    except cai.ProvisioningError as exc:
+        raise ValidationError(str(exc)) from exc
+    return release_status(cursor, project.id)
 
 
 def release_status(cursor, project_id: str) -> dict:

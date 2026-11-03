@@ -1311,6 +1311,14 @@ function useCaiMutation<TVariables, TResult>(
   })
 }
 
+export function useSyncCaiStaging(projectId: string) {
+  return useCaiMutation(
+    () => caiApi.syncStaging(projectId),
+    'Release copied to the staging project',
+    'Could not copy the release to staging'
+  )
+}
+
 export function useCreateCaiProject(projectId: string) {
   return useCaiMutation(
     (userId: string) => caiApi.create(projectId, userId),

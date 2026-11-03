@@ -60,6 +60,17 @@ def release_status(
         return cai_projects.release_status(cursor, project_id)
 
 
+@router.post("/release-status/{project_id}/sync", response_model=CaiReleaseStatus)
+def sync_release(
+    project_id: str,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission(PROVISION)),
+):
+    """Copy the latest approved release to the staging project (missing files only)."""
+    with authoritative(cursor):
+        return cai_projects.sync_staging(cursor, project_id)
+
+
 @router.post("/projects", response_model=CaiProject, status_code=201)
 def provision(
     payload: CaiProvision,

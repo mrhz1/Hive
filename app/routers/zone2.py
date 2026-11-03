@@ -1,9 +1,10 @@
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from fastapi.responses import FileResponse
 
-from app import intake_notices, zone2
+from app import cai_projects, intake_notices, zone2
 from app.access_log import READ, record_access
 from app.audit import record_audit
 from app.crud import patient_applications as applications_crud
@@ -80,6 +81,10 @@ def approve_release(
     release = zone2.approve(cursor, release_id, actor.id)
     _audit(background, request, "UPDATE", release, actor,
            {"status": "approved", "release_path": release.release_path})
+    # Copy the safe copy to the Cloudera AI staging project. Best-effort: the
+    # project page shows whether it arrived and can copy it again.
+    short_code = Path(release.release_path or "").parent.name
+    background.add_task(cai_projects.push_after_approval, short_code, release.id, release.release_path)
     return _with_project(cursor, release)
 
 

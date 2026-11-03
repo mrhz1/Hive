@@ -16,8 +16,10 @@ Nothing here reads file contents. Logs carry counts and file_refs (see
 app.logging_setup.ref), never file names, following the rest of the app.
 """
 
+import mimetypes
 import os
 import time
+from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional
 
 from app.logging_setup import get_logger, ref
@@ -132,13 +134,19 @@ def _allowed(path: str, is_dir: bool, keep: List[str]) -> bool:
     return _covered(path, keep) or (is_dir and _is_ancestor(path, keep))
 
 
-def list_tree(api, project_id: str) -> Tree:
-    """Every file and folder of a project, as {path: is_dir}, recursing into folders."""
+def list_tree(api, project_id: str, start: str = "") -> Tree:
+    """Every file and folder of a project (or under `start`), as {path: is_dir}."""
     tree: Tree = {}
-    pending = [""]
+    start = _norm(start)
+    pending = [start]
     while pending:
         folder = pending.pop()
-        response = _call("list the project's files", api.list_project_files, project_id, folder or "/")
+        try:
+            response = _call("list the project's files", api.list_project_files, project_id, folder or "/")
+        except ProvisioningError as exc:
+            if start and folder == start and exc.status == 404:
+                return tree  # the folder isn't there yet
+            raise
         for entry in getattr(response, "files", None) or []:
             name = _norm(getattr(entry, "path", ""))
             if folder and not name.startswith(folder + "/"):
@@ -166,6 +174,100 @@ def list_staging_files(staging_id: Optional[str] = None, api=None) -> List[dict]
     return [{"path": p, "is_dir": tree[p]} for p in sorted(tree)]
 
 
+UPLOAD_TIMEOUT_SECONDS = 600
+
+
+def _upload_one(api, project_id: str, remote_path: str, local_path: Path) -> None:
+    """Upload one file to `remote_path` in the project.
+
+    cmlapi's upload_file(project_id, file=<local path>) names the upload after
+    the file's basename, which would land everything in the project root. The
+    endpoint takes the multipart filename as the path, so we call the same
+    endpoint (POST /api/v2/projects/{id}/files) with the filename we want.
+    """
+    mime = mimetypes.guess_type(remote_path)[0] or "application/octet-stream"
+    data = local_path.read_bytes()
+
+    def send():
+        return api.api_client.call_api(
+            "/api/v2/projects/{project_id}/files", "POST",
+            path_params={"project_id": project_id},
+            query_params=[],
+            header_params={"Content-Type": "multipart/form-data"},
+            post_params=[("file", (remote_path, data, mime))],
+            files={},
+            response_type=None,
+            auth_settings=[],
+            _return_http_data_only=True,
+            _preload_content=True,
+            _request_timeout=UPLOAD_TIMEOUT_SECONDS,
+            collection_formats={},
+        )
+
+    _call("upload a file to staging", send)
+
+
+def upload_folder(local_dir: Path, remote_folder: str, staging_id: Optional[str] = None, api=None) -> dict:
+    """Copy every file under `local_dir` to `remote_folder/` in staging.
+
+    Files already in staging at the same path are skipped, so this is safe to
+    run again after a failure. Afterwards every file must be at its exact path;
+    if Cloudera AI put an upload anywhere else (e.g. the project root), the
+    stray copy is deleted and this fails rather than leave a mess in staging.
+    """
+    local_dir = Path(local_dir)
+    remote_folder = clean_keep_paths([remote_folder])[0]
+    if not local_dir.is_dir():
+        raise ProvisioningError(f"The release folder is not on the API's disk: {local_dir}")
+    wanted = {
+        f"{remote_folder}/{p.relative_to(local_dir).as_posix()}": p
+        for p in sorted(local_dir.rglob("*"))
+        if p.is_file()
+    }
+    if not wanted:
+        raise ProvisioningError("The release folder holds no files")
+
+    staging_id = staging_id or staging_project_id()
+    api = api or client()
+    before_root = {p for p, is_dir in list_tree_level(api, staging_id, "").items() if not is_dir}
+    present = list_tree(api, staging_id, remote_folder)
+    todo = [path for path in wanted if path not in present]
+    for path in todo:
+        _upload_one(api, staging_id, path, wanted[path])
+
+    after = list_tree(api, staging_id, remote_folder)
+    missing = [path for path in wanted if after.get(path) is not False]
+    if missing:
+        strays = [
+            p for p, is_dir in list_tree_level(api, staging_id, "").items()
+            if not is_dir and p not in before_root
+        ]
+        for stray in strays:
+            try:
+                _delete(api, staging_id, stray)
+            except ProvisioningError:
+                log.error("cai_stray_upload_left", staging_id=staging_id, file_ref=ref(stray))
+        raise ProvisioningError(
+            f"{len(missing)} file(s) did not arrive at their path in staging"
+            + (f"; Cloudera AI put {len(strays)} in the project root (removed)" if strays else "")
+        )
+    log.info("cai_staging_synced", files=len(wanted), uploaded=len(todo), folder_ref=ref(remote_folder))
+    return {"uploaded": len(todo), "skipped": len(wanted) - len(todo), "files": len(wanted)}
+
+
+def list_tree_level(api, project_id: str, folder: str) -> Tree:
+    """The entries directly inside one folder, without recursing."""
+    response = _call("list the project's files", api.list_project_files, project_id, _norm(folder) or "/")
+    out: Tree = {}
+    for entry in getattr(response, "files", None) or []:
+        name = _norm(getattr(entry, "path", ""))
+        if folder and name and not name.startswith(_norm(folder) + "/"):
+            name = f"{_norm(folder)}/{name}"
+        if name:
+            out[name] = bool(getattr(entry, "is_dir", False))
+    return out
+
+
 def in_staging(path: str, staging_id: Optional[str] = None, api=None) -> bool:
     """Whether a folder or file exists in staging, listing only its parent folder."""
     target = _norm(path)
@@ -173,10 +275,15 @@ def in_staging(path: str, staging_id: Optional[str] = None, api=None) -> bool:
         return False
     api = api or client()
     parent = target.rsplit("/", 1)[0] if "/" in target else ""
-    response = _call(
-        "list the staging files", api.list_project_files,
-        staging_id or staging_project_id(), parent or "/",
-    )
+    try:
+        response = _call(
+            "list the staging files", api.list_project_files,
+            staging_id or staging_project_id(), parent or "/",
+        )
+    except ProvisioningError as exc:
+        if exc.status == 404:  # the parent folder isn't there, so neither is the target
+            return False
+        raise
     for entry in getattr(response, "files", None) or []:
         name = _norm(getattr(entry, "path", ""))
         if name == target or (parent and f"{parent}/{name}" == target):
@@ -320,13 +427,17 @@ def provision_researcher(
         _verify(final, expected)
         if not getattr(project, "slug", None) or not _owner(project):
             project = _call("read the project", api.get_project, project_id)
-        _call(
-            f"add '{username}' to the project",
-            api.add_project_collaborator,
-            cmlapi.AddProjectCollaboratorRequest(permission=WRITE),
-            project_id,
-            username,
-        )
+        # When the API runs as the researcher themselves (testing without the
+        # service account), they already own the copy and CAI refuses to add an
+        # owner as a collaborator.
+        if _owner(project).lower() != username.lower():
+            _call(
+                f"add '{username}' to the project",
+                api.add_project_collaborator,
+                cmlapi.AddProjectCollaboratorRequest(permission=WRITE),
+                project_id,
+                username,
+            )
     except BaseException as exc:
         _rollback(api, project_id, str(exc)[:200])
         raise

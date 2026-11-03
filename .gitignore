@@ -31,3 +31,7 @@ frontend/playwright-report/
 storage
 *.pdf
 *.txt
+
+# graphify
+graphify-out/
+protocol-checklist/

@@ -296,10 +296,12 @@ Setup:
 4. Schedule `scripts/cai_cleanup.py` as a daily Job, also **Run as** the
    service account, to delete researcher projects whose access expired.
 
-Until Ozone can be read from Cloudera AI sessions (pending with Expedition
-support), copy each approved release by hand: upload
-`ZONE2_DIR/<project code>/<release id>/` to the staging project at the same
-path, then provision. Hive refuses a release that isn't in staging yet.
+Hive copies each approved release to staging itself, at
+`<project code>/<release id>/` (the same path as under `ZONE2_DIR`): in the
+background right after **Release to Zone 2**, and again before each
+researcher project is made (only files not already there are sent). If the
+background copy fails, the project's Cloudera AI card shows **Copy to
+staging**. Nobody uploads files by hand.
 
 Endpoints (all need `cai:provision`): `GET /cai/staging/files`,
 `GET /cai/projects`, `POST /cai/projects` (`project_id`, `user_id`, optional

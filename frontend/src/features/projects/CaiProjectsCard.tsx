@@ -1,4 +1,4 @@
-import { CalendarPlus, ExternalLink, FlaskConical, Trash2 } from 'lucide-react'
+import { CalendarPlus, CloudUpload, ExternalLink, FlaskConical, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { ReasonDialog } from '@/components/ReasonDialog'
 import { Button } from '@/components/ui/Button'
@@ -10,6 +10,7 @@ import {
   useCreateCaiProject,
   useEndCaiProject,
   useExtendCaiProject,
+  useSyncCaiStaging,
 } from '@/hooks/useResources'
 import { daysLeft } from '@/schemas/abstraction'
 import type { CaiProject, ProjectDetail } from '@/schemas/project'
@@ -26,6 +27,7 @@ export function CaiProjectsCard({ project }: { project: ProjectDetail }) {
   const records = useCaiProjects(project.id, allowed)
   const status = useCaiReleaseStatus(project.id, allowed)
   const create = useCreateCaiProject(project.id)
+  const sync = useSyncCaiStaging(project.id)
   const extend = useExtendCaiProject()
   const end = useEndCaiProject()
   const [dialog, setDialog] = useState<Dialog>(null)
@@ -39,9 +41,12 @@ export function CaiProjectsCard({ project }: { project: ProjectDetail }) {
   const removed = all.filter((r) => r.status !== 'active')
   const byUser = new Map(active.map((r) => [r.user_id, r]))
   const release = status.data
-  const ready = Boolean(release?.release_id && release.in_staging && !release.error)
+  // Creating a project copies any missing release files to staging first, so
+  // "not in staging" doesn't block it.
+  const ready = Boolean(release?.release_id && !release.error)
 
   let blocker: string | null = null
+  let note: string | null = null
   if (ended) blocker = 'The project has ended.'
   else if (status.isLoading) blocker = 'Checking the staging project…'
   else if (status.error) blocker = 'Could not check the staging project.'
@@ -49,7 +54,7 @@ export function CaiProjectsCard({ project }: { project: ProjectDetail }) {
   else if (!release?.release_id)
     blocker = 'The project has no approved Zone 2 release yet.'
   else if (!release.in_staging)
-    blocker = `Release ${release.release_id} is not in the staging project yet. Upload ZONE2_DIR/${release.folder}/ to staging at ${release.folder}/, then refresh.`
+    note = `Release ${release.release_id} is not in the staging project yet. It is copied there automatically after approval; if that didn't happen, copy it now. Creating a project also copies it first.`
 
   return (
     <Card className="p-5">
@@ -76,6 +81,21 @@ export function CaiProjectsCard({ project }: { project: ProjectDetail }) {
         </p>
       ) : null}
       {blocker ? <p className={`mt-2 ${mutedClass}`}>{blocker}</p> : null}
+      {note ? (
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <p className={mutedClass}>{note}</p>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={ended || sync.isPending}
+            isLoading={sync.isPending}
+            leadingIcon={<CloudUpload className="size-3.5" aria-hidden="true" />}
+            onClick={() => sync.mutate(undefined)}
+          >
+            Copy to staging
+          </Button>
+        </div>
+      ) : null}
 
       <ul className="mt-3 divide-y divide-[rgb(var(--border))] text-sm">
         {project.members.map((member) => {
