@@ -19,6 +19,7 @@ app.logging_setup.ref), never file names, following the rest of the app.
 import mimetypes
 import os
 import time
+import uuid
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional
 
@@ -180,21 +181,27 @@ UPLOAD_TIMEOUT_SECONDS = 600
 def _upload_one(api, project_id: str, remote_path: str, local_path: Path) -> None:
     """Upload one file to `remote_path` in the project.
 
-    cmlapi's upload_file(project_id, file=<local path>) names the upload after
-    the file's basename, which would land everything in the project root. The
-    endpoint takes the multipart filename as the path, so we call the same
-    endpoint (POST /api/v2/projects/{id}/files) with the filename we want.
+    Cloudera AI's upload (POST /api/v2/projects/{id}/files) always stores the
+    file in the project root under its bare name, whatever path is sent. So we
+    upload under a unique temporary name, then move it into place with
+    update_project_file_metadata, which creates any missing folders (checked
+    on the workspace). If the move fails, the temporary file is deleted.
     """
+    import cmlapi
+
+    temp = f".hive-upload-{uuid.uuid4().hex}"
     mime = mimetypes.guess_type(remote_path)[0] or "application/octet-stream"
     data = local_path.read_bytes()
 
     def send():
+        # Same request as cmlapi's upload_file, but with our filename instead
+        # of the local file's basename.
         return api.api_client.call_api(
             "/api/v2/projects/{project_id}/files", "POST",
             path_params={"project_id": project_id},
             query_params=[],
             header_params={"Content-Type": "multipart/form-data"},
-            post_params=[("file", (remote_path, data, mime))],
+            post_params=[("file", (temp, data, mime))],
             files={},
             response_type=None,
             auth_settings=[],
@@ -205,6 +212,17 @@ def _upload_one(api, project_id: str, remote_path: str, local_path: Path) -> Non
         )
 
     _call("upload a file to staging", send)
+    try:
+        _call(
+            "move an uploaded file into place", api.update_project_file_metadata,
+            cmlapi.FileInfo(path=remote_path), project_id, temp,
+        )
+    except BaseException:
+        try:
+            _delete(api, project_id, temp)
+        except ProvisioningError:
+            log.error("cai_temp_upload_left", staging_id=project_id, file_ref=ref(temp))
+        raise
 
 
 def upload_folder(local_dir: Path, remote_folder: str, staging_id: Optional[str] = None, api=None) -> dict:
