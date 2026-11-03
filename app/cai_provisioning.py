@@ -273,6 +273,28 @@ def upload_folder(local_dir: Path, remote_folder: str, staging_id: Optional[str]
     return {"uploaded": len(todo), "skipped": len(wanted) - len(todo), "files": len(wanted)}
 
 
+def remove_from_staging(folder: str, staging_id: Optional[str] = None, api=None) -> int:
+    """Delete a release folder from staging: files first, then folders deepest
+    first, then the folder itself, then its parent (the project code folder)
+    if that is now empty. Returns how many entries were deleted; a folder that
+    is already gone counts as done."""
+    folder = clean_keep_paths([folder])[0]
+    staging_id = staging_id or staging_project_id()
+    api = api or client()
+    tree = list_tree(api, staging_id, folder)
+    if not tree and not in_staging(folder, staging_id, api):
+        return 0
+    entries = sorted(tree, key=lambda p: (tree[p], -p.count("/")))  # files, then deepest folders
+    for path in entries + [folder]:
+        _delete(api, staging_id, path)
+    deleted = len(entries) + 1
+    parent = folder.rsplit("/", 1)[0] if "/" in folder else ""
+    if parent and not list_tree(api, staging_id, parent):
+        _delete(api, staging_id, parent)
+        deleted += 1
+    return deleted
+
+
 def list_tree_level(api, project_id: str, folder: str) -> Tree:
     """The entries directly inside one folder, without recursing."""
     response = _call("list the project's files", api.list_project_files, project_id, _norm(folder) or "/")

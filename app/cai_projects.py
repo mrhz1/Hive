@@ -210,12 +210,35 @@ def end(cursor, record_id: str, actor_id: str, reason: str) -> CaiProject:
         cai.deprovision(record.cai_project_id)
     except cai.ProvisioningError as exc:
         raise ValidationError(f"Could not delete the Cloudera AI project: {exc}") from exc
-    return crud.update(
+    ended = crud.update(
         cursor,
         record.id,
         {"status": crud.ENDED, "ended_at": _iso(_now()), "ended_by_id": actor_id,
          "ended_reason": reason},
     )
+    _clear_staging_if_unused(cursor, ended)
+    return ended
+
+
+def _clear_staging_if_unused(cursor, record: CaiProject) -> None:
+    """Delete the release folder from staging once no active researcher project uses it.
+
+    Every fork copies all of staging, so it should hold only what is in use.
+    The release stays on the API's disk and is copied back when needed, so a
+    failure here is logged, never raised: the researcher project is already gone.
+    """
+    still_used = any(
+        other.release_id == record.release_id
+        for other in crud.list_cai_projects(cursor, record.project_id, crud.ACTIVE)
+    )
+    if still_used:
+        return
+    try:
+        project = projects_crud.get_project_or_404(cursor, record.project_id)
+        removed = cai.remove_from_staging(release_folder(project.short_code, record.release_id))
+        log.info("cai_staging_cleared", release_id=record.release_id, removed=removed)
+    except Exception as exc:
+        log.error("cai_staging_clear_failed", release_id=record.release_id, error=str(exc)[:300])
 
 
 def end_all_for_project(cursor, project_id: str, actor_id: str, reason: str) -> int:
@@ -223,7 +246,24 @@ def end_all_for_project(cursor, project_id: str, actor_id: str, reason: str) -> 
     active = crud.list_cai_projects(cursor, project_id, crud.ACTIVE)
     for record in active:
         end(cursor, record.id, actor_id, reason)
+    _clear_project_from_staging(cursor, project_id)
     return len(active)
+
+
+def _clear_project_from_staging(cursor, project_id: str) -> None:
+    """Delete the project's whole <code>/ folder from staging when the project ends.
+
+    Releases are copied to staging on approval, so a project that ends without
+    any researcher project would otherwise leave its folder there for good.
+    Best-effort, like _clear_staging_if_unused."""
+    if not (os.environ.get("STAGING_PROJECT_ID") or "").strip():
+        return
+    try:
+        project = projects_crud.get_project_or_404(cursor, project_id)
+        removed = cai.remove_from_staging(project.short_code)
+        log.info("cai_staging_project_cleared", project_id=project_id, removed=removed)
+    except Exception as exc:
+        log.error("cai_staging_clear_failed", project_id=project_id, error=str(exc)[:300])
 
 
 def expire_due(cursor, now: Optional[datetime] = None) -> List[CaiProject]:
