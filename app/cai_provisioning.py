@@ -54,6 +54,9 @@ def base_url() -> str:
         value = f"https://{os.environ['CDSW_DOMAIN']}"
     if not value:
         raise ProvisioningError("CAI_BASE_URL is not set")
+    if "://" not in value:
+        # Without a scheme the browser treats the link as a path on our own site.
+        value = "https://" + value.lstrip("/")
     return value.rstrip("/")
 
 

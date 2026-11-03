@@ -19,6 +19,12 @@ const titleClass =
   'text-[11px] font-bold tracking-widest text-[rgb(var(--foreground-muted))] uppercase'
 const mutedClass = 'text-xs text-[rgb(var(--foreground-muted))]'
 
+// Links saved before CAI_BASE_URL was normalised may lack a scheme; without
+// one the browser opens them as a path on this site.
+function absoluteUrl(url: string): string {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : `https://${url.replace(/^\/+/, '')}`
+}
+
 type Dialog = { kind: 'extend' | 'end'; record: CaiProject } | null
 
 export function CaiProjectsCard({ project }: { project: ProjectDetail }) {
@@ -116,7 +122,7 @@ export function CaiProjectsCard({ project }: { project: ProjectDetail }) {
                       <>
                         {' · '}
                         <a
-                          href={record.url}
+                          href={absoluteUrl(record.url)}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 underline"
