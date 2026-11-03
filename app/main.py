@@ -15,6 +15,7 @@ from app.routers import (
     abstraction as abstraction_router,
     access_log as access_log_router,
     audit_log,
+    cai as cai_router,
     consents as consents_router,
     redcap as redcap_router,
     file_metadata,
@@ -159,6 +160,7 @@ app.include_router(projects_router.router)
 app.include_router(consents_router.router)
 app.include_router(redcap_router.router)
 app.include_router(zone2_router.router)
+app.include_router(cai_router.router)
 app.include_router(abstraction_router.router)
 app.include_router(security_router.router)
 app.include_router(users.router)

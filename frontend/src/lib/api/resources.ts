@@ -90,6 +90,9 @@ import {
   consentImportSchema,
   consentListSchema,
   consentSchema,
+  caiProjectListSchema,
+  caiProjectSchema,
+  caiReleaseStatusSchema,
   projectDetailSchema,
   projectListSchema,
   releaseDocumentListSchema,
@@ -519,6 +522,23 @@ export const abstractionApi = {
     request(abstractionFolderSchema, () =>
       api.post(`/abstraction-folders/${id}/delete`, { reason })
     ),
+}
+
+export const caiApi = {
+  list: (projectId: string) =>
+    request(caiProjectListSchema, () =>
+      api.get('/cai/projects', { params: { project_id: projectId } })
+    ),
+  releaseStatus: (projectId: string) =>
+    request(caiReleaseStatusSchema, () => api.get(`/cai/release-status/${projectId}`)),
+  create: (projectId: string, userId: string) =>
+    request(caiProjectSchema, () =>
+      api.post('/cai/projects', { project_id: projectId, user_id: userId })
+    ),
+  extend: (id: string, reason: string) =>
+    request(caiProjectSchema, () => api.post(`/cai/projects/${id}/extend`, { reason })),
+  end: (id: string, reason: string) =>
+    request(caiProjectSchema, () => api.post(`/cai/projects/${id}/end`, { reason })),
 }
 
 export const projectsApi = {

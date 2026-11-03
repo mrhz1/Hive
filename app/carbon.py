@@ -20,8 +20,26 @@ def server() -> str:
     return os.environ.get("CARBON_SERVER", "carbon.research.sickkids.ca")
 
 
+def local_dir():
+    raw = os.environ.get("CARBON_LOCAL_DIR", "").strip()
+    return Path(raw).expanduser().resolve() if raw else None
+
+
 def share() -> str:
+    if local_dir() is not None:
+        return str(local_dir())
     return os.environ.get("CARBON_SHARE", rf"\\{server()}\imagecorelab")
+
+
+def _paths():
+    return os.path if local_dir() is not None else ntpath
+
+
+class _LocalShare:
+    scandir = staticmethod(os.scandir)
+    stat = staticmethod(os.stat)
+    walk = staticmethod(os.walk)
+    open_file = staticmethod(open)
 
 
 def _smb():
@@ -39,6 +57,11 @@ _connected = {"server": None}
 
 
 def connect():
+    folder = local_dir()
+    if folder is not None:
+        if not folder.is_dir():
+            raise ValidationError(f"CARBON_LOCAL_DIR '{folder}' is not a folder")
+        return _LocalShare
     smb = _smb()
     with _session_lock:
         if _connected["server"] == server():
@@ -70,7 +93,7 @@ def clean_relative(path: str) -> PurePosixPath:
 
 
 def remote_path(relative: PurePosixPath) -> str:
-    return ntpath.join(share(), *relative.parts) if relative.parts else share()
+    return _paths().join(share(), *relative.parts) if relative.parts else share()
 
 
 def list_folder(path: str) -> Dict:
@@ -121,8 +144,9 @@ def _files_under(smb, relative: PurePosixPath) -> Iterator[Tuple[str, PurePosixP
         for name in sorted(filenames):
             if name.startswith("."):
                 continue
-            full = ntpath.join(dirpath, name)
-            parts = ntpath.relpath(full, share()).split("\\")
+            paths = _paths()
+            full = paths.join(dirpath, name)
+            parts = paths.relpath(full, share()).split(paths.sep)
             yield full, PurePosixPath(*parts), smb.stat(full).st_size
 
 

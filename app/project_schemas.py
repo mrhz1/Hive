@@ -225,3 +225,47 @@ class WorkspaceExtend(BaseModel):
 
 class WorkspaceDelete(BaseModel):
     reason: Optional[str] = None
+
+
+class CaiProject(BaseModel):
+    id: str
+    project_id: str
+    user_id: str
+    username: Optional[str] = None
+    cai_username: str
+    release_id: Optional[str] = None
+    cai_project_id: str
+    slug: Optional[str] = None
+    url: Optional[str] = None
+    files: List[str] = []
+    status: str = "active"
+    created_by_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    expires_at: Optional[str] = None
+    ended_at: Optional[str] = None
+    ended_by_id: Optional[str] = None
+    ended_reason: Optional[str] = None
+
+
+class CaiProvision(BaseModel):
+    project_id: str = Field(min_length=1)
+    user_id: str = Field(min_length=1)
+    release_id: Optional[str] = None
+    keep_paths: Optional[List[str]] = None
+    cai_username: Optional[str] = None
+
+
+class CaiStagingFile(BaseModel):
+    path: str
+    is_dir: bool
+
+
+class CaiEnd(BaseModel):
+    reason: str = Field(min_length=1)
+
+
+class CaiReleaseStatus(BaseModel):
+    release_id: Optional[str] = None
+    folder: Optional[str] = None
+    in_staging: bool = False
+    error: Optional[str] = None

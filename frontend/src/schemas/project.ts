@@ -242,3 +242,34 @@ export function consentTone(status: string) {
   if (status === 'refused' || status === 'withdrawn') return 'danger' as const
   return 'neutral' as const
 }
+
+export const caiProjectSchema = z.object({
+  id: z.string(),
+  project_id: z.string(),
+  user_id: z.string(),
+  username: nullableText,
+  cai_username: z.string(),
+  release_id: nullableText,
+  cai_project_id: z.string(),
+  slug: nullableText,
+  url: nullableText,
+  files: z.array(z.string()).default([]),
+  status: z.string(),
+  created_at: nullableText,
+  expires_at: nullableText,
+  ended_at: nullableText,
+  ended_reason: nullableText,
+})
+
+export type CaiProject = z.infer<typeof caiProjectSchema>
+
+export const caiProjectListSchema = z.array(caiProjectSchema)
+
+export const caiReleaseStatusSchema = z.object({
+  release_id: nullableText,
+  folder: nullableText,
+  in_staging: z.boolean(),
+  error: nullableText,
+})
+
+export type CaiReleaseStatus = z.infer<typeof caiReleaseStatusSchema>

@@ -16,6 +16,7 @@ import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { DataTable, type Column } from '@/components/DataTable'
 import { ForbiddenPage, NotFoundPage } from '@/components/ErrorPages'
 import { ReasonDialog } from '@/components/ReasonDialog'
+import { CaiProjectsCard } from '@/features/projects/CaiProjectsCard'
 import { Can, RequirePermission } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
 import {
@@ -108,8 +109,8 @@ function ProjectPage() {
           <strong>This project has ended</strong>
           {project.status_reason ? ` (${project.status_reason})` : ''}
           {project.updated_at ? `, ${project.updated_at.slice(0, 10)}` : ''}. Nothing more
-          can be released. Its Zone 2 copy and archive are kept; remove the researchers'
-          access in Users and Roles.
+          can be released. Its Zone 2 copy and archive are kept, and its members' Cloudera
+          AI projects were deleted.
         </Card>
       ) : null}
 
@@ -129,6 +130,7 @@ function ProjectPage() {
       <CohortCard project={project} locked={locked} />
       <WorkspaceCard project={project} />
       <ReleaseCard project={project} />
+      <CaiProjectsCard project={project} />
       <EndCard project={project} />
       <DeleteCard project={project} />
     </div>

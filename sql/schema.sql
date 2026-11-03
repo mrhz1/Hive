@@ -281,6 +281,30 @@ CREATE TABLE `original_grants` (
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
 
+DROP TABLE IF EXISTS `cai_projects`;
+
+-- A researcher's own Cloudera AI project, forked from the staging project
+-- with only their project's release files left in it.
+CREATE TABLE `cai_projects` (
+  `id` STRING,
+  `project_id` STRING,
+  `user_id` STRING,
+  `cai_username` STRING,
+  `release_id` STRING,
+  `cai_project_id` STRING,
+  `slug` STRING,
+  `url` STRING,
+  `files` STRING,
+  `status` STRING,
+  `created_by_id` STRING,
+  `created_at` TIMESTAMP,
+  `expires_at` STRING,
+  `ended_at` STRING,
+  `ended_by_id` STRING,
+  `ended_reason` STRING
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');
+
 DROP TABLE IF EXISTS `incidents`;
 
 CREATE TABLE `incidents` (

@@ -265,6 +265,62 @@ and run `scripts/migration_report.py` during and after the migration. Both
 write to `REPORTS_DIR`, which holds patient codes: keep it restricted like
 the data folders.
 
+### Researcher projects in Cloudera AI (Zone 2)
+
+Hive can give each project member their own Cloudera AI project holding only
+their project's approved release, so they run their own Python there.
+
+How it works: a **staging project** owned by the service account
+(`svc_CHSSExpedition_M`) holds the released safe copies, one folder per
+release at `<project code>/<release id>/`. Hive forks staging into a new
+private project, deletes everything except that release folder, checks the
+file list matches exactly (or deletes the new project), and only then adds the
+researcher as a Contributor (`write`). Every fork copies the whole of staging,
+so **staging must only ever hold Zone 2 safe copies**: never workspaces,
+archives or ID maps.
+
+Setup:
+
+1. Run `python scripts/migrate_columns.py --apply` (new `cai_projects` table)
+   and `python scripts/upgrade_permissions.py` (admins get `cai:provision`).
+   Give `cai:provision` to admins only: those routes act with the service
+   account's rights. Researchers must never have it.
+2. On the API Application set **Run as `svc_CHSSExpedition_M`**, so
+   `cmlapi.default_client()` acts as the service account (no API key). The
+   API's Cloudera project must have **only admins as collaborators**: anyone
+   with write access to it can run code with the service account's rights.
+3. Set `STAGING_PROJECT_ID` and `CAI_BASE_URL`
+   (`https://research.apps.dap.sickkids.ca`). Optional: `CAI_ACCESS_DAYS`
+   (default 182, the protocol's 6 months), `CAI_FORK_TIMEOUT_SECONDS`
+   (default 300), `CAI_FORK_POLL_SECONDS` (default 5).
+4. Schedule `scripts/cai_cleanup.py` as a daily Job, also **Run as** the
+   service account, to delete researcher projects whose access expired.
+
+Until Ozone can be read from Cloudera AI sessions (pending with Expedition
+support), copy each approved release by hand: upload
+`ZONE2_DIR/<project code>/<release id>/` to the staging project at the same
+path, then provision. Hive refuses a release that isn't in staging yet.
+
+Endpoints (all need `cai:provision`): `GET /cai/staging/files`,
+`GET /cai/projects`, `POST /cai/projects` (`project_id`, `user_id`, optional
+`release_id`, `keep_paths`, `cai_username`), `POST /cai/projects/{id}/extend`,
+`POST /cai/projects/{id}/end`. Ending a Hive project deletes its members'
+researcher projects first; if a deletion fails, the project stays open.
+
+Things to know:
+
+- Researchers find their project under **Scope → My Team Projects**, not
+  "My Projects", because the service account owns it. Send them the URL Hive
+  returns (`<CAI_BASE_URL>/svc_CHSSExpedition_M/<slug>`).
+- Resource limits (CPU, memory, GPU) are **not** set in code: Cloudera's API
+  can't do it here. Researchers choose resources per session; limits come
+  from per-user quotas set by Expedition support.
+- Teams (`create_team`) don't work on this workspace, so each researcher gets
+  their own project.
+- Open check: in a provisioned project's session, run `ls -la /home/cdsw` and
+  confirm there's no `.git` history or other copy from which the deleted
+  files could be recovered.
+
 ### Copy from Carbon
 
 The De-Identifier page has a **Copy from Carbon** panel (needs
@@ -280,6 +336,7 @@ same; `python scripts/check_carbon.py` tests the connection.
 | `CARBON_SERVER` | default `carbon.research.sickkids.ca` |
 | `CARBON_SHARE` | default `\\<server>\imagecorelab` |
 | `CARBON_USER`, `CARBON_PASSWORD` | e.g. a service account `SICKKIDS\...`; without them the API logs in with Kerberos |
+| `CARBON_LOCAL_DIR` | local only: browse this folder instead of the share, no SMB connection. Leave unset on Cloudera |
 
 ### REDCap exchange
 

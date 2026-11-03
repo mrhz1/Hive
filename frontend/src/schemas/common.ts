@@ -42,6 +42,8 @@ export const REDCAP_ACTIONS = ['view', 'import', 'export'] as const
 
 export const SECURITY_ACTIONS = ['view', 'manage'] as const
 
+export const CAI_ACTIONS = ['provision'] as const
+
 export type FilesAction =
   (typeof FILES_ACTIONS)[number] | (typeof FILE_REVIEW_ACTIONS)[number]
 
@@ -57,6 +59,7 @@ export type Permission =
   | `consent:${(typeof CONSENT_ACTIONS)[number]}`
   | `redcap:${(typeof REDCAP_ACTIONS)[number]}`
   | `security:${(typeof SECURITY_ACTIONS)[number]}`
+  | `cai:${(typeof CAI_ACTIONS)[number]}`
 
 export const ALL_PERMISSIONS: Permission[] = [
   ...MODELS.flatMap((model) =>
@@ -73,6 +76,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   ...CONSENT_ACTIONS.map((action) => `consent:${action}` as Permission),
   ...REDCAP_ACTIONS.map((action) => `redcap:${action}` as Permission),
   ...SECURITY_ACTIONS.map((action) => `security:${action}` as Permission),
+  ...CAI_ACTIONS.map((action) => `cai:${action}` as Permission),
 ]
 
 export type PermissionGroup = {
@@ -136,6 +140,12 @@ export const PERMISSION_SECTIONS: readonly PermissionSection[] = [
       { models: ['user', 'role'], actions: ACTIONS },
       { models: ['log'], actions: LOG_ACTIONS, rowLabel: 'logs' },
       { models: ['security'], actions: SECURITY_ACTIONS },
+      {
+        models: ['cai'],
+        actions: CAI_ACTIONS,
+        rowLabel: 'Cloudera AI projects',
+        labels: { provision: 'create for researchers (admins only)' },
+      },
     ],
   },
 ]

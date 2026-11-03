@@ -46,7 +46,7 @@ MIGRATIONS = (
 NEW_TABLES = (
     "projects", "project_patients", "project_releases", "abstraction_folders", "incidents",
     "patient_consents", "project_members", "original_grants",
-    "redcap_fields", "redcap_values", "redcap_log",
+    "redcap_fields", "redcap_values", "redcap_log", "cai_projects",
 )
 
 SCHEMA_FILE = _repo_root() / "sql" / "schema.sql"

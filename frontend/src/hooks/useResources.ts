@@ -5,6 +5,7 @@ import { createCrudHooks, errorMessage } from './createCrudHooks'
 import {
   securityApi,
   abstractionApi,
+  caiApi,
   accessLogsApi,
   applicationsApi,
   applicationFilesApi,
@@ -1028,6 +1029,7 @@ function useProjectMutation<TVariables, TResult>(
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.zone2.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.cai.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
       toast.success(typeof success === 'string' ? success : success(result))
     },
@@ -1270,5 +1272,67 @@ export function useRemoveProjectMember(id: string) {
     (userId: string) => projectsApi.removeMember(id, userId),
     'Member removed',
     'Could not remove the member'
+  )
+}
+
+export function useCaiProjects(projectId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.cai.list(projectId),
+    queryFn: () => caiApi.list(projectId),
+    enabled,
+  })
+}
+
+export function useCaiReleaseStatus(projectId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.cai.releaseStatus(projectId),
+    queryFn: () => caiApi.releaseStatus(projectId),
+    enabled,
+    retry: false,
+  })
+}
+
+function useCaiMutation<TVariables, TResult>(
+  mutationFn: (variables: TVariables) => Promise<TResult>,
+  success: string | ((result: TResult) => string),
+  failure: string
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.cai.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.all })
+      toast.success(typeof success === 'string' ? success : success(result))
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error, failure))
+    },
+  })
+}
+
+export function useCreateCaiProject(projectId: string) {
+  return useCaiMutation(
+    (userId: string) => caiApi.create(projectId, userId),
+    (record) => `Cloudera AI project made for ${record.cai_username}`,
+    'Could not make the Cloudera AI project'
+  )
+}
+
+export function useExtendCaiProject() {
+  return useCaiMutation(
+    (variables: { id: string; reason: string }) =>
+      caiApi.extend(variables.id, variables.reason),
+    (record) => `Access kept until ${(record.expires_at ?? '').slice(0, 10)}`,
+    'Could not extend the access'
+  )
+}
+
+export function useEndCaiProject() {
+  return useCaiMutation(
+    (variables: { id: string; reason: string }) =>
+      caiApi.end(variables.id, variables.reason),
+    'Cloudera AI project deleted',
+    'Could not delete the Cloudera AI project'
   )
 }

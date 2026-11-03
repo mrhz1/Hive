@@ -2,7 +2,7 @@ from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
-from app import cohort, consent, workspace, zone2
+from app import cai_projects, cohort, consent, workspace, zone2
 from app.audit import record_audit
 from app.crud import patients as patients_crud
 from app.crud import projects as crud
@@ -321,6 +321,10 @@ def end_project(
     actor: User = Depends(require_permission("project:update")),
 ):
     before = _project_for(cursor, project_id, actor)
+    if before.status not in (zone2.ENDED, "in_review") and (payload.reason or "").strip():
+        # Researchers lose their Cloudera AI projects first; if a deletion fails,
+        # the project stays open so nobody keeps access to an "ended" project.
+        cai_projects.end_all_for_project(cursor, project_id, actor.id, "project ended")
     after = zone2.end_project(cursor, project_id, payload.reason)
     _audit(
         background, request, "UPDATE", project_id, actor,

@@ -37,6 +37,7 @@ CARRIED_OVER = {
 ADMIN_MARKER = "role:update"
 ADMIN_EXTRAS = (
     "abstraction:manage",
+    "cai:provision",
     "files:grant_original",
     "project:manage",
     "project:workspace",
