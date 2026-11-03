@@ -76,6 +76,13 @@ DICOM_DATE_TAGS = ("StudyDate", "SeriesDate", "AcquisitionDate", "ContentDate")
 _DATE = re.compile(
     r"(?<!\d)((?:19|20)\d{2})[-_. ]?(0[1-9]|1[0-2])[-_. ]?(0[1-9]|[12]\d|3[01])(?!\d)"
 )
+# Dates written year last, e.g. "Echo Report 04-14-2009". A separator is
+# required so a run of digits isn't misread. Read month first (the order these
+# sources use); only when the first number can't be a month (13-31) is it read
+# day first. Never used for typed input: clean_date stays YYYY-MM-DD only.
+_DATE_YEAR_LAST = re.compile(
+    r"(?<!\d)(\d{1,2})([-_. /])(\d{1,2})\2((?:19|20)\d{2})(?!\d)"
+)
 _X_RAY = re.compile(r"X[-_ ]RAY", re.IGNORECASE)
 _WORD = re.compile(r"[A-Za-z]+")
 
@@ -178,6 +185,13 @@ def date_from_name(name: str, code: str = "") -> str:
         found = clean_date("".join(match.groups()))
         if found:
             return found
+    for match in _DATE_YEAR_LAST.finditer(_without_code(name, code)):
+        first, _, second, year = match.groups()
+        month, day = (int(second), int(first)) if int(first) > 12 else (int(first), int(second))
+        try:
+            return date(int(year), month, day).strftime("%Y%m%d")
+        except ValueError:
+            continue
     return UNKNOWN
 
 
