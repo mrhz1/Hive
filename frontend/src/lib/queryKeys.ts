@@ -16,6 +16,16 @@ export const queryKeys = {
     list: () => [...queryKeys.projects.all, 'list'] as const,
     detail: (id: string) => [...queryKeys.projects.all, 'detail', id] as const,
     candidates: (id: string) => [...queryKeys.projects.all, 'candidates', id] as const,
+    workspaceFiles: (id: string) =>
+      [...queryKeys.projects.all, 'workspace-files', id] as const,
+    workspaceTable: (
+      id: string,
+      path: string,
+      sheet: string | null,
+      page: number,
+      q: string
+    ) =>
+      [...queryKeys.projects.all, 'workspace-table', id, path, sheet, page, q] as const,
   },
 
   consents: {

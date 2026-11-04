@@ -227,6 +227,28 @@ class WorkspaceDelete(BaseModel):
     reason: Optional[str] = None
 
 
+class WorkspaceFile(BaseModel):
+    path: str
+    size: int
+    kind: str
+
+
+class WorkspaceTable(BaseModel):
+    columns: List[str]
+    rows: List[List[str]]
+    total: int
+    page: int
+    size: int
+    sheets: List[str] = []
+    sheet: Optional[str] = None
+    truncated: bool = False
+
+
+class WorkspaceText(BaseModel):
+    text: str
+    truncated: bool = False
+
+
 class CaiProject(BaseModel):
     id: str
     project_id: str

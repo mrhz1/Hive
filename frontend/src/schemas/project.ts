@@ -273,3 +273,28 @@ export const caiReleaseStatusSchema = z.object({
 })
 
 export type CaiReleaseStatus = z.infer<typeof caiReleaseStatusSchema>
+
+export const workspaceFileSchema = z.object({
+  path: z.string(),
+  size: z.number(),
+  kind: z.enum(['table', 'pdf', 'image', 'dicom', 'text', 'other']),
+})
+export type WorkspaceFile = z.infer<typeof workspaceFileSchema>
+export const workspaceFileListSchema = z.array(workspaceFileSchema)
+
+export const workspaceTableSchema = z.object({
+  columns: z.array(z.string()),
+  rows: z.array(z.array(z.string())),
+  total: z.number(),
+  page: z.number(),
+  size: z.number(),
+  sheets: z.array(z.string()).default([]),
+  sheet: z.string().nullable().optional(),
+  truncated: z.boolean().default(false),
+})
+export type WorkspaceTable = z.infer<typeof workspaceTableSchema>
+
+export const workspaceTextSchema = z.object({
+  text: z.string(),
+  truncated: z.boolean().default(false),
+})

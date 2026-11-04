@@ -1127,6 +1127,31 @@ export function useFlagReleaseDocument() {
   )
 }
 
+export function useWorkspaceFiles(projectId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.projects.workspaceFiles(projectId),
+    queryFn: () => projectsApi.workspaceFiles(projectId),
+    enabled,
+    retry: false,
+  })
+}
+
+export function useWorkspaceTable(
+  projectId: string,
+  path: string,
+  sheet: string | null,
+  page: number,
+  q: string,
+  size = 50
+) {
+  return useQuery({
+    queryKey: queryKeys.projects.workspaceTable(projectId, path, sheet, page, q),
+    queryFn: () => projectsApi.workspaceTable(projectId, { path, sheet, page, size, q }),
+    placeholderData: (previous) => previous,
+    retry: false,
+  })
+}
+
 export function useBuildWorkspace(id: string) {
   return useProjectMutation(
     (includeDocuments: boolean) => projectsApi.buildWorkspace(id, includeDocuments),

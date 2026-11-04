@@ -99,6 +99,9 @@ import {
   releaseSchema,
   releaseSummaryListSchema,
   releaseSummarySchema,
+  workspaceFileListSchema,
+  workspaceTableSchema,
+  workspaceTextSchema,
   type CohortCriteria,
   type ConsentPayload,
   type ProjectPayload,
@@ -532,7 +535,9 @@ export const caiApi = {
   releaseStatus: (projectId: string) =>
     request(caiReleaseStatusSchema, () => api.get(`/cai/release-status/${projectId}`)),
   syncStaging: (projectId: string) =>
-    request(caiReleaseStatusSchema, () => api.post(`/cai/release-status/${projectId}/sync`)),
+    request(caiReleaseStatusSchema, () =>
+      api.post(`/cai/release-status/${projectId}/sync`)
+    ),
   create: (projectId: string, userId: string) =>
     request(caiProjectSchema, () =>
       api.post('/cai/projects', { project_id: projectId, user_id: userId })
@@ -551,6 +556,38 @@ export const projectsApi = {
   searchCohort: (id: string, criteria: CohortCriteria) =>
     request(cohortSearchSchema, () =>
       api.post(`/projects/${id}/cohort/search`, criteria)
+    ),
+  workspaceFiles: (id: string) =>
+    request(workspaceFileListSchema, () => api.get(`/projects/${id}/workspace/files`)),
+  workspaceTable: (
+    id: string,
+    params: { path: string; sheet?: string | null; page: number; size: number; q: string }
+  ) =>
+    request(workspaceTableSchema, () =>
+      api.get(`/projects/${id}/workspace/table`, {
+        params: { ...params, sheet: params.sheet ?? undefined },
+      })
+    ),
+  workspaceText: (id: string, path: string) =>
+    request(workspaceTextSchema, () =>
+      api.get(`/projects/${id}/workspace/text`, { params: { path } })
+    ),
+  workspaceContent: async (id: string, path: string): Promise<Blob> => {
+    try {
+      const response = await api.get(`/projects/${id}/workspace/content`, {
+        params: { path },
+        responseType: 'blob',
+      })
+      return response.data as Blob
+    } catch (error) {
+      throw await blobError(error)
+    }
+  },
+  workspaceImage: (id: string, path: string, frame = 0) =>
+    fetchImagePreview(
+      `/projects/${id}/workspace/image?path=${encodeURIComponent(path)}`,
+      frame,
+      false
     ),
   buildWorkspace: (id: string, includeDocuments: boolean) =>
     request(projectDetailSchema, () =>

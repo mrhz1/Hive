@@ -1,8 +1,10 @@
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
+from fastapi.responses import FileResponse
 
-from app import cai_projects, cohort, consent, workspace, zone2
+from app import cai_projects, cohort, consent, workspace, workspace_preview, zone2
+from app.access_log import READ, record_access
 from app.audit import record_audit
 from app.crud import patients as patients_crud
 from app.crud import projects as crud
@@ -27,9 +29,14 @@ from app.project_schemas import (
     WorkspaceBuild,
     WorkspaceDelete,
     WorkspaceExtend,
+    WorkspaceFile,
+    WorkspaceTable,
+    WorkspaceText,
 )
 from app.schemas import User
+from app.preview import render_dicom_png
 from app.security import require_permission
+from app.storage import guess_mime_type
 
 log = get_logger(__name__)
 
@@ -268,6 +275,118 @@ def build_workspace(
              "expires_at": project.workspace_expires_at},
     )
     return _detail(cursor, project)
+
+
+# Read-only workspace preview (protocol 9.2). Same rule as building it:
+# project:workspace and membership of the project. No download route.
+WORKSPACE = "project:workspace"
+
+
+def _workspace_file(cursor, project_id: str, path: str, actor: User):
+    with authoritative(cursor):
+        project = _project_for(cursor, project_id, actor)
+    return workspace_preview.resolve(project, path)
+
+
+def _looked(actor: User, project_id: str, path: str, records: Optional[int] = None) -> None:
+    record_access(
+        READ,
+        actor=actor,
+        resource_type="workspace_file",
+        resource_id=f"{project_id}/{path}",
+        identified=False,
+        record_count=records,
+        detail="Zone 1X workspace preview",
+    )
+
+
+@router.get("/{project_id}/workspace/files", response_model=List[WorkspaceFile])
+def workspace_files(
+    project_id: str,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission(WORKSPACE)),
+):
+    with authoritative(cursor):
+        project = _project_for(cursor, project_id, actor)
+    return workspace_preview.list_files(project)
+
+
+@router.get("/{project_id}/workspace/table", response_model=WorkspaceTable)
+def workspace_table(
+    project_id: str,
+    path: str,
+    sheet: Optional[str] = None,
+    page: int = 1,
+    size: int = 50,
+    q: str = "",
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission(WORKSPACE)),
+):
+    file = _workspace_file(cursor, project_id, path, actor)
+    if workspace_preview.kind_of(file) != workspace_preview.TABLE:
+        raise ValidationError("Only CSV and Excel files are shown as tables")
+    table = workspace_preview.read_table(file, sheet, page, size, q)
+    _looked(actor, project_id, path, len(table["rows"]))
+    return table
+
+
+@router.get("/{project_id}/workspace/text", response_model=WorkspaceText)
+def workspace_text(
+    project_id: str,
+    path: str,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission(WORKSPACE)),
+):
+    file = _workspace_file(cursor, project_id, path, actor)
+    if workspace_preview.kind_of(file) != workspace_preview.TEXT:
+        raise ValidationError("Only text files are shown as text")
+    _looked(actor, project_id, path)
+    return workspace_preview.read_text(file)
+
+
+@router.get("/{project_id}/workspace/content")
+def workspace_content(
+    project_id: str,
+    path: str,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission(WORKSPACE)),
+):
+    """PDFs and pictures, shown inline by the viewer."""
+    file = _workspace_file(cursor, project_id, path, actor)
+    if workspace_preview.kind_of(file) not in (workspace_preview.PDF, workspace_preview.IMAGE):
+        raise ValidationError("This file type has no preview")
+    _looked(actor, project_id, path)
+    return FileResponse(
+        file,
+        media_type=guess_mime_type(file.name, None),
+        content_disposition_type="inline",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/{project_id}/workspace/image")
+def workspace_image(
+    project_id: str,
+    path: str,
+    frame: int = 0,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission(WORKSPACE)),
+):
+    """A DICOM file rendered as a PNG, one frame at a time."""
+    file = _workspace_file(cursor, project_id, path, actor)
+    if workspace_preview.kind_of(file) != workspace_preview.DICOM:
+        raise ValidationError("Only DICOM files are rendered as images")
+    content, frames = render_dicom_png(file, frame)
+    _looked(actor, project_id, path)
+    return Response(
+        content=content,
+        media_type="image/png",
+        headers={
+            "X-Frame-Count": str(frames),
+            "Access-Control-Expose-Headers": "X-Frame-Count",
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.post("/{project_id}/workspace/extend", response_model=ProjectDetail)

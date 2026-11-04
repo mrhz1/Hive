@@ -17,6 +17,7 @@ import { DataTable, type Column } from '@/components/DataTable'
 import { ForbiddenPage, NotFoundPage } from '@/components/ErrorPages'
 import { ReasonDialog } from '@/components/ReasonDialog'
 import { CaiProjectsCard } from '@/features/projects/CaiProjectsCard'
+import { WorkspaceBrowser } from '@/features/projects/WorkspaceBrowser'
 import { Can, RequirePermission } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
 import {
@@ -879,6 +880,10 @@ function WorkspaceCard({ project }: { project: ProjectDetail }) {
             </>
           ) : null}
         </div>
+      ) : null}
+
+      {built && manage && !(left !== null && left <= 0) ? (
+        <WorkspaceBrowser project={project} />
       ) : null}
 
       {dialog === 'extend' ? (
