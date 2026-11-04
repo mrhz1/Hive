@@ -505,7 +505,7 @@ function OpenedDocument({ opened, onClose }: { opened: Opened; onClose: () => vo
           </Button>
         </div>
         {opened.kind === 'pdf' ? (
-          <div className="min-h-0 flex-1 overflow-hidden rounded border border-[rgb(var(--border))]">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-[rgb(var(--border))]">
             <PdfViewer url={opened.url} name={opened.document.project_document_id} />
           </div>
         ) : (
