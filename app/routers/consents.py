@@ -1,8 +1,9 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Request, Response, UploadFile
+from pydantic import BaseModel, Field
 
-from app import consent
+from app import consent, withdrawal
 from app.access_log import READ, record_access
 from app.audit import record_audit
 from app.crud import consents as crud
@@ -107,3 +108,44 @@ async def run_import(
         request_id=request.headers.get("X-Request-ID"),
     )
     return result
+
+
+class WithdrawalPurge(BaseModel):
+    reason: str = Field(min_length=1)
+
+
+@router.get("/withdrawal/{patient_id}")
+def withdrawal_preview(
+    patient_id: str,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("consent:purge")),
+):
+    result = withdrawal.preview(cursor, patient_id)
+    record_access(
+        READ, actor=actor, resource_type="withdrawal", resource_id=result["patient_id"],
+        patient_id=result["patient_id"], identified=False, detail="Withdrawal preview",
+    )
+    return result
+
+
+@router.post("/withdrawal/{patient_id}")
+def withdrawal_purge(
+    patient_id: str,
+    payload: WithdrawalPurge,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("consent:purge")),
+):
+    summary = withdrawal.purge_patient(cursor, patient_id, payload.reason, actor.id)
+    background.add_task(
+        record_audit,
+        action="DELETE",
+        entity_type="patient_withdrawal",
+        entity_id=summary["patient_id"],
+        user_id=actor.id,
+        old_values=None,
+        new_values={**summary, "reason": payload.reason.strip()},
+        request_id=request.headers.get("X-Request-ID"),
+    )
+    return summary

@@ -6,7 +6,7 @@ import time
 from pathlib import Path, PurePosixPath
 from typing import Dict, Iterator, List, Tuple
 
-from app import intake, intake_progress
+from app import intake, intake_notices, intake_progress
 from app.errors import ConflictError, ValidationError
 from app.logging_setup import get_logger
 
@@ -267,3 +267,7 @@ def _run(todo: List[Tuple[str, PurePosixPath, int]]) -> None:
             done, failed = _job["done"], _job["failed"]
         log.info("carbon_copy_finished", done=done, failed=failed)
         intake_progress.clear_cache()
+        try:
+            intake_notices.notify_copy_finished(status())
+        except Exception as exc:
+            log.error("carbon_copy_notice_failed", error=str(exc))

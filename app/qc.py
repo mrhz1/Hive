@@ -1,5 +1,7 @@
 import csv
+import json
 import os
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -205,11 +207,22 @@ def check(cursor, today: Optional[date] = None) -> List[Issue]:
     return issues
 
 
-def _pdf(path: Path, summary: List[tuple], issues: List[Issue], total: int) -> None:
+SUMMARY_FILE = "summary.json"
+_PREFIX = re.compile(r"^[A-Za-z]+")
+
+
+def cohort_of(patient: str) -> str:
+    """The cohort of a patient code is its letter prefix (AVSD0167 -> AVSD)."""
+    match = _PREFIX.match(patient or "")
+    return match.group(0).upper() if match else "OTHER"
+
+
+def _pdf(path: Path, summary: List[tuple], issues: List[Issue], total: int,
+         title: str = "CHSS data quality report") -> None:
     import fitz
 
     doc = fitz.open()
-    lines = [("CHSS data quality report", 14), (f"Made {datetime.now():%Y-%m-%d %H:%M}", 9), ("", 9)]
+    lines = [(title, 14), (f"Made {datetime.now():%Y-%m-%d %H:%M}", 9), ("", 9)]
     lines += [(f"{s[0]:<10} {s[1]:<62} {s[2]:>8}", 9) for s in summary]
     lines += [("", 9), (f"Issues ({min(total, PDF_ISSUES)} of {total} shown; all are in issues.csv)", 11)]
     lines += [
@@ -226,8 +239,20 @@ def _pdf(path: Path, summary: List[tuple], issues: List[Issue], total: int) -> N
     doc.close()
 
 
+def _summary_rows(counts: Counter, muted: int, stale: int) -> List[tuple]:
+    rows = [
+        (rule.code, f"[{rule.severity}] {rule.text}", counts.get(code, 0))
+        for code, rule in RULES.items()
+    ]
+    rows += [("Suppressed", "Checked and accepted (see Suppressed)", muted)]
+    if stale:
+        rows += [("Suppressed", "Suppressions that no longer match an issue", stale)]
+    return rows
+
+
 def run(cursor, root: Optional[Path] = None, email: bool = True,
-        cap: int = reports.DEFAULT_CAP, today: Optional[date] = None) -> Path:
+        cap: int = reports.DEFAULT_CAP, today: Optional[date] = None,
+        run_by: str = "script") -> Path:
     found = check(cursor, today)
     suppressed_by = load_suppressions()
     folder = reports.new_folder("qc", root)
@@ -252,14 +277,8 @@ def run(cursor, root: Optional[Path] = None, email: bool = True,
         open_issues.append(issue)
         issues_out.add(issue.row())
 
-    summary = [
-        (rule.code, f"[{rule.severity}] {rule.text}", counts.get(code, 0))
-        for code, rule in RULES.items()
-    ]
-    summary += [("Suppressed", "Checked and accepted (see Suppressed)", sum(muted.values()))]
     stale = len(set(suppressed_by) - used)
-    if stale:
-        summary += [("Suppressed", "Suppressions that no longer match an issue", stale)]
+    summary = _summary_rows(counts, sum(muted.values()), stale)
 
     issues_out.close()
     suppressed_out.close()
@@ -268,7 +287,36 @@ def run(cursor, root: Optional[Path] = None, email: bool = True,
     )
     _pdf(folder / "qc-report.pdf", summary, open_issues, len(open_issues))
 
+    # One PDF per cohort (protocol 9.1.13), named by the code prefix.
+    by_cohort: Dict[str, List[Issue]] = defaultdict(list)
+    for issue in open_issues:
+        by_cohort[cohort_of(issue.patient)].append(issue)
+    cohorts = {}
+    for cohort, items in sorted(by_cohort.items()):
+        cohort_counts = Counter(i.rule for i in items)
+        _pdf(
+            folder / f"qc-report-{cohort}.pdf",
+            _summary_rows(cohort_counts, 0, 0)[: len(RULES)],
+            items,
+            len(items),
+            title=f"CHSS data quality report: cohort {cohort}",
+        )
+        cohorts[cohort] = {
+            "issues": len(items),
+            "high": sum(1 for i in items if RULES[i.rule].severity == HIGH),
+        }
+
     high = sum(n for code, n in counts.items() if RULES[code].severity == HIGH)
+    (folder / SUMMARY_FILE).write_text(json.dumps({
+        "made_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "run_by": run_by,
+        "issues": len(open_issues),
+        "high": high,
+        "suppressed": sum(muted.values()),
+        "stale_suppressions": stale,
+        "rules": {code: counts.get(code, 0) for code in RULES},
+        "cohorts": cohorts,
+    }, indent=2))
     if email:
         body = "\n".join(
             [f"The data quality check found {len(open_issues)} issue(s), {high} of them high.", ""]

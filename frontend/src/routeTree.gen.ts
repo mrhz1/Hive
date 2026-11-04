@@ -18,6 +18,7 @@ import { Route as ApplicationsApplicationIdRouteImport } from './routes/applicat
 import { Route as ConsentsIndexRouteImport } from './routes/consents/index'
 import { Route as DeIdentifierIndexRouteImport } from './routes/de-identifier/index'
 import { Route as FilesIndexRouteImport } from './routes/files/index'
+import { Route as InstitutionsIndexRouteImport } from './routes/institutions/index'
 import { Route as IntakeIndexRouteImport } from './routes/intake/index'
 import { Route as LogsIndexRouteImport } from './routes/logs/index'
 import { Route as LogsLogIdRouteImport } from './routes/logs/$logId'
@@ -27,6 +28,7 @@ import { Route as PatientsImportRouteImport } from './routes/patients/import'
 import { Route as PatientsNewRouteImport } from './routes/patients/new'
 import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
+import { Route as QcIndexRouteImport } from './routes/qc/index'
 import { Route as RedcapIndexRouteImport } from './routes/redcap/index'
 import { Route as RejectionsIndexRouteImport } from './routes/rejections/index'
 import { Route as RolesIndexRouteImport } from './routes/roles/index'
@@ -85,6 +87,11 @@ const FilesIndexRoute = FilesIndexRouteImport.update({
   path: '/files/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InstitutionsIndexRoute = InstitutionsIndexRouteImport.update({
+  id: '/institutions/',
+  path: '/institutions/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IntakeIndexRoute = IntakeIndexRouteImport.update({
   id: '/intake/',
   path: '/intake/',
@@ -128,6 +135,11 @@ const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
 const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
   id: '/projects/$projectId',
   path: '/projects/$projectId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QcIndexRoute = QcIndexRouteImport.update({
+  id: '/qc/',
+  path: '/qc/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RedcapIndexRoute = RedcapIndexRouteImport.update({
@@ -202,11 +214,13 @@ export interface FileRoutesByFullPath {
   '/consents/': typeof ConsentsIndexRoute
   '/de-identifier/': typeof DeIdentifierIndexRoute
   '/files/': typeof FilesIndexRoute
+  '/institutions/': typeof InstitutionsIndexRoute
   '/intake/': typeof IntakeIndexRoute
   '/logs/': typeof LogsIndexRoute
   '/metadata/': typeof MetadataIndexRoute
   '/patients/': typeof PatientsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
+  '/qc/': typeof QcIndexRoute
   '/redcap/': typeof RedcapIndexRoute
   '/rejections/': typeof RejectionsIndexRoute
   '/roles/': typeof RolesIndexRoute
@@ -233,11 +247,13 @@ export interface FileRoutesByTo {
   '/consents': typeof ConsentsIndexRoute
   '/de-identifier': typeof DeIdentifierIndexRoute
   '/files': typeof FilesIndexRoute
+  '/institutions': typeof InstitutionsIndexRoute
   '/intake': typeof IntakeIndexRoute
   '/logs': typeof LogsIndexRoute
   '/metadata': typeof MetadataIndexRoute
   '/patients': typeof PatientsIndexRoute
   '/projects': typeof ProjectsIndexRoute
+  '/qc': typeof QcIndexRoute
   '/redcap': typeof RedcapIndexRoute
   '/rejections': typeof RejectionsIndexRoute
   '/roles': typeof RolesIndexRoute
@@ -265,11 +281,13 @@ export interface FileRoutesById {
   '/consents/': typeof ConsentsIndexRoute
   '/de-identifier/': typeof DeIdentifierIndexRoute
   '/files/': typeof FilesIndexRoute
+  '/institutions/': typeof InstitutionsIndexRoute
   '/intake/': typeof IntakeIndexRoute
   '/logs/': typeof LogsIndexRoute
   '/metadata/': typeof MetadataIndexRoute
   '/patients/': typeof PatientsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
+  '/qc/': typeof QcIndexRoute
   '/redcap/': typeof RedcapIndexRoute
   '/rejections/': typeof RejectionsIndexRoute
   '/roles/': typeof RolesIndexRoute
@@ -298,11 +316,13 @@ export interface FileRouteTypes {
     | '/consents/'
     | '/de-identifier/'
     | '/files/'
+    | '/institutions/'
     | '/intake/'
     | '/logs/'
     | '/metadata/'
     | '/patients/'
     | '/projects/'
+    | '/qc/'
     | '/redcap/'
     | '/rejections/'
     | '/roles/'
@@ -329,11 +349,13 @@ export interface FileRouteTypes {
     | '/consents'
     | '/de-identifier'
     | '/files'
+    | '/institutions'
     | '/intake'
     | '/logs'
     | '/metadata'
     | '/patients'
     | '/projects'
+    | '/qc'
     | '/redcap'
     | '/rejections'
     | '/roles'
@@ -360,11 +382,13 @@ export interface FileRouteTypes {
     | '/consents/'
     | '/de-identifier/'
     | '/files/'
+    | '/institutions/'
     | '/intake/'
     | '/logs/'
     | '/metadata/'
     | '/patients/'
     | '/projects/'
+    | '/qc/'
     | '/redcap/'
     | '/rejections/'
     | '/roles/'
@@ -392,11 +416,13 @@ export interface RootRouteChildren {
   ConsentsIndexRoute: typeof ConsentsIndexRoute
   DeIdentifierIndexRoute: typeof DeIdentifierIndexRoute
   FilesIndexRoute: typeof FilesIndexRoute
+  InstitutionsIndexRoute: typeof InstitutionsIndexRoute
   IntakeIndexRoute: typeof IntakeIndexRoute
   LogsIndexRoute: typeof LogsIndexRoute
   MetadataIndexRoute: typeof MetadataIndexRoute
   PatientsIndexRoute: typeof PatientsIndexRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
+  QcIndexRoute: typeof QcIndexRoute
   RedcapIndexRoute: typeof RedcapIndexRoute
   RejectionsIndexRoute: typeof RejectionsIndexRoute
   RolesIndexRoute: typeof RolesIndexRoute
@@ -473,6 +499,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FilesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/institutions/': {
+      id: '/institutions/'
+      path: '/institutions'
+      fullPath: '/institutions/'
+      preLoaderRoute: typeof InstitutionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/intake/': {
       id: '/intake/'
       path: '/intake'
@@ -534,6 +567,13 @@ declare module '@tanstack/react-router' {
       path: '/projects/$projectId'
       fullPath: '/projects/$projectId'
       preLoaderRoute: typeof ProjectsProjectIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/qc/': {
+      id: '/qc/'
+      path: '/qc'
+      fullPath: '/qc/'
+      preLoaderRoute: typeof QcIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/redcap/': {
@@ -632,11 +672,13 @@ const rootRouteChildren: RootRouteChildren = {
   ConsentsIndexRoute: ConsentsIndexRoute,
   DeIdentifierIndexRoute: DeIdentifierIndexRoute,
   FilesIndexRoute: FilesIndexRoute,
+  InstitutionsIndexRoute: InstitutionsIndexRoute,
   IntakeIndexRoute: IntakeIndexRoute,
   LogsIndexRoute: LogsIndexRoute,
   MetadataIndexRoute: MetadataIndexRoute,
   PatientsIndexRoute: PatientsIndexRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
+  QcIndexRoute: QcIndexRoute,
   RedcapIndexRoute: RedcapIndexRoute,
   RejectionsIndexRoute: RejectionsIndexRoute,
   RolesIndexRoute: RolesIndexRoute,

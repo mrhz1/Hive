@@ -38,9 +38,14 @@ ADMIN_MARKER = "role:update"
 ADMIN_EXTRAS = (
     "abstraction:manage",
     "cai:provision",
+    "consent:purge",
     "files:grant_original",
+    "institution:manage",
+    "institution:view",
     "project:manage",
     "project:workspace",
+    "qc:run",
+    "qc:view",
 )
 
 

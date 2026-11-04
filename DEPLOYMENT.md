@@ -265,6 +265,34 @@ and run `scripts/migration_report.py` during and after the migration. Both
 write to `REPORTS_DIR`, which holds patient codes: keep it restricted like
 the data folders.
 
+### Quality control, sites and withdrawals
+
+Setup: `python scripts/migrate_columns.py --apply` (new `institutions`
+table), then `python scripts/upgrade_permissions.py --apply`. Admins get the
+new permissions; give the others on the Roles page:
+
+- `qc:view` / `qc:run`: the **Quality control** page (Zone 1). It lists the
+  runs in `REPORTS_DIR` (the nightly Job's and the ones started with *Run QC
+  now*), pages through the issues, downloads the full PDF, the workbook and
+  one PDF per cohort (the code's letter prefix), and adds or removes
+  suppressions in `QC_SUPPRESSIONS_FILE`. A suppression takes effect on the
+  next run. Every look at the issues is in the Access log.
+- `institution:view` / `institution:manage`: the **Sites** page
+  (Administration). One contact email per institution code (the patients'
+  `instcode`). When an application is rejected, that contact is emailed the
+  failed checks and the reason; the patient code is included only when the
+  site can resubmit (not for "not eligible", whose files are purged). Sites
+  without a contact get no email; the team email is unchanged.
+- `consent:purge`: **Delete data after a withdrawal** on the Consent matrix.
+  Only for a patient whose latest research consent is withdrawn or refused.
+  It shows what will go, then deletes the documents and applications, the
+  waiting problem files, the REDCap values, takes the patient out of every
+  live project (workspace rebuilt, releases waiting for review rejected) and
+  rebuilds abstraction folders without their documents. Releases already in
+  Zone 2 can't be recalled; they are listed so the researchers can be told.
+  The patient record and consent history stay. Audited as
+  `patient_withdrawal`.
+
 ### Researcher projects in Cloudera AI (Zone 2)
 
 Hive can give each project member their own Cloudera AI project holding only

@@ -6,6 +6,7 @@ import { Can, RequirePermission } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
 import { SelectField, TextField } from '@/components/ui/Field'
 import { Badge, Card, PageHeader } from '@/components/ui/Misc'
+import { WithdrawalCard } from '@/features/patients/WithdrawalCard'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useConsents, useRecordConsent } from '@/hooks/useResources'
 import { consentsApi } from '@/lib/api/resources'
@@ -102,6 +103,10 @@ function ConsentPage() {
       <Can permission="consent:update">
         <RecordCard />
         <ImportCard />
+      </Can>
+
+      <Can permission="consent:purge">
+        <WithdrawalCard />
       </Can>
 
       <Card className="space-y-4 p-5">

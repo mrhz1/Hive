@@ -12,6 +12,15 @@ import {
 } from '@/schemas/abstraction'
 import { accessLogListSchema, type AccessLogFilters } from '@/schemas/accessLog'
 import {
+  institutionSchema,
+  qcIssuesSchema,
+  qcOverviewSchema,
+  qcStateSchema,
+  qcSuppressionSchema,
+  withdrawalPreviewSchema,
+  withdrawalResultSchema,
+} from '@/schemas/qc'
+import {
   followupSummarySchema,
   redcapImportSchema,
   redcapStatusSchema,
@@ -641,6 +650,69 @@ export const consentsApi = {
     return request(consentImportSchema, () =>
       api.post(apply ? '/consents/import' : '/consents/import/preview', form)
     )
+  },
+  withdrawalPreview: (patientId: string) =>
+    request(withdrawalPreviewSchema, () =>
+      api.get(`/consents/withdrawal/${encodeURIComponent(patientId)}`)
+    ),
+  withdraw: (patientId: string, reason: string) =>
+    request(withdrawalResultSchema, () =>
+      api.post(`/consents/withdrawal/${encodeURIComponent(patientId)}`, { reason })
+    ),
+}
+
+export type QcIssueFilters = {
+  page: number
+  q: string
+  rule: string
+  cohort: string
+  suppressed: boolean
+}
+
+export const qcApi = {
+  overview: () => request(qcOverviewSchema, () => api.get('/qc')),
+  run: () => request(qcStateSchema, () => api.post('/qc/run')),
+  issues: (name: string, filters: QcIssueFilters) =>
+    request(qcIssuesSchema, () =>
+      api.get(`/qc/runs/${encodeURIComponent(name)}/issues`, {
+        params: { ...filters, size: 50 },
+      })
+    ),
+  report: async (name: string, kind: 'pdf' | 'xlsx', cohort?: string): Promise<Blob> => {
+    try {
+      const response = await api.get(`/qc/runs/${encodeURIComponent(name)}/report`, {
+        responseType: 'blob',
+        params: { kind, ...(cohort ? { cohort } : {}) },
+      })
+      return response.data as Blob
+    } catch (error) {
+      throw await blobError(error)
+    }
+  },
+  suppressions: () =>
+    request(z.array(qcSuppressionSchema), () => api.get('/qc/suppressions')),
+  suppress: (rule: string, record: string, reason: string) =>
+    request(qcSuppressionSchema, () =>
+      api.post('/qc/suppressions', { rule, record, reason })
+    ),
+  unsuppress: (rule: string, record: string) =>
+    request(qcSuppressionSchema, () =>
+      api.delete('/qc/suppressions', { params: { rule, record } })
+    ),
+}
+
+export const institutionsApi = {
+  list: () => request(z.array(institutionSchema), () => api.get('/institutions')),
+  save: (code: string, values: { name: string | null; contact_email: string | null }) =>
+    request(institutionSchema, () =>
+      api.put(`/institutions/${encodeURIComponent(code)}`, values)
+    ),
+  remove: async (code: string) => {
+    try {
+      await api.delete(`/institutions/${encodeURIComponent(code)}`)
+    } catch (error) {
+      throw toApiError(error)
+    }
   },
 }
 

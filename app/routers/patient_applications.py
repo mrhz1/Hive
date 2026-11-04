@@ -319,6 +319,14 @@ def reject_application(
         reason=reason,
         deleted=purge_all,
     )
+    background.add_task(
+        intake_notices.notify_site_rejected,
+        application_id=application_id,
+        patient_id=before.patient_id,
+        failed_checks=failed,
+        reason=reason,
+        deleted=purge_all,
+    )
     return after
 
 

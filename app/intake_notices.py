@@ -4,6 +4,9 @@ from collections import Counter
 from typing import Iterable, List, Optional
 
 from app import intake
+from app.crud import institutions as institutions_crud
+from app.crud import patient_applications as applications_crud
+from app.crud import patients as patients_crud
 from app.crud import users as users_crud
 from app.db import hive_cursor
 from app.logging_setup import get_logger
@@ -133,6 +136,44 @@ def notify_run_finished(report: dict) -> bool:
     return _send_to_team(subject, lines)
 
 
+def notify_copy_finished(job: dict) -> bool:
+    done = int(job.get("done") or 0)
+    failed = int(job.get("failed") or 0)
+    total = int(job.get("total") or 0)
+    errors = list(job.get("errors") or [])
+    if not (done or failed or errors):
+        return False
+
+    started_at = job.get("started_at")
+    finished_at = job.get("finished_at")
+    page = _page("/intake")
+
+    lines = ["A copy from Carbon into intake has finished.", ""]
+    if job.get("started_by"):
+        lines.append(f"Started by: {job['started_by']}")
+    if started_at and finished_at:
+        lines.append(f"Took: {max(0, round(finished_at - started_at))} seconds")
+    lines += [
+        f"Copied: {done} of {total}",
+        f"Failed: {failed}",
+        f"Skipped (already in intake or processed): {int(job.get('skipped') or 0)}",
+    ]
+    if errors:
+        lines += ["", "Problems:", *[f"  {e}" for e in errors[:LIST_LIMIT]]]
+    if done:
+        lines += ["", "The files are waiting on the Intake page for de-identification."]
+    if page:
+        lines.append(page)
+
+    if done and not (failed or errors):
+        subject = f"Carbon copy finished: {done} file(s) copied"
+    elif done:
+        subject = f"Carbon copy partly failed: {done} copied, {failed} failed"
+    else:
+        subject = f"Carbon copy failed: 0 of {total} copied"
+    return _send_to_team(subject, lines)
+
+
 def notify_application_rejected(
     application_id: str,
     patient_id: str,
@@ -188,3 +229,68 @@ def notify_file_rejected(
         + (f": {page}" if page else "."),
     ]
     return _send_to_team(f"Document rejected: {patient_id}", lines)
+
+
+def site_contact(cursor, patient_id: str) -> Optional[dict]:
+    """The saved contact of the patient's institution, if it has an email."""
+    patient = patients_crud.get_patient(cursor, patient_id)
+    code = institutions_crud.normalise(getattr(patient, "instcode", None))
+    if not code:
+        return None
+    site = institutions_crud.get(cursor, code)
+    return site if site and site.get("contact_email") else None
+
+
+def notify_site_rejected(
+    application_id: str,
+    patient_id: str,
+    failed_checks: List[str],
+    reason: str,
+    deleted: bool,
+) -> bool:
+    """Tell the submitting site why its submission was rejected (protocol
+    9.1.2 step 7). Reasons 1, 3 and 4 give the UBRS for the resubmission;
+    reason 2 (not eligible) purges everything, so the code is left out."""
+    try:
+        with hive_cursor() as cursor:
+            site = site_contact(cursor, patient_id)
+            if not site:
+                log.info("site_notice_no_contact", application_id=application_id)
+                return False
+            application = applications_crud.get_application_or_404(cursor, application_id)
+    except Exception as e:
+        log.error("site_notice_failed", application_id=application_id, error=str(e))
+        return False
+
+    received = str(application.created_at or "")[:10]
+    lines = [
+        f"A submission from {site.get('name') or site['code']}"
+        + (f" received on {received}" if received else "")
+        + " was rejected by the CHSS team.",
+        "",
+        "Checks that were not met:",
+        *[f"  - {ENROLLMENT_CHECKS.get(key, key)}" for key in failed_checks],
+        "",
+        f"Reason: {reason}",
+        "",
+    ]
+    if deleted:
+        lines.append(
+            "The patient is not eligible, so every file of this submission was "
+            "deleted. If you believe this is wrong, contact the CHSS team; "
+            "otherwise no action is needed."
+        )
+        subject = "CHSS submission rejected: patient not eligible"
+    else:
+        lines.append(
+            f"Please correct the submission and send it again under the patient "
+            f"code {patient_id}."
+        )
+        subject = f"CHSS submission rejected: {patient_id}"
+    try:
+        sent = send_email([site["contact_email"]], subject, "\n".join(["Hello,", "", *lines, "", "-- CHSS"]))
+    except Exception as e:
+        log.error("site_notice_failed", application_id=application_id, error=str(e))
+        return False
+    log.info("site_notice_sent", application_id=application_id, site=site["code"], sent=sent)
+    return sent

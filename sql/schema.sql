@@ -375,3 +375,16 @@ CREATE TABLE `redcap_log` (
   `imported_at` STRING
 ) STORED AS ORC
 TBLPROPERTIES ('transactional'='true');
+
+DROP TABLE IF EXISTS `institutions`;
+
+-- Site contacts: a rejected submission is emailed to the site's contact
+-- (protocol 9.1.2 step 7). `code` matches patient.instcode.
+CREATE TABLE `institutions` (
+  `code` STRING,
+  `name` STRING,
+  `contact_email` STRING,
+  `updated_by_id` STRING,
+  `updated_at` STRING
+) STORED AS ORC
+TBLPROPERTIES ('transactional'='true');

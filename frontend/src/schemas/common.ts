@@ -36,7 +36,11 @@ export const DEIDENTIFIER_ACTIONS = ['view', 'run', 'notify'] as const
 
 export const ZONE2_ACTIONS = ['prepare', 'review'] as const
 
-export const CONSENT_ACTIONS = ['view', 'update'] as const
+export const CONSENT_ACTIONS = ['view', 'update', 'purge'] as const
+
+export const QC_ACTIONS = ['view', 'run'] as const
+
+export const INSTITUTION_ACTIONS = ['view', 'manage'] as const
 
 export const REDCAP_ACTIONS = ['view', 'import', 'export'] as const
 
@@ -60,6 +64,8 @@ export type Permission =
   | `redcap:${(typeof REDCAP_ACTIONS)[number]}`
   | `security:${(typeof SECURITY_ACTIONS)[number]}`
   | `cai:${(typeof CAI_ACTIONS)[number]}`
+  | `qc:${(typeof QC_ACTIONS)[number]}`
+  | `institution:${(typeof INSTITUTION_ACTIONS)[number]}`
 
 export const ALL_PERMISSIONS: Permission[] = [
   ...MODELS.flatMap((model) =>
@@ -77,6 +83,8 @@ export const ALL_PERMISSIONS: Permission[] = [
   ...REDCAP_ACTIONS.map((action) => `redcap:${action}` as Permission),
   ...SECURITY_ACTIONS.map((action) => `security:${action}` as Permission),
   ...CAI_ACTIONS.map((action) => `cai:${action}` as Permission),
+  ...QC_ACTIONS.map((action) => `qc:${action}` as Permission),
+  ...INSTITUTION_ACTIONS.map((action) => `institution:${action}` as Permission),
 ]
 
 export type PermissionGroup = {
@@ -107,13 +115,30 @@ export const PERMISSION_SECTIONS: readonly PermissionSection[] = [
         rowLabel: 'de-identifier',
       },
       { models: ['redcap'], actions: REDCAP_ACTIONS, rowLabel: 'REDCap exchange' },
+      {
+        models: ['qc'],
+        actions: QC_ACTIONS,
+        rowLabel: 'quality control',
+        labels: { run: 'run + suppress' },
+      },
+      {
+        models: ['institution'],
+        actions: INSTITUTION_ACTIONS,
+        rowLabel: 'sites',
+        labels: { manage: 'edit contacts' },
+      },
     ],
   },
   {
     id: 'zone1x',
     description: 'Preparing data for one project: consent, cohorts, workspaces, folders.',
     groups: [
-      { models: ['consent'], actions: CONSENT_ACTIONS, rowLabel: 'consent matrix' },
+      {
+        models: ['consent'],
+        actions: CONSENT_ACTIONS,
+        rowLabel: 'consent matrix',
+        labels: { purge: 'delete data on withdrawal' },
+      },
       {
         models: ['project'],
         actions: [...ACTIONS, ...PROJECT_EXTRA_ACTIONS],

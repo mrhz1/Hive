@@ -1,5 +1,7 @@
 import {
+  Building2,
   ClipboardCheck,
+  ListChecks,
   ClipboardList,
   Eye,
   FileCheck2,
@@ -106,6 +108,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ArrowLeftRight,
         permission: 'redcap:view',
       },
+      {
+        label: 'Quality control',
+        to: '/qc',
+        icon: ListChecks,
+        permission: 'qc:view',
+      },
     ],
   },
   {
@@ -155,6 +163,12 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Users', to: '/users', icon: Users, permission: 'user:view' },
       { label: 'Roles', to: '/roles', icon: Shield, permission: 'role:view' },
+      {
+        label: 'Sites',
+        to: '/institutions',
+        icon: Building2,
+        permission: 'institution:view',
+      },
       {
         label: 'Security',
         to: '/security',

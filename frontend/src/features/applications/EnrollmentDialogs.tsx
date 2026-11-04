@@ -191,6 +191,11 @@ export function RejectApplicationDialog({
         rows={3}
         value={reason}
         placeholder="e.g. consent form not in the submission, or patient not eligible"
+        hint={
+          notEligible
+            ? "The site's contact is emailed this reason, without the patient code."
+            : "The site's contact is emailed this reason and the patient code, to resubmit."
+        }
         error={reasonError}
         onChange={(event) => setReason(event.target.value)}
       />

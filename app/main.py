@@ -20,6 +20,7 @@ from app.routers import (
     redcap as redcap_router,
     file_metadata,
     files,
+    institutions as institutions_router,
     intake as intake_router,
     me,
     original_grants as original_grants_router,
@@ -27,6 +28,7 @@ from app.routers import (
     patient_application_files,
     patients,
     projects as projects_router,
+    qc as qc_router,
     roles,
     security as security_router,
     users,
@@ -161,6 +163,8 @@ app.include_router(consents_router.router)
 app.include_router(redcap_router.router)
 app.include_router(zone2_router.router)
 app.include_router(cai_router.router)
+app.include_router(qc_router.router)
+app.include_router(institutions_router.router)
 app.include_router(abstraction_router.router)
 app.include_router(security_router.router)
 app.include_router(users.router)
