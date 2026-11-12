@@ -102,8 +102,18 @@ def frame_number(dataset, pixels=None) -> int:
     return 1
 
 
-def render_dicom_png(path: Path, frame_index: int = 0) -> Tuple[bytes, int]:
-    stat = Path(path).stat()
+def _dicom(path: str, **options):
+    """Read a DICOM from a local path or a stored path ('store:...')."""
+    import pydicom
+
+    from app.blobstore import any_path, open_file
+
+    with open_file(any_path(path), "rb") as handle:
+        return pydicom.dcmread(handle, **options)
+
+
+def render_dicom_png(path, frame_index: int = 0) -> Tuple[bytes, int]:
+    stat = path.stat()
     return _render_dicom_png(str(path), stat.st_mtime_ns, stat.st_size, frame_index)
 
 
@@ -113,7 +123,7 @@ def _render_dicom_png(path: str, _mtime_ns: int, _size: int, frame_index: int) -
     from PIL import Image
 
     try:
-        dataset = pydicom.dcmread(path, force=True)
+        dataset = _dicom(path, force=True)
     except Exception as exc:
         raise ValidationError(f"This file is not readable as DICOM: {exc}") from exc
 
@@ -161,8 +171,8 @@ def _frames_per_second(dataset) -> float:
     return DEFAULT_FPS
 
 
-def render_dicom_loop(path: Path) -> Dict[str, object]:
-    stat = Path(path).stat()
+def render_dicom_loop(path) -> Dict[str, object]:
+    stat = path.stat()
     return _render_dicom_loop(str(path), stat.st_mtime_ns, stat.st_size)
 
 
@@ -175,7 +185,7 @@ def _render_dicom_loop(path: str, _mtime_ns: int, _size: int) -> Dict[str, objec
     from PIL import Image
 
     try:
-        dataset = pydicom.dcmread(path, force=True)
+        dataset = _dicom(path, force=True)
     except Exception as exc:
         raise ValidationError(f"This file is not readable as DICOM: {exc}") from exc
     if not hasattr(dataset, "PixelData"):
@@ -211,11 +221,14 @@ def _table_rows(table) -> List[List[str]]:
     return rows
 
 
-def read_word_document(path: Path) -> Dict:
+def read_word_document(path) -> Dict:
     import docx
 
+    from app.blobstore import open_file
+
     try:
-        document = docx.Document(str(path))
+        with open_file(path, "rb") as handle:
+            document = docx.Document(handle)
     except Exception as exc:
         raise ValidationError(
             "This Word document could not be opened. Only the 2007+ .docx "

@@ -67,10 +67,12 @@ def _problem_files(code: str) -> Dict[str, int]:
 def _in_release(release, code: str) -> bool:
     """Whether the patient was in this release, from its archived id map.
     A release without a readable map counts as containing them."""
-    path = Path(release.archive_path or "") / "id_map.csv"
+    from app.blobstore import any_path, open_file
+
+    path = any_path(release.archive_path or "") / "id_map.csv"
     if not release.archive_path or not path.is_file():
         return True
-    with open(path, newline="", encoding="utf-8") as handle:
+    with open_file(path, "r", newline="", encoding="utf-8") as handle:
         return any((row.get("patient_id") or "").upper() == code for row in csv.DictReader(handle))
 
 

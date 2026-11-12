@@ -41,6 +41,14 @@ def _table(rows, headers):
         print(f"  {'  '.join(str(v).ljust(widths[i]) for i, v in enumerate(row))}")
 
 
+def _root_arg(value):
+    """--root: a folder in storage ('store:incoming_data/x') or a local folder."""
+    from app.blobstore import any_path
+
+    path = any_path(value)
+    return path if not isinstance(path, Path) else path.expanduser().resolve()
+
+
 def main(argv=None) -> int:
     configure_logging()
 
@@ -51,7 +59,7 @@ def main(argv=None) -> int:
     parser.add_argument("--settle-seconds", type=float, default=None)
     args = parser.parse_args(argv)
 
-    root = Path(args.root).expanduser().resolve() if args.root else intake.intake_root()
+    root = _root_arg(args.root) if args.root else intake.intake_root()
     overrides = intake.load_overrides()
 
     ready = []

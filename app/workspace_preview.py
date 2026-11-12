@@ -61,7 +61,9 @@ def root(project: Project) -> Path:
         raise ValidationError("The project has no workspace; build it first")
     if _expired(project):
         raise ValidationError("The workspace has expired; extend it or build it again")
-    folder = Path(project.workspace_path).resolve()
+    from app.blobstore import any_path
+
+    folder = any_path(project.workspace_path).resolve()
     if not folder.is_dir():
         raise ValidationError("The workspace folder is missing; build it again")
     return folder
@@ -147,7 +149,12 @@ def read_table(path: Path, sheet: Optional[str], page: int, size: int, query: st
         import openpyxl
 
         try:
-            book = openpyxl.load_workbook(path, read_only=True, data_only=True)
+            source = path
+            if not isinstance(path, Path):  # a stored file: workspace sheets are small
+                import io
+
+                source = io.BytesIO(path.read_bytes())
+            book = openpyxl.load_workbook(source, read_only=True, data_only=True)
         except Exception as exc:
             raise ValidationError(f"This Excel file could not be opened: {exc}") from exc
         try:

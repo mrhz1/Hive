@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
-from fastapi.responses import FileResponse
+from app.file_responses import file_response
 from pydantic import BaseModel, Field
 
 from app import qc_runs
@@ -131,7 +131,7 @@ def run_report(
     media = "application/pdf" if path.suffix == ".pdf" else (
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-    return FileResponse(path, media_type=media, filename=f"{name}-{path.name}",
+    return file_response(path, media_type=media, filename=f"{name}-{path.name}",
                         headers={"Cache-Control": "no-store"})
 
 

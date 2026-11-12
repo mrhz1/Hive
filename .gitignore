@@ -35,3 +35,6 @@ storage
 # graphify
 graphify-out/
 protocol-checklist/
+
+# Local bookkeeping (worker locks, progress, run reports): app/storage.state_root
+state/

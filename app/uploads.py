@@ -1,4 +1,3 @@
-import shutil
 import threading
 import uuid
 from dataclasses import dataclass
@@ -8,7 +7,8 @@ from typing import Dict, List, Optional
 
 import structlog
 
-from app import storage, upload_log
+from app import blobstore, storage, upload_log
+from app.blobstore import StoragePath
 from app.crud import file_metadata as metadata_crud
 from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as applications_crud
@@ -46,15 +46,15 @@ _lock = threading.Lock()
 class StagedFile:
     name: str
     content_type: Optional[str]
-    path: Path
+    path: StoragePath
     size: int
 
 
-def staging_root() -> Path:
-    return Path(storage.STORAGE_ROOT) / STAGING_DIR_NAME
+def staging_root() -> StoragePath:
+    return storage.STORAGE_ROOT / STAGING_DIR_NAME
 
 
-def staging_dir(job_id: str) -> Path:
+def staging_dir(job_id: str) -> StoragePath:
     return staging_root() / job_id
 
 
@@ -88,7 +88,7 @@ def discard_staging(job_id: str) -> None:
         _staged.pop(job_id, None)
 
     try:
-        shutil.rmtree(staging_dir(job_id), ignore_errors=True)
+        blobstore.rmtree(staging_dir(job_id))
     except Exception as e:
         log.warning("upload_staging_cleanup_failed", job_id=job_id, error=str(e))
 
@@ -335,7 +335,7 @@ def _process(
                 continue
 
             _set_file_status(job_id, staged.name, "stored", file_id=record.id)
-            _set_folder(job_id, str(Path(record.file_path).parent))
+            _set_folder(job_id, str(storage.resolve_stored_path(record.file_path).parent))
 
 
 def _finish(job_id: str, application_id: str, actor_id: Optional[str]) -> None:

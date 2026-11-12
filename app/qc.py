@@ -64,9 +64,10 @@ class Issue:
         return [rule.code, rule.severity, rule.text, self.record, self.patient, self.detail, *extra]
 
 
-def suppressions_file() -> Path:
-    value = Path(os.environ.get("QC_SUPPRESSIONS_FILE", "storage/qc/suppressions.csv"))
-    return value if value.is_absolute() else REPO_ROOT / value
+def suppressions_file():
+    from app.storage import _configured_dir
+
+    return _configured_dir("QC_SUPPRESSIONS_FILE", "storage/qc/suppressions.csv")
 
 
 def load_suppressions(path: Optional[Path] = None) -> Dict[Tuple[str, str], dict]:
@@ -74,7 +75,9 @@ def load_suppressions(path: Optional[Path] = None) -> Dict[Tuple[str, str], dict
     if not path.is_file():
         return {}
     out = {}
-    with open(path, newline="", encoding="utf-8-sig") as handle:
+    from app.blobstore import open_file
+
+    with open_file(path, "r", newline="", encoding="utf-8-sig") as handle:
         for line in csv.DictReader(handle):
             line = {(k or "").strip().lower(): (v or "").strip() for k, v in line.items()}
             if line.get("rule") and line.get("record") and line.get("reason"):
@@ -235,7 +238,12 @@ def _pdf(path: Path, summary: List[tuple], issues: List[Issue], total: int,
             page, y = doc.new_page(width=595, height=842), 40.0
         page.insert_text((36, y), text, fontsize=size, fontname="cour")
         y += size + 4
-    doc.save(str(path))
+    from app.blobstore import StoragePath
+
+    if isinstance(path, StoragePath):
+        path.write_bytes(doc.tobytes(garbage=3, deflate=True))
+    else:
+        doc.save(str(path))
     doc.close()
 
 

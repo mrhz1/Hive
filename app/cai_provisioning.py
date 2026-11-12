@@ -181,7 +181,7 @@ def list_staging_files(staging_id: Optional[str] = None, api=None) -> List[dict]
 UPLOAD_TIMEOUT_SECONDS = 600
 
 
-def _upload_one(api, project_id: str, remote_path: str, local_path: Path) -> None:
+def _upload_one(api, project_id: str, remote_path: str, local_path) -> None:
     """Upload one file to `remote_path` in the project.
 
     Cloudera AI's upload (POST /api/v2/projects/{id}/files) always stores the
@@ -228,7 +228,7 @@ def _upload_one(api, project_id: str, remote_path: str, local_path: Path) -> Non
         raise
 
 
-def upload_folder(local_dir: Path, remote_folder: str, staging_id: Optional[str] = None, api=None) -> dict:
+def upload_folder(local_dir, remote_folder: str, staging_id: Optional[str] = None, api=None) -> dict:
     """Copy every file under `local_dir` to `remote_folder/` in staging.
 
     Files already in staging at the same path are skipped, so this is safe to
@@ -236,10 +236,12 @@ def upload_folder(local_dir: Path, remote_folder: str, staging_id: Optional[str]
     if Cloudera AI put an upload anywhere else (e.g. the project root), the
     stray copy is deleted and this fails rather than leave a mess in staging.
     """
-    local_dir = Path(local_dir)
+    from app.blobstore import any_path
+
+    local_dir = any_path(local_dir)  # a stored release folder (Ozone) or a local one
     remote_folder = clean_keep_paths([remote_folder])[0]
     if not local_dir.is_dir():
-        raise ProvisioningError(f"The release folder is not on the API's disk: {local_dir}")
+        raise ProvisioningError(f"The release folder is not in storage: {local_dir}")
     wanted = {
         f"{remote_folder}/{p.relative_to(local_dir).as_posix()}": p
         for p in sorted(local_dir.rglob("*"))

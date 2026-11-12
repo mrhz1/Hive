@@ -27,7 +27,7 @@ REPEAT_AFTER_SECONDS = float(os.environ.get("DEID_NOTICE_REPEAT_SECONDS", "120")
 
 def notice_path(application_id: str) -> Path:
     segment = storage.safe_path_segment(application_id)
-    return storage.STORAGE_ROOT / NOTICE_SUBFOLDER / f"{segment}.json"
+    return storage.state_root() / NOTICE_SUBFOLDER / f"{segment}.json"
 
 
 def _fingerprint(records: list) -> str:

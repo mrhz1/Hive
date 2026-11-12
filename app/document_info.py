@@ -198,9 +198,14 @@ def date_from_name(name: str, code: str = "") -> str:
 def from_dicom(source: Union[Path, bytes]) -> DocumentInfo:
     import pydicom
 
+    from app.blobstore import open_file
+
     try:
-        handle = io.BytesIO(source) if isinstance(source, bytes) else str(source)
-        dataset = pydicom.dcmread(handle, stop_before_pixels=True, force=True)
+        if isinstance(source, bytes):
+            dataset = pydicom.dcmread(io.BytesIO(source), stop_before_pixels=True, force=True)
+        else:
+            with open_file(source, "rb") as handle:
+                dataset = pydicom.dcmread(handle, stop_before_pixels=True, force=True)
     except Exception:
         return DocumentInfo()
 

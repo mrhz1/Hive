@@ -10,7 +10,7 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from fastapi.responses import FileResponse
+from app.file_responses import file_response
 
 from app import document_info, upload_log
 from app.access_log import DOWNLOAD, READ, record_access
@@ -126,7 +126,7 @@ def read_deidentified_file(
 
     _record_library_access(cursor, record, actor, DOWNLOAD if download else READ)
 
-    return FileResponse(
+    return file_response(
         path,
         media_type=record.mime_type,
         filename=record.deidentified_file_name or path.name,

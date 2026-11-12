@@ -38,12 +38,16 @@ def _pixels(path: Path):
     return np.asarray(image.convert("RGB"), dtype=np.uint8), "RGB", 8
 
 
-def to_dicom(source: Path, target: Path, code: str = "") -> Path:
+def to_dicom(source, target, code: str = ""):
+    """source/target: local Path or StoragePath."""
     import pydicom
     from pydicom.dataset import FileDataset, FileMetaDataset
     from pydicom.uid import ExplicitVRLittleEndian, generate_uid
 
-    array, photometric, bits = _pixels(source)
+    from app.blobstore import StoragePath, local_file
+
+    with local_file(source) as real:
+        array, photometric, bits = _pixels(real)
     name = source.name
     modality = document_info.modality_from_name(name, code)
     day = document_info.date_from_name(name, code)
@@ -84,8 +88,15 @@ def to_dicom(source: Path, target: Path, code: str = "") -> Path:
     dataset.PixelRepresentation = 0
     dataset.PixelData = array.tobytes()
 
-    target.parent.mkdir(parents=True, exist_ok=True)
-    pydicom.dcmwrite(str(target), dataset, enforce_file_format=True)
+    if isinstance(target, StoragePath):
+        import io
+
+        buffer = io.BytesIO()
+        pydicom.dcmwrite(buffer, dataset, enforce_file_format=True)
+        target.write_bytes(buffer.getvalue())
+    else:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        pydicom.dcmwrite(str(target), dataset, enforce_file_format=True)
     log.info(
         "image_converted_to_dicom",
         modality=dataset.Modality,

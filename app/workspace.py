@@ -1,11 +1,11 @@
 import csv
 import os
-import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from app import abstraction, cleaning, consent, profiling, redcap, storage, zone2
+from app import abstraction, blobstore, cleaning, consent, profiling, redcap, storage, zone2
+from app.blobstore import any_path
 from app.crud import patients as patients_crud
 from app.crud import projects as crud
 from app.errors import ValidationError
@@ -76,7 +76,7 @@ def _iso_date(value) -> str:
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     extra = sorted({k for row in rows for k in row} - set(columns))
-    with open(path, "w", newline="", encoding="utf-8") as handle:
+    with blobstore.open_file(path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=columns + extra, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
@@ -121,7 +121,7 @@ def _tables(cursor, project: Project, target: Path, include_documents: bool) -> 
                         raise ValidationError(f"'{name}' is missing from disk")
                     folder = target / "documents" / storage.safe_path_segment(patient.id)
                     folder.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(source, folder / name)
+                    blobstore.copy(source, folder / name)
                     relative = f"documents/{folder.name}/{name}"
                 tables["documents"].append(
                     {
@@ -194,7 +194,10 @@ def build(cursor, project: Project, include_documents: bool = True) -> Project:
         )
         abstraction._make_read_only(staging)
         abstraction.remove_dir(target)
-        staging.rename(target)
+        if isinstance(staging, blobstore.StoragePath):
+            blobstore.get_store().move(staging.key, target.key)  # renames the whole folder
+        else:
+            staging.rename(target)
     except Exception:
         abstraction.remove_dir(staging)
         raise
@@ -231,7 +234,7 @@ def extend(cursor, project: Project) -> Project:
 
 def delete(cursor, project: Project) -> Project:
     _require(project)
-    abstraction.remove_dir(Path(project.workspace_path))
+    abstraction.remove_dir(any_path(project.workspace_path))
     log.info("project_workspace_deleted", project_id=project.id)
     return crud.update_project_fields(
         cursor, project.id, {"workspace_path": None, "workspace_expires_at": None}

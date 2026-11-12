@@ -1,11 +1,12 @@
 import csv
 import io
-import shutil
+import tempfile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from app import consent, data_dictionary, redcap, storage
+from app import blobstore, consent, data_dictionary, redcap, storage
+from app.blobstore import any_path
 from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as applications_crud
 from app.crud import patients as patients_crud
@@ -114,7 +115,7 @@ def age_at(birth, on) -> str:
 
 def _write_csv(path: Path, columns, rows) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", newline="", encoding="utf-8") as handle:
+    with blobstore.open_file(path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(columns), extrasaction="ignore")
         writer.writeheader()
         for row in rows:
@@ -124,7 +125,7 @@ def _write_csv(path: Path, columns, rows) -> None:
 def _read_csv(path: Path) -> List[dict]:
     if not path.is_file():
         return []
-    with open(path, newline="", encoding="utf-8") as handle:
+    with blobstore.open_file(path, "r", newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
 
 
@@ -307,16 +308,21 @@ def _copy_document(
     if not source.is_file():
         raise DocumentError("the de-identified copy is missing from disk")
     suffix = source.suffix.lower()
+    if suffix not in (".pdf", ".doc", ".docx", ".dcm", ".dicom"):
+        raise DocumentError(f"'{suffix}' documents cannot be released")
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / f"{document_id}{suffix}"
-    if suffix == ".pdf":
-        _clean_pdf(source, target, code, project_id)
-    elif suffix in (".doc", ".docx"):
-        _clean_docx(source, target, code, project_id)
-    elif suffix in (".dcm", ".dicom"):
-        _clean_dicom(source, target, code, project_id, days, uid_salt)
-    else:
-        raise DocumentError(f"'{suffix}' documents cannot be released")
+    # The PDF/Word/DICOM libraries need real files: clean a temporary copy,
+    # then put the result in the release folder (Ozone or the project disk).
+    with blobstore.local_file(source) as local_source, tempfile.TemporaryDirectory(prefix="hive-zone2-") as work:
+        local_target = Path(work) / target.name
+        if suffix == ".pdf":
+            _clean_pdf(local_source, local_target, code, project_id)
+        elif suffix in (".doc", ".docx"):
+            _clean_docx(local_source, local_target, code, project_id)
+        else:
+            _clean_dicom(local_source, local_target, code, project_id, days, uid_salt)
+        blobstore.move(local_target, target)
     return target.name
 
 
@@ -384,10 +390,10 @@ def prepare(cursor, project_id: str, actor_id: str) -> ProjectRelease:
 
     try:
         counts = _build(cursor, project, cohort, release_id, archive, safe)
-        shutil.copytree(safe, inbox)
+        blobstore.copy_tree(safe, inbox)
     except Exception as exc:
-        shutil.rmtree(archive, ignore_errors=True)
-        shutil.rmtree(inbox, ignore_errors=True)
+        blobstore.rmtree(archive)
+        blobstore.rmtree(inbox)
         if isinstance(exc, DocumentError):
             raise ValidationError(f"The project cannot be prepared: {exc}") from exc
         raise
@@ -570,7 +576,7 @@ def _build(cursor, project, cohort, release_id, archive: Path, safe: Path) -> di
 
 
 def summary(release: ProjectRelease) -> Dict[str, dict]:
-    folder = Path(release.release_path or release.inbox_path or "")
+    folder = any_path(release.release_path or release.inbox_path or "")
     columns, samples = {}, {}
     for name in ("patients", "applications", "documents"):
         path = folder / f"{name}.csv"
@@ -582,10 +588,10 @@ def summary(release: ProjectRelease) -> Dict[str, dict]:
     return {"columns": columns, "samples": samples}
 
 
-def _remove_from_inbox(folder: Path) -> None:
+def _remove_from_inbox(folder) -> None:
     if not str(folder) or not folder.resolve().is_relative_to(storage.zone2_inbox_root().resolve()):
         return
-    shutil.rmtree(folder, ignore_errors=True)
+    blobstore.rmtree(folder)
     try:
         folder.parent.rmdir()
     except OSError:
@@ -602,7 +608,7 @@ def _pending(cursor, release_id: str) -> ProjectRelease:
 def _refuse_leaded_since_prepared(cursor, release: ProjectRelease) -> None:
     if not release.files_included:
         return
-    path = Path(release.archive_path or "") / "document_map.csv"
+    path = any_path(release.archive_path or "") / "document_map.csv"
     released = {row["file_id"] for row in _read_csv(path)} if path.is_file() else set()
     leaded = [
         record.deidentified_file_name or record.original_file_name
@@ -620,14 +626,14 @@ def _refuse_leaded_since_prepared(cursor, release: ProjectRelease) -> None:
 def approve(cursor, release_id: str, actor_id: str) -> ProjectRelease:
     release = _pending(cursor, release_id)
     project = projects_crud.get_project_or_404(cursor, release.project_id)
-    inbox = Path(release.inbox_path or "")
-    if not inbox.is_dir():
+    inbox = any_path(release.inbox_path or "")
+    if not str(release.inbox_path or "") or not inbox.is_dir():
         raise ValidationError("The safe copy is no longer in the inbox; prepare the project again")
     _refuse_leaded_since_prepared(cursor, release)
 
     target = storage.zone2_root() / project.short_code / release.id
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(inbox, target)
+    blobstore.copy_tree(inbox, target)
     _remove_from_inbox(inbox)
 
     release = projects_crud.decide_release(cursor, release.id, "approved", actor_id, release_path=str(target))
@@ -641,7 +647,7 @@ def reject(cursor, release_id: str, actor_id: str, reason: Optional[str]) -> Pro
     if not text:
         raise ValidationError("A reason is required to reject a release")
     release = _pending(cursor, release_id)
-    _remove_from_inbox(Path(release.inbox_path or ""))
+    _remove_from_inbox(any_path(release.inbox_path or ""))
 
     release = projects_crud.decide_release(cursor, release.id, "rejected", actor_id, reason=text)
     projects_crud.set_project_status(cursor, release.project_id, "rejected", text)
@@ -649,8 +655,8 @@ def reject(cursor, release_id: str, actor_id: str, reason: Optional[str]) -> Pro
     return release
 
 
-def _release_folder(release: ProjectRelease) -> Path:
-    return Path(release.release_path or release.inbox_path or "")
+def _release_folder(release: ProjectRelease):
+    return any_path(release.release_path or release.inbox_path or "")
 
 
 def release_documents(release: ProjectRelease) -> List[dict]:
@@ -664,7 +670,10 @@ def release_file(release: ProjectRelease, document_id: str) -> Path:
     folder = _release_folder(release).resolve()
     for row in release_documents(release):
         if row.get("project_document_id") == document_id:
-            path = (folder / row["file"]).resolve()
+            try:
+                path = (folder / row["file"]).resolve()
+            except Exception:  # '..' or an absolute path in the CSV
+                break
             if path.is_relative_to(folder) and path.is_file():
                 return path
             break
@@ -672,7 +681,7 @@ def release_file(release: ProjectRelease, document_id: str) -> Path:
 
 
 def _source_file_id(release: ProjectRelease, document_id: str) -> str:
-    path = Path(release.archive_path or "") / "document_map.csv"
+    path = any_path(release.archive_path or "") / "document_map.csv"
     for row in _read_csv(path) if path.is_file() else []:
         if row.get("project_document_id") == document_id:
             return row["file_id"]

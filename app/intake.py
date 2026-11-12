@@ -2,14 +2,14 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
-from app import storage
+from app import blobstore, storage
+from app.blobstore import StoragePath, any_path
 from app.crud import patient_application_files as files_crud
 from app.crud import patient_applications as applications_crud
 from app.crud import patients as patients_crud
@@ -72,7 +72,14 @@ def attention_root():
 
 
 def state_dir():
-    return data_root() / ".intake"
+    """Overrides, run reports and worker bookkeeping: local, not documents."""
+    return storage.state_root() / "intake"
+
+
+def sidecar(path, suffix):
+    """The '.json' / '.reason.json' file kept next to a document."""
+    path = any_path(path)
+    return path.with_name(path.name + suffix)
 
 
 def settle_seconds():
@@ -106,8 +113,8 @@ def _is_under(path, root):
     if not path:
         return False
     try:
-        return Path(path).resolve().is_relative_to(root.resolve())
-    except OSError:
+        return any_path(path).is_relative_to(root)
+    except (OSError, ValueError):
         return False
 
 
@@ -120,8 +127,8 @@ def is_pending_data_file(path):
 
 
 def move_to_submitted(path):
-    path = Path(path)
-    target = submitted_data_root() / path.resolve().relative_to(data_root().resolve())
+    path = any_path(path)
+    target = submitted_data_root() / path.relative_to(data_root()).as_posix()
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
         for n in range(2, 10_000):
@@ -129,7 +136,7 @@ def move_to_submitted(path):
             if not other.exists():
                 target = other
                 break
-    shutil.move(str(path), str(target))
+    blobstore.move(path, target)
     storage.prune_empty_dirs(path.parent)
     return target
 
@@ -152,7 +159,7 @@ class Detection:
 
 @dataclass
 class Candidate:
-    path: Path
+    path: StoragePath
     relative_path: str
     extension: str
     size: int
@@ -230,16 +237,12 @@ def is_settled(path, limit=None):
 
 def walk(root=None):
     root = root or intake_root()
-    if not root.is_dir():
-        return
-    for dirpath, dirnames, filenames in os.walk(root):
+    for folder, dirnames, filenames in blobstore.walk(root):
         dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
         for name in sorted(filenames):
             if name.startswith("."):
                 continue
-            path = Path(dirpath) / name
-            if path.is_file():
-                yield path
+            yield folder / name
 
 
 def is_extra_file(name):
@@ -248,9 +251,7 @@ def is_extra_file(name):
 
 def count_files(root):
     count = 0
-    if not root.is_dir():
-        return 0
-    for _, dirnames, filenames in os.walk(root):
+    for _, dirnames, filenames in blobstore.walk(root):
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
         for name in filenames:
             if not name.startswith(".") and not is_extra_file(name):
@@ -282,15 +283,19 @@ def remove_override(relative_path):
 
 
 def write_json(path, data):
+    text = json.dumps(data, indent=1, default=str)
+    if isinstance(path, StoragePath):
+        path.write_text(text)  # the store writes whole files atomically
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=1, default=str))
+    tmp.write_text(text)
     tmp.replace(path)
 
 
 def read_json(path):
     try:
-        return json.loads(Path(path).read_text())
+        return json.loads(any_path(path).read_text())
     except (OSError, ValueError):
         return {}
 
@@ -335,7 +340,7 @@ def classify(path, root=None, overrides=None):
 
 def checksum(path, chunk_size=1024 * 1024):
     sha = hashlib.sha256()
-    with open(path, "rb") as f:
+    with blobstore.open_file(path, "rb") as f:
         while True:
             chunk = f.read(chunk_size)
             if not chunk:
@@ -365,19 +370,16 @@ def move_file(source, target):
             if not other.exists():
                 target = other
                 break
-    os.replace(source, target)
-    if Path(source).resolve().is_relative_to(intake_root().resolve()):
-        storage.prune_empty_dirs(Path(source).parent)
+    blobstore.move(source, target)
+    if isinstance(source, StoragePath) and source.is_relative_to(intake_root()):
+        storage.prune_empty_dirs(source.parent)
     return target
 
 
 def prune_empty_folders(root=None):
-    root = (root or intake_root()).resolve()
-    if not root.is_dir():
-        return 0
+    root = root or intake_root()
     removed = set()
-    for dirpath, dirnames, filenames in os.walk(root, topdown=False):
-        folder = Path(dirpath)
+    for folder, dirnames, filenames in blobstore.walk(root, topdown=False):
         if folder == root or any(part.startswith(".") for part in folder.relative_to(root).parts):
             continue
         if filenames:
@@ -398,7 +400,7 @@ def prune_empty_folders(root=None):
 def set_aside(candidate, root, reason, detail=None):
     target = move_file(candidate.path, root / candidate.relative_path)
     write_json(
-        Path(str(target) + REASON_SUFFIX),
+        sidecar(target, REASON_SUFFIX),
         {
             "reason": reason,
             "detail": detail,
@@ -428,7 +430,7 @@ def list_problem_files(kind):
     for path in walk(root):
         if is_extra_file(path.name):
             continue
-        info = read_json(str(path) + REASON_SUFFIX)
+        info = read_json(sidecar(path, REASON_SUFFIX))
         try:
             size = path.stat().st_size
         except OSError:
@@ -437,7 +439,7 @@ def list_problem_files(kind):
             {
                 "path": path.relative_to(root).as_posix(),
                 "file_name": path.name,
-                "full_path": str(path),
+                "full_path": path.describe() if isinstance(path, StoragePath) else str(path),
                 "reason": info.get("reason"),
                 "detail": info.get("detail"),
                 "path_code": info.get("path_code"),
@@ -476,8 +478,11 @@ def codes_in(files):
 
 
 def safe_child(root, relative):
-    path = (root / relative).resolve()
-    if not path.is_relative_to(root.resolve()) or path == root.resolve():
+    try:
+        path = root / relative
+    except Exception as exc:  # '..' or an absolute path
+        raise ValueError("Invalid file path") from exc
+    if not path.is_relative_to(root) or path == root:
         raise ValueError("Invalid file path")
     return path
 
@@ -487,10 +492,10 @@ def send_back(kind, relative):
     path = safe_child(root, relative)
     if not path.is_file():
         raise ValueError(f"'{relative}' is not in the {kind} list")
-    info = read_json(str(path) + REASON_SUFFIX)
+    info = read_json(sidecar(path, REASON_SUFFIX))
     original_relative = info.get("relative_path") or relative
     target = move_file(path, intake_root() / original_relative)
-    Path(str(path) + REASON_SUFFIX).unlink(missing_ok=True)
+    sidecar(path, REASON_SUFFIX).unlink(missing_ok=True)
     storage.prune_empty_dirs(path.parent)
     log.info("intake_file_sent_back", file_ref=ref(original_relative), source=kind)
     return target.relative_to(intake_root()).as_posix()
@@ -525,8 +530,8 @@ def remove_orphaned_sidecars():
         for extra in root.rglob(f"*{suffix}"):
             if extra.name.endswith(REASON_SUFFIX) and suffix != REASON_SUFFIX:
                 continue
-            document = Path(str(extra)[: -len(suffix)])
-            if document.exists() or Path(str(document) + PARTIAL_SUFFIX).exists():
+            document = extra.with_name(extra.name[: -len(suffix)])
+            if document.exists() or sidecar(document, PARTIAL_SUFFIX).exists():
                 continue
             if not is_settled(extra):
                 continue
@@ -548,7 +553,7 @@ def prune_data_folders():
 def resolve_conflict(relative, code):
     root = attention_root()
     path = safe_child(root, relative)
-    info = read_json(str(path) + REASON_SUFFIX)
+    info = read_json(sidecar(path, REASON_SUFFIX))
     if info.get("reason") != CODE_CONFLICT:
         raise ValueError(f"'{relative}' is not in conflict")
 
@@ -604,7 +609,7 @@ def available_codes(cursor):
         if not free:
             continue
         relative_dirs = [
-            read_json(str(p) + SIDECAR_SUFFIX).get("relative_path")
+            read_json(sidecar(p, SIDECAR_SUFFIX)).get("relative_path")
             or p.relative_to(root / code).as_posix()
             for p in free
         ]
@@ -629,7 +634,7 @@ def files_for_code(cursor, code):
     for path in files:
         if str(path) in attached:
             continue
-        info = read_json(str(path) + SIDECAR_SUFFIX)
+        info = read_json(sidecar(path, SIDECAR_SUFFIX))
         try:
             size = path.stat().st_size
         except OSError:
@@ -672,9 +677,9 @@ def attach_to_application(cursor, application, file_ids):
             raise AttachError(f"'{path.name}' belongs to {Path(file_id).parts[0]}, not {code}")
         if not path.is_file():
             raise AttachError(f"'{path.name}' is missing from disk")
-        info = read_json(str(path) + SIDECAR_SUFFIX)
+        info = read_json(sidecar(path, SIDECAR_SUFFIX))
         original = info.get("original_path")
-        if not original or not Path(original).is_file():
+        if not original or not storage.resolve_stored_path(original).is_file():
             raise AttachError(f"The original of '{path.name}' is missing from disk")
         chosen.append((path, info))
 
@@ -685,7 +690,7 @@ def attach_to_application(cursor, application, file_ids):
 
     attached = []
     for path, info in chosen:
-        original = Path(info["original_path"])
+        original = storage.resolve_stored_path(info["original_path"])
         extension = path.suffix.lstrip(".").lower()
         new_file = files_crud.create_file(
             cursor,

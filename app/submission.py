@@ -53,7 +53,7 @@ def _file_data_record(record, patient_id: str, staged: Path, original) -> bool:
         log.info("submission_filed", file_id=record.id, patient_id=patient_id, deidentified=str(staged), moved=False)
         return True
 
-    sidecar = Path(str(staged) + intake.SIDECAR_SUFFIX)
+    sidecar = intake.sidecar(staged, intake.SIDECAR_SUFFIX)
     try:
         final = intake.move_to_submitted(staged)
     except Exception as e:
@@ -72,7 +72,7 @@ def _file_data_record(record, patient_id: str, staged: Path, original) -> bool:
         if kept is not None:
             info["original_path"] = str(kept)
         info["submitted"] = True
-        intake.write_json(Path(str(final) + intake.SIDECAR_SUFFIX), info)
+        intake.write_json(intake.sidecar(final, intake.SIDECAR_SUFFIX), info)
         sidecar.unlink(missing_ok=True)
     prune_empty_dirs(staged.parent)
 

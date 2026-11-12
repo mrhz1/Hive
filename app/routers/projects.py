@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
-from fastapi.responses import FileResponse
+from app.file_responses import file_response
 
 from app import cai_projects, cohort, consent, workspace, workspace_preview, zone2
 from app.access_log import READ, record_access
@@ -356,7 +356,7 @@ def workspace_content(
     if workspace_preview.kind_of(file) not in (workspace_preview.PDF, workspace_preview.IMAGE):
         raise ValidationError("This file type has no preview")
     _looked(actor, project_id, path)
-    return FileResponse(
+    return file_response(
         file,
         media_type=guess_mime_type(file.name, None),
         content_disposition_type="inline",

@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
-from fastapi.responses import FileResponse
+from app.file_responses import file_response
 
 from app import cai_projects, intake_notices, zone2
 from app.access_log import READ, record_access
@@ -133,7 +133,7 @@ def release_document_content(
     release = projects_crud.get_release_or_404(cursor, release_id)
     path = zone2.release_file(release, document_id)
     _opened(actor, release_id, document_id)
-    return FileResponse(
+    return file_response(
         path,
         media_type=guess_mime_type(path.name, None),
         filename=path.name,

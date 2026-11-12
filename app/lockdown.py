@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from app.errors import AppError, ValidationError
 from app.logging_setup import get_logger
 from app.mailer import send_email
-from app.storage import _configured_dir
+from app.storage import _local_dir
 
 log = get_logger(__name__)
 
@@ -38,7 +38,9 @@ class LockdownState(BaseModel):
 
 
 def _state_file() -> Path:
-    return _configured_dir("SECURITY_STATE_DIR", "storage/security") / "lockdown.json"
+    # One small flag read on every request and shared by all app instances
+    # through the project disk; it holds no patient data.
+    return _local_dir("SECURITY_STATE_DIR", "state/security") / "lockdown.json"
 
 
 def _now() -> str:

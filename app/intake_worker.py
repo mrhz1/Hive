@@ -9,7 +9,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from app import deid, document_info, image_convert, intake
+from app import blobstore, deid, document_info, image_convert, intake
+from app.blobstore import StoragePath, any_path
 from app.audit import record_audit
 from app.crud import patients as patients_crud
 from app.db import authoritative, hive_cursor
@@ -418,7 +419,7 @@ def patient_creator():
 
 @dataclass
 class Task:
-    path: Path
+    path: StoragePath
     relative_path: str
     code: str
     extension: str
@@ -459,8 +460,7 @@ def link_input(task, input_dir, n):
     if image_convert.is_image(task.extension):
         return deid.pipeline_input(task.path, input_dir, task.code, f"f{n:05d}")
     link = input_dir / f"f{n:05d}.{(task.extension or 'bin').lower()}"
-    link.symlink_to(task.path.resolve())
-    return link
+    return blobstore.stage_input(task.path, link)
 
 
 def run_pipeline(tasks, ocr_batch, workdir, watch=None):
@@ -568,7 +568,7 @@ def finish(task, result):
     info = document_info.find(task.name, task.extension, task.code, task.path)
     stem = deid.unique_output_stem(target_dir, task.code, result.suffix, info)
     final = target_dir / f"{stem}{result.suffix}"
-    partial = Path(str(final) + intake.PARTIAL_SUFFIX)
+    partial = intake.sidecar(final, intake.PARTIAL_SUFFIX)
     original = intake.original_root() / task.relative_path
 
     pending = pending_file(task)
@@ -595,7 +595,7 @@ def finish(task, result):
             by="intake",
         )
         embed_metadata(result, file_type, facts)
-        os.replace(result, partial)
+        blobstore.move(result, partial)
         original = intake.move_file(task.path, original)
         complete(pending, original)
     except Exception as e:
@@ -606,11 +606,11 @@ def finish(task, result):
 
 def complete(pending, original=None):
     info = intake.read_json(pending)
-    partial = Path(info["partial"])
-    final = Path(info["final"])
-    original = Path(original or info["original"])
+    partial = any_path(info["partial"])
+    final = any_path(info["final"])
+    original = any_path(original or info["original"])
     intake.write_json(
-        Path(str(final) + intake.SIDECAR_SUFFIX),
+        intake.sidecar(final, intake.SIDECAR_SUFFIX),
         {
             "original_path": str(original),
             "original_name": info.get("original_name"),
@@ -621,7 +621,7 @@ def complete(pending, original=None):
             "created_at": time.time(),
         },
     )
-    os.replace(partial, final)
+    blobstore.move(partial, final)
     pending.unlink(missing_ok=True)
 
 
@@ -638,9 +638,9 @@ def clean_up(shards=None, of=1):
             continue
         if shard_of(info["relative_path"], of) not in shards:
             continue
-        partial = Path(info["partial"])
+        partial = any_path(info["partial"])
         incoming = intake.intake_root() / info["relative_path"]
-        original = Path(info["original"])
+        original = any_path(info["original"])
         try:
             if incoming.is_file():
                 partial.unlink(missing_ok=True)
@@ -690,7 +690,7 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
         name = worker_name()
         service = deid.PipelineService(
             env=page_pool_env(pool),
-            work_dir=intake.state_dir() / "work" / f"{name}-pool",
+            work_dir=blobstore.work_root() / f"{name}-pool",
             log_path=intake.state_dir() / "work" / f"{name}-pool.log",
         )
         in_flight = pool * 2
@@ -716,7 +716,7 @@ def process(limit=None, pool_size=None, shards=None, of=1, root=None):
         status_thread.start()
 
     def worker(n):
-        workdir = intake.state_dir() / "work" / f"{worker_name()}-t{n}"
+        workdir = blobstore.work_root() / f"{worker_name()}-t{n}"
         while True:
             item = work.get()
             try:

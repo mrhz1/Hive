@@ -41,10 +41,10 @@ def _collect(pairs) -> Dict[str, str]:
     return out
 
 
-def _extract_pdf(path: Path) -> Dict[str, str]:
+def _extract_pdf(path) -> Dict[str, str]:
     from pypdf import PdfReader
 
-    reader = PdfReader(str(path))
+    reader = PdfReader(path)
     info = reader.metadata or {}
 
     fields = [("page_count", len(reader.pages)), ("encrypted", reader.is_encrypted)]
@@ -52,10 +52,10 @@ def _extract_pdf(path: Path) -> Dict[str, str]:
     return _collect(fields)
 
 
-def _extract_dicom(path: Path) -> Dict[str, str]:
+def _extract_dicom(path) -> Dict[str, str]:
     import pydicom
 
-    dataset = pydicom.dcmread(str(path), stop_before_pixels=True, force=True)
+    dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
 
     def pairs():
         for element in dataset:
@@ -67,10 +67,10 @@ def _extract_dicom(path: Path) -> Dict[str, str]:
     return _collect(pairs())
 
 
-def _extract_docx(path: Path) -> Dict[str, str]:
+def _extract_docx(path) -> Dict[str, str]:
     import docx
 
-    document = docx.Document(str(path))
+    document = docx.Document(path)
     core = document.core_properties
 
     return _collect(
@@ -97,10 +97,10 @@ def _decoded(value: Any) -> Any:
     return value
 
 
-def _extract_legacy_doc(path: Path) -> Dict[str, str]:
+def _extract_legacy_doc(path) -> Dict[str, str]:
     import olefile
 
-    ole = olefile.OleFileIO(str(path))
+    ole = olefile.OleFileIO(path)
     try:
         properties = ole.get_metadata()
         names = list(properties.SUMMARY_ATTRIBS) + list(properties.DOCSUM_ATTRIBS)
@@ -111,16 +111,16 @@ def _extract_legacy_doc(path: Path) -> Dict[str, str]:
         ole.close()
 
 
-def _extract_word(path: Path) -> Dict[str, str]:
-    with open(path, "rb") as handle:
-        head = handle.read(len(OLE_MAGIC))
+def _extract_word(path) -> Dict[str, str]:
+    head = path.read(len(OLE_MAGIC))
+    path.seek(0)
 
     if head == OLE_MAGIC:
         return _extract_legacy_doc(path)
     return _extract_docx(path)
 
 
-def _extract_image(path: Path) -> Dict[str, str]:
+def _extract_image(path) -> Dict[str, str]:
     from PIL import ExifTags, Image
 
     with Image.open(path) as image:
@@ -150,13 +150,18 @@ _EXTRACTORS = {
 }
 
 
-def extract(path: Path, extension: str) -> Tuple[str, Dict[str, str], str, Optional[str]]:
+def extract(path, extension: str) -> Tuple[str, Dict[str, str], str, Optional[str]]:
+    """path: a local Path or a StoragePath. The readers get an open, seekable
+    file, so a DICOM header is read without fetching the whole image."""
+    from app.blobstore import open_file
+
     file_type = file_type_for(extension)
     if file_type is None:
         return (extension or "unknown").lower(), {}, "unsupported", None
 
     try:
-        metadata = _EXTRACTORS[file_type](path)
+        with open_file(path, "rb") as handle:
+            metadata = _EXTRACTORS[file_type](handle)
     except ImportError as exc:
         log.error("file_metadata_parser_missing", file_type=file_type, error=str(exc))
         return file_type, {}, "failed", f"Parser not installed: {exc}"

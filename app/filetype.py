@@ -83,7 +83,9 @@ def resolve_extension(name: str, head: bytes) -> str:
 
 def read_header(path) -> bytes:
     try:
-        with open(path, "rb") as handle:
+        from app.blobstore import open_file
+
+        with open_file(path, "rb") as handle:
             return handle.read(SNIFF_BYTES)
     except OSError as exc:
         log.warning("file_head_unreadable", file_ref=ref(path), error=str(exc))

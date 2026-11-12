@@ -73,6 +73,14 @@ def _parse_shards(text, of):
     return sorted(shards)
 
 
+def _root_arg(value):
+    """--root: a folder in storage ('store:incoming_data/x') or a local folder."""
+    from app.blobstore import any_path
+
+    path = any_path(value)
+    return path if not isinstance(path, Path) else path.expanduser().resolve()
+
+
 def main(argv=None) -> int:
     configure_logging()
 
@@ -86,7 +94,7 @@ def main(argv=None) -> int:
     parser.add_argument("--root", default=None, help="The incoming folder (default: $INTAKE_DIR).")
     args = parser.parse_args(_cli_argv() if argv is None else argv)
 
-    root = Path(args.root).expanduser().resolve() if args.root else intake.intake_root()
+    root = _root_arg(args.root) if args.root else intake.intake_root()
     shards = _parse_shards(args.shards, args.of)
 
     _say(intake_run.run(limit=args.limit, pool_size=args.workers, shards=shards, of=args.of, root=root))

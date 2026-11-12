@@ -126,13 +126,16 @@ def embed_metadata(
         log.warning("embed_metadata_missing_file", file_ref=ref(path))
         return None
 
+    from app.blobstore import editable_file
+
     try:
-        if file_type == "pdf":
-            _embed_pdf(path, values)
-        elif file_type == "dicom":
-            _embed_dicom(path, values)
-        elif file_type == "word":
-            _embed_word(path, values)
+        with editable_file(path) as local:
+            if file_type == "pdf":
+                _embed_pdf(local, values)
+            elif file_type == "dicom":
+                _embed_dicom(local, values)
+            elif file_type == "word":
+                _embed_word(local, values)
     except Exception as e:
         log.error(
             "embed_metadata_failed",

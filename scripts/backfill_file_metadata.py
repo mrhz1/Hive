@@ -45,7 +45,12 @@ def main():
 
         counts = {"ok": 0, "failed": 0, "unsupported": 0, "write_error": 0}
         for number, record in enumerate(missing, 1):
-            path = Path(record.file_path or "")
+            from app.storage import resolve_stored_path
+
+            try:
+                path = resolve_stored_path(record.file_path or "")
+            except Exception:
+                path = Path(record.file_path or "")
             file_type, metadata, status, error = extract(path, record.file_extension or "")
             line = f"[{number}/{len(missing)}] {record.id} {file_type} {status} {len(metadata)} fields"
             if error:

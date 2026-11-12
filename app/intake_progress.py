@@ -146,16 +146,21 @@ def page_count(path):
         return cached[1]
     pages = None
     suffix = path.suffix.lower()
-    try:
-        if suffix == ".pdf":
-            import fitz
+    from app.blobstore import open_file
 
-            with fitz.open(key) as document:
-                pages = document.page_count
+    try:
+        # Read only what is needed (the PDF's page tree, the DICOM header), so a
+        # file on Ozone is not downloaded in full just to count its pages.
+        if suffix == ".pdf":
+            from pypdf import PdfReader
+
+            with open_file(path, "rb") as handle:
+                pages = len(PdfReader(handle).pages)
         elif suffix in (".dcm", ".dicom"):
             import pydicom
 
-            dataset = pydicom.dcmread(key, stop_before_pixels=True)
+            with open_file(path, "rb") as handle:
+                dataset = pydicom.dcmread(handle, stop_before_pixels=True)
             pages = int(getattr(dataset, "NumberOfFrames", 1) or 1)
     except Exception:
         pages = None

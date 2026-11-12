@@ -4,15 +4,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple
 
+from app import blobstore
 from app.safe_cells import row as safe_row
-from app.storage import REPO_ROOT
 
 DEFAULT_CAP = 50_000
 
 
-def reports_root() -> Path:
-    value = Path(os.environ.get("REPORTS_DIR", "storage/reports"))
-    return value if value.is_absolute() else REPO_ROOT / value
+def reports_root():
+    """QC and migration reports list patients, so they live in storage (Ozone)."""
+    from app.storage import _configured_dir
+
+    return _configured_dir("REPORTS_DIR", "storage/reports")
 
 
 def new_folder(kind: str, root: Path = None) -> Path:
@@ -27,7 +29,7 @@ class ListOut:
         self.name, self.title, self.columns, self.cap = name, title, list(columns), cap
         self.count = 0
         self.kept: List[list] = []
-        self._handle = open(folder / f"{name}.csv", "w", newline="", encoding="utf-8")
+        self._handle = blobstore.open_file(folder / f"{name}.csv", "w", newline="", encoding="utf-8")
         self._writer = csv.writer(self._handle)
         self._writer.writerow(self.columns)
 
@@ -86,5 +88,6 @@ def write_workbook(
         for row in out.kept:
             tab.append(row)
 
-    book.save(str(path))
+    with blobstore.open_file(path, "wb") as handle:
+        book.save(handle)
     return path

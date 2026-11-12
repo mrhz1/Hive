@@ -5,6 +5,7 @@ import os
 import signal
 import shutil
 import subprocess
+import tempfile
 import sys
 import threading
 import uuid
@@ -245,18 +246,30 @@ def pipeline_input(source: Path, folder: Path, code: str = "", name: str = "") -
 
 
 def _run_pipeline(
-    source: Path,
-    output_dir: Path,
+    source,
+    output_dir,
     file_id: str = "",
     env: Optional[Dict[str, str]] = None,
     code: str = "",
-) -> Path:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    converted = output_dir / ".converted"
-    try:
-        return _run_one(pipeline_input(source, converted, code), output_dir, file_id, env)
-    finally:
-        shutil.rmtree(converted, ignore_errors=True)
+):
+    """Run the OCR pipeline on one file. source/output_dir may be stored paths:
+    the pipeline (a separate program) works in a private /tmp folder and its
+    outputs (document, report, ...) are then moved into output_dir."""
+    from app import blobstore
+
+    with tempfile.TemporaryDirectory(prefix="hive-deid-") as work:
+        work = Path(work)
+        local_out = work / "out"
+        local_out.mkdir()
+        with blobstore.local_file(source) as local_source:
+            produced = _run_one(
+                pipeline_input(local_source, work / "converted", code), local_out, file_id, env
+            )
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for item in sorted(local_out.iterdir()):
+            if item.is_file():
+                blobstore.move(item, output_dir / item.name)
+        return output_dir / produced.name
 
 
 def _run_one(

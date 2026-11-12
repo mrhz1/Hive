@@ -120,7 +120,9 @@ def issues(name: str, page: int = 1, size: int = 50, query: str = "",
     start = (page - 1) * size
     rows, total, columns = [], 0, []
     if path.is_file():
-        with open(path, newline="", encoding="utf-8") as handle:
+        from app.blobstore import open_file
+
+        with open_file(path, "r", newline="", encoding="utf-8") as handle:
             reader = csv.reader(handle)
             columns = next(reader, [])
             for row in reader:
@@ -167,15 +169,16 @@ def suppressions() -> List[dict]:
 
 
 def _write(rows: List[dict]) -> None:
+    from app.blobstore import open_file
+
     path = qc.suppressions_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(".tmp")
-    with open(temp, "w", newline="", encoding="utf-8") as handle:
+    # the store writes whole files atomically, so no temporary file is needed
+    with open_file(path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=SUPPRESSION_COLUMNS)
         writer.writeheader()
         for row in rows:
             writer.writerow({k: row.get(k, "") for k in SUPPRESSION_COLUMNS})
-    temp.replace(path)
 
 
 def suppress(rule_code: str, record: str, reason: str, by: str) -> dict:

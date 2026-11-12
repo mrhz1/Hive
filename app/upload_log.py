@@ -23,7 +23,9 @@ def file_fingerprint(path) -> Optional[dict]:
     try:
         digest = hashlib.sha256()
         size = 0
-        with open(path, "rb") as handle:
+        from app.blobstore import open_file
+
+        with open_file(path, "rb") as handle:
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                 digest.update(chunk)
                 size += len(chunk)

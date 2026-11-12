@@ -22,6 +22,39 @@ The dashboard is a React build, so it's served by a small Flask app
 - Another machine with internet access to download the models (~570MB),
   since CML blocks GitHub and Hugging Face
 
+## 0b. Storage: Ozone
+
+All files (originals, intake, de-identified output, submitted, abstraction,
+project archives, Zone 2 inbox and releases, QC reports) are kept under
+`STORAGE_ROOT`. On Cloudera that is Ozone:
+
+| Setting | UAT | PRD |
+|---|---|---|
+| `STORAGE_ROOT` | `ofs://ons1/uat/chss/storage` | `ofs://ons1/prd/chss/storage` |
+
+Moving from UAT to PRD is only this setting (and a restart): the database
+stores paths relative to the root (`store:patient_files/...`).
+
+- The app reaches Ozone in-process through `pyarrow` with the Kerberos
+  ticket of whoever runs it (Cloudera renews it about every 13 minutes).
+  Install it in the API's environment: `pip install pyarrow==25.0.1`. The OCR
+  virtualenvs don't need it: the OCR program works on temporary copies.
+- `CLASSPATH` is found automatically with `hdfs classpath --glob`.
+- Files being processed (OCR input/output, Word conversion, Zone 2 cleaning)
+  are copied to `/tmp` (memory on Cloudera) and deleted right after. Nothing
+  is kept on the project disk except small bookkeeping in `HIVE_STATE_DIR`
+  (`state/`: worker locks and heartbeats, progress, run reports, lockdown).
+- People cannot browse Ozone. Abstraction folders and project workspaces are
+  in Ozone by default; set `ABSTRACTION_DIR` / `PROJECTS_DIR` to an absolute
+  project-disk path to keep them where people can open them.
+- Deletes on Ozone are permanent (no trash), as withdrawal and purge need.
+- Check the connection: `STORAGE_ROOT=ofs://ons1/uat/chss/storage python scripts/storage_check.py`
+  (works only in `_hive_check/`, refuses PRD). `scripts/ozone_probe.py`
+  checks the lower layers (CLI, Kerberos, pyarrow) if that fails.
+- Laptop: leave `STORAGE_ROOT` unset (local `storage/`), or set
+  `STORAGE_ROOT=ofs-sim:///tmp/hive-store` to run the Ozone code on a local
+  folder.
+
 ## 1. Create the project
 
 Create a project from Git (Project → New Project → Git). Then set the
@@ -387,9 +420,51 @@ REDCap project, e.g. `avsd_clinical`). It also exports the follow-up list
 - `scripts/redcap_sync.py` is the nightly Job. Without `REDCAP_URL` it reads
   `REDCAP_DROP_DIR` (default `storage/redcap_drop`: `consent.csv` plus one
   folder per dataset with `dictionary.csv`, `records.csv`, `log.csv`). With
-  `REDCAP_URL`, `REDCAP_DATASETS=avsd_clinical,...` and
-  `REDCAP_TOKEN_<DATASET>` it calls the REDCap API and runs the same imports.
+  `REDCAP_URL` set it calls the REDCap API instead (settings below), pulls
+  only log entries newer than the last import, and exits with code 1 if any
+  part failed so the Job shows as failed.
+- One REDCap project can hold several cohorts (the CHD Registry Clinical
+  Dataset has all of them, told apart by `en_cohort`). That needs nothing
+  special: workspaces and Zone 2 releases only take the rows of the
+  project's own patients.
+- Repeating instruments: each instrument instance is its own row
+  (`event` = instrument name, `instance` = number), so instance 1 of `echo`
+  and instance 1 of `ecg` are never merged.
+- `scripts/redcap_check.py` is a read-only connection and rights check. It
+  prints counts and OK/FAIL only, never record values or tokens. Run it on
+  Cloudera (or an org machine) after setting the variables.
 - `Sample/redcap/` holds synthetic test files in these formats.
+
+REDCap API settings (Cloudera project environment variables; keep tokens
+out of git and out of `.env.local` on personal machines):
+
+| Variable | Meaning |
+|---|---|
+| `REDCAP_URL` | `https://redcapexternal.research.sickkids.ca/api/` |
+| `REDCAP_DATASETS` | comma list of clinical datasets, e.g. `chd_clinical` |
+| `REDCAP_TOKEN_<DATASET>` | API token of that project. The API user needs API Export, Data Export rights on every instrument (**Full Data Set** keeps identifiers and dates; De-identified drops them) and **Logging** |
+| `REDCAP_PATIENT_FIELD_<DATASET>` | field holding the patient (UBRS) code, if it is not the record ID |
+| `REDCAP_TOKEN_CONSENT` | consent & contact matrix project (9.5.1). Its record export (labels) must have the consent import columns: patient code, consent type, status, version, consent date |
+| `REDCAP_TOKEN_FOLLOWUP` | periodic follow-up survey project (9.5.3); record ID = patient code, surveys on |
+| `REDCAP_FOLLOWUP_INSTRUMENT` | survey instrument whose personal link fills `survey_link` in the follow-up list |
+| `REDCAP_TIMEOUT_SECONDS` | default 120 |
+| `REDCAP_ALLOW_WRITE` | `true` shows "Send to REDCap" for new patient codes. Off by default; the token also needs **API Import/Update** |
+
+Users work with REDCap on the **REDCap** page (needs `redcap:view`):
+
+- **Explore REDCap and import** (shown once `REDCAP_URL` is set): pick the
+  project, then the data dictionary, records (choose instruments) or log;
+  **Preview** shows counts, notes and the first rows REDCap sent, and
+  **Import** saves exactly that. If REDCap changed in between,
+  the app asks for a new preview. Importing needs `redcap:import`. Importing
+  only some instruments replaces only those fields' values.
+- **De-identified export rights**: REDCap then leaves out identifier, date and
+  free-text fields. The instrument list shows how many per instrument, and the
+  preview names the fields that were left out. `REDCAP_PATIENT_FIELD_<DATASET>`
+  must not point to an identifier field in that case (use the record ID).
+- **New patient codes**: Preview the list, then download the CSV or, with
+  `REDCAP_ALLOW_WRITE=true`, tick the confirmation and send it. Needs
+  `redcap:export`.
 
 Create the tables with `python scripts/migrate_columns.py --apply`.
 

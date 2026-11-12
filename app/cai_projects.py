@@ -146,7 +146,9 @@ def push_release(short_code: str, release_id: str, release_path: Optional[str]) 
     """Copy an approved release from the API's disk to staging at <code>/<release>/."""
     if not release_path:
         raise cai.ProvisioningError(f"Release {release_id} has no folder on the API's disk")
-    return cai.upload_folder(Path(release_path), release_folder(short_code, release_id))
+    from app.blobstore import any_path
+
+    return cai.upload_folder(any_path(release_path), release_folder(short_code, release_id))
 
 
 def push_after_approval(short_code: str, release_id: str, release_path: Optional[str]) -> None:

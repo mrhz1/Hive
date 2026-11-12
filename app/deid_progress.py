@@ -5,11 +5,12 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from app.logging_setup import get_logger
-from app.storage import STORAGE_ROOT, safe_path_segment
+from app.storage import safe_path_segment, state_root
 
 log = get_logger(__name__)
 
-PROGRESS_DIR = STORAGE_ROOT / ".progress"
+# Written by the OCR program every few seconds: local bookkeeping, not documents.
+PROGRESS_DIR = state_root() / "deid-progress"
 
 STALE_AFTER_SECONDS = float(os.environ.get("DEID_PROGRESS_STALE_SECONDS", "300"))
 

@@ -16,11 +16,21 @@ class StampError(Exception):
     pass
 
 
-def stamp_pdf(path: Path, patient_id: str) -> int:
-    import fitz
+def stamp_pdf(path, patient_id: str) -> int:
+    """path: local Path or StoragePath; a stored PDF is stamped in a temporary
+    copy and uploaded back."""
+    from app.blobstore import editable_file
 
     if not patient_id:
         raise StampError("No patient id to stamp")
+    with editable_file(path) as local:
+        pages = _stamp_local(local, patient_id)
+    log.info("pdf_stamped", file_ref=ref(path), patient_id=patient_id, pages=pages)
+    return pages
+
+
+def _stamp_local(path: Path, patient_id: str) -> int:
+    import fitz
 
     try:
         document = fitz.open(str(path))
@@ -48,5 +58,4 @@ def stamp_pdf(path: Path, patient_id: str) -> int:
         document.close()
 
     os.replace(temporary, path)
-    log.info("pdf_stamped", file_ref=ref(path), patient_id=patient_id, pages=pages)
     return pages

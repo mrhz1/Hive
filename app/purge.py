@@ -90,7 +90,7 @@ def _purge_problem_files(code: str) -> Dict[str, int]:
             except ValueError:
                 continue
             path.unlink(missing_ok=True)
-            Path(str(path) + intake.REASON_SUFFIX).unlink(missing_ok=True)
+            intake.sidecar(path, intake.REASON_SUFFIX).unlink(missing_ok=True)
             prune_empty_dirs(path.parent)
             count += 1
         removed[kind] = count

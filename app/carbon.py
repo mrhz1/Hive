@@ -179,20 +179,13 @@ def plan(paths: List[str]) -> Dict:
     return {"todo": todo, "files": len(todo), "bytes": size, "skipped": skipped}
 
 
-def copy_file(smb, remote: str, target: Path) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_name(f".{target.name}{intake.PARTIAL_SUFFIX}")
-    try:
-        with smb.open_file(remote, mode="rb") as src, open(partial, "wb") as dst:
-            while True:
-                block = src.read(CHUNK)
-                if not block:
-                    break
-                dst.write(block)
-        os.replace(partial, target)
-    finally:
-        if partial.exists():
-            partial.unlink()
+def copy_file(smb, remote: str, target) -> None:
+    """Stream one file from the share straight into storage (Ozone or a local
+    folder); nothing is written to the project disk on the way."""
+    from app import blobstore
+
+    with smb.open_file(remote, mode="rb") as src:
+        blobstore.write_stream(target, src)
 
 
 _job_lock = threading.Lock()
@@ -245,7 +238,7 @@ def _run(todo: List[Tuple[str, PurePosixPath, int]]) -> None:
             with _job_lock:
                 _job["current"] = str(relative)
             try:
-                copy_file(smb, remote, root / Path(*relative.parts))
+                copy_file(smb, remote, root / relative.as_posix())
                 with _job_lock:
                     _job["done"] += 1
                     _job["bytes_done"] += size

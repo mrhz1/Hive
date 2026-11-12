@@ -1,12 +1,13 @@
 import mimetypes
 import os
 import re
-import shutil
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from app import blobstore
+from app.blobstore import StoragePath
 from app.errors import ValidationError
 from app.ids import new_document_serial
 from app.logging_setup import get_logger, ref
@@ -16,9 +17,63 @@ log = get_logger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-def _configured_dir(name: str, default: str) -> Path:
+
+def _legacy_key(stored: str) -> Optional[str]:
+    """Paths written before Ozone ('/home/cdsw/storage/patient_files/x.pdf' or
+    'storage/patient_files/x.pdf'): the part after the 'storage' folder."""
+    parts = Path(stored).parts
+    if "storage" in parts:
+        index = len(parts) - 1 - list(reversed(parts)).index("storage")
+        rest = parts[index + 1:]
+        return "/".join(rest) if rest else None
+    return None
+
+
+def _configured_dir(name: str, default: str) -> StoragePath:
+    """A folder inside STORAGE_ROOT (local folder or Ozone). Settings keep their
+    old form: "storage/patient_files" means the folder "patient_files" in the root.
+    An absolute path is accepted only if it lies inside a local STORAGE_ROOT."""
+    raw = (os.environ.get(name) or default).strip().replace("\\", "/")
+    if Path(raw).is_absolute():
+        store = blobstore.get_store()
+        base = getattr(store, "base", None)
+        if isinstance(base, Path) and Path(raw).resolve().is_relative_to(base):
+            return StoragePath(Path(raw).resolve().relative_to(base).as_posix())
+        # An old absolute setting such as /home/cdsw/storage/patient_files:
+        # use the part after "storage" as the folder inside STORAGE_ROOT.
+        legacy = _legacy_key(raw)
+        if legacy:
+            log.warning("storage_setting_rehomed", setting=name, folder=legacy, root=store.root)
+            return StoragePath(legacy)
+        raise ValidationError(f"{name}={raw} must be a folder inside STORAGE_ROOT ({store.root})")
+    raw = raw.removeprefix("./")
+    if raw == "storage" or raw.startswith("storage/"):
+        raw = raw[len("storage"):].lstrip("/")
+    return StoragePath(raw)
+
+
+def _local_dir(name: str, default: str) -> Path:
+    """Small bookkeeping folders that stay on the project disk (worker locks,
+    heartbeats, progress): no documents, rewritten every few seconds."""
     value = Path(os.environ.get(name, default))
     return value if value.is_absolute() else REPO_ROOT / value
+
+
+def _store_or_local_dir(name: str, default: str):
+    """Folders people open directly (abstraction folders, project workspaces)
+    are in the store by default; an absolute path outside a local STORAGE_ROOT
+    puts them on the project disk instead (Ozone cannot be browsed by people)."""
+    raw = (os.environ.get(name) or "").strip()
+    if raw and Path(raw).is_absolute():
+        store = blobstore.get_store()
+        base = getattr(store, "base", None)
+        if not (isinstance(base, Path) and Path(raw).resolve().is_relative_to(base)):
+            return Path(raw)
+    return _configured_dir(name, default)
+
+
+def state_root() -> Path:
+    return _local_dir("HIVE_STATE_DIR", "state")
 
 
 STORAGE_ROOT = _configured_dir("FILE_STORAGE_DIR", "storage/patient_files")
@@ -37,49 +92,49 @@ DEID_DIRS = {
 }
 
 
-def deid_dir_for(extension: str) -> Path:
+def deid_dir_for(extension: str) -> StoragePath:
     return DEID_DIRS.get((extension or "").lower().lstrip("."), DEID_PDF_DIR)
 
 
-def intake_root() -> Path:
+def intake_root() -> StoragePath:
     return _configured_dir("INTAKE_DIR", "storage/incoming_data")
 
 
-def submitted_root() -> Path:
+def submitted_root() -> StoragePath:
     return _configured_dir("SUBMITTED_DIR", "storage/submitted")
 
 
-def data_root() -> Path:
+def data_root() -> StoragePath:
     return _configured_dir("DATA_DIR", "storage/pending_data")
 
 
-def submitted_data_root() -> Path:
+def submitted_data_root() -> StoragePath:
     return _configured_dir("SUBMITTED_DATA_DIR", "storage/submitted_data")
 
 
-def projects_root() -> Path:
-    return _configured_dir("PROJECTS_DIR", "storage/projects")
+def projects_root():
+    return _store_or_local_dir("PROJECTS_DIR", "storage/projects")
 
 
-def zone2_inbox_root() -> Path:
+def zone2_inbox_root() -> StoragePath:
     return _configured_dir("ZONE2_INBOX_DIR", "storage/zone2_inbox")
 
 
-def zone2_root() -> Path:
+def zone2_root() -> StoragePath:
     return _configured_dir("ZONE2_DIR", "storage/zone2")
 
 
-def abstraction_root() -> Path:
-    return _configured_dir("ABSTRACTION_DIR", "storage/abstraction")
+def abstraction_root():
+    return _store_or_local_dir("ABSTRACTION_DIR", "storage/abstraction")
 
 
-def submitted_dir_for(patient_id: str) -> Path:
+def submitted_dir_for(patient_id: str) -> StoragePath:
     return submitted_root() / safe_path_segment(patient_id)
 
 
 def _allowed_roots():
     return [
-        root.resolve()
+        root
         for root in (
             STORAGE_ROOT,
             DEID_PDF_DIR,
@@ -89,15 +144,19 @@ def _allowed_roots():
             submitted_root(),
             data_root(),
             submitted_data_root(),
+            abstraction_root(),
+            projects_root(),
+            zone2_inbox_root(),
+            zone2_root(),
         )
     ]
 
 
-def move_into(source: Path, directory: Path) -> Path:
+def move_into(source: StoragePath, directory: StoragePath) -> StoragePath:
     directory.mkdir(parents=True, exist_ok=True)
     target = directory / source.name
 
-    if target.exists() and target.resolve() != source.resolve():
+    if target.exists() and target != source:
         for n in range(2, 10_000):
             candidate = directory / f"{source.stem}_{n}{source.suffix}"
             if not candidate.exists():
@@ -106,8 +165,8 @@ def move_into(source: Path, directory: Path) -> Path:
         else:
             raise ValidationError(f"No free name for {source.name} in {directory}")
 
-    if target.resolve() != source.resolve():
-        shutil.move(str(source), str(target))
+    if target != source:
+        blobstore.move(source, target)
         log.info("file_moved", source_ref=ref(source), file_ref=ref(target))
     return target
 
@@ -144,7 +203,7 @@ def guess_mime_type(name: str, provided: str | None) -> str:
     return guessed or "application/octet-stream"
 
 
-def application_dir(application_id: str) -> Path:
+def application_dir(application_id: str) -> StoragePath:
     return STORAGE_ROOT / application_id
 
 
@@ -153,7 +212,7 @@ RECEIVED_FORMAT = "%Y%m%dT%H%M%SZ"
 _SERIAL_ATTEMPTS = 5
 
 
-def patient_dir(patient_id: str, received_at: datetime) -> Path:
+def patient_dir(patient_id: str, received_at: datetime) -> StoragePath:
     return STORAGE_ROOT / f"{patient_id}-{received_at.strftime(RECEIVED_FORMAT)}"
 
 
@@ -188,7 +247,7 @@ def document_name(
 
 def _patient_document_target(
     patient_id: str, extension: str, received_at: datetime
-) -> Path:
+) -> StoragePath:
     directory = patient_dir(patient_id, received_at)
     directory.mkdir(parents=True, exist_ok=True)
 
@@ -210,7 +269,7 @@ def write_patient_document(
     extension: str,
     data: bytes,
     received_at: datetime,
-) -> Path:
+) -> StoragePath:
     target = _patient_document_target(patient_id, extension, received_at)
 
     target.write_bytes(data)
@@ -227,12 +286,13 @@ def write_patient_document(
 def move_patient_document(
     patient_id: str,
     extension: str,
-    source: Path,
+    source,
     received_at: datetime,
-) -> Path:
+) -> StoragePath:
+    """source: a stored file, or a local temporary file (it is uploaded and removed)."""
     target = _patient_document_target(patient_id, extension, received_at)
 
-    shutil.move(str(source), str(target))
+    blobstore.move(source, target)
     log.info(
         "file_moved",
         patient_id=patient_id,
@@ -245,7 +305,7 @@ def move_patient_document(
 
 def _application_document_target(
     application_id: str, file_id: str, sanitized_name: str
-) -> Path:
+) -> StoragePath:
     directory = application_dir(application_id)
     directory.mkdir(parents=True, exist_ok=True)
     return directory / f"{file_id}_{sanitized_name}"
@@ -253,7 +313,7 @@ def _application_document_target(
 
 def write_file(
     application_id: str, file_id: str, sanitized_name: str, data: bytes
-) -> Path:
+) -> StoragePath:
     target = _application_document_target(application_id, file_id, sanitized_name)
 
     target.write_bytes(data)
@@ -268,11 +328,11 @@ def write_file(
 
 
 def move_file(
-    application_id: str, file_id: str, sanitized_name: str, source: Path
-) -> Path:
+    application_id: str, file_id: str, sanitized_name: str, source
+) -> StoragePath:
     target = _application_document_target(application_id, file_id, sanitized_name)
 
-    shutil.move(str(source), str(target))
+    blobstore.move(source, target)
     log.info(
         "file_moved",
         application_id=application_id,
@@ -283,21 +343,31 @@ def move_file(
     return target
 
 
-def resolve_stored_path(stored: str) -> Path:
+def stored_name(path: StoragePath) -> str:
+    """What goes in the database and in sidecar files for a stored file."""
+    return str(path)
+
+
+def resolve_stored_path(stored) -> StoragePath:
+    """A path from the database or a sidecar -> StoragePath inside an allowed folder."""
+    if isinstance(stored, StoragePath):
+        candidate = stored
+    elif isinstance(stored, str) and stored.startswith(blobstore.STORED_PREFIX):
+        candidate = blobstore.stored_path(stored)
+    else:
+        key = _legacy_key(str(stored or ""))
+        candidate = StoragePath(key) if key else None
     roots = _allowed_roots()
 
-    raw = Path(stored)
-    candidate = (raw if raw.is_absolute() else REPO_ROOT / raw).resolve()
+    if candidate is not None and any(candidate.is_relative_to(root) for root in roots):
+        return candidate
 
-    for root in roots:
-        if candidate.is_relative_to(root):
-            return candidate
-
-    tail = Path(*raw.parts[-2:]) if len(raw.parts) >= 2 else None
-    if tail is not None:
+    raw = Path(str(stored or ""))
+    tail = "/".join(raw.parts[-2:]) if len(raw.parts) >= 2 else None
+    if tail and ".." not in raw.parts[-2:]:
         for root in roots:
-            rehomed = (root / tail).resolve()
-            if rehomed.is_relative_to(root) and rehomed.exists():
+            rehomed = root / tail
+            if rehomed.exists():
                 log.info("file_path_rehomed", file_ref=ref(stored))
                 return rehomed
 
@@ -319,7 +389,7 @@ def resolve_stored_path(stored: str) -> Path:
 
 def file_deidentified_output(
     stored: str, extension: str, patient_id: str = ""
-) -> Path:
+) -> StoragePath:
     source = resolve_stored_path(stored)
 
     destination_dir = deid_dir_for(extension)
@@ -328,13 +398,11 @@ def file_deidentified_output(
 
     destination = destination_dir / source.name
 
-    if source.resolve() == destination.resolve():
+    if source == destination:
         return destination
 
     destination_dir.mkdir(parents=True, exist_ok=True)
-    if destination.exists():
-        destination.unlink()
-    shutil.move(str(source), str(destination))
+    blobstore.move(source, destination)
     log.info("deid_output_filed", source_ref=ref(source), file_ref=ref(destination))
     return destination
 
@@ -346,14 +414,14 @@ def delete_file(stored: str) -> None:
         log.warning("file_delete_failed", file_ref=ref(stored), error=str(exc))
 
 
-def prune_empty_dirs(directory: Path) -> int:
+def prune_empty_dirs(directory) -> int:
+    """Remove `directory` and its parents while they are empty, stopping at the
+    storage folders themselves."""
+    if not isinstance(directory, StoragePath):
+        return 0
     roots = _allowed_roots()
     removed = 0
-
-    try:
-        current = directory.resolve()
-    except OSError:
-        return 0
+    current = directory
 
     while any(current.is_relative_to(root) and current != root for root in roots):
         try:

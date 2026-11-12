@@ -25,6 +25,8 @@ from app.schemas import (
     AbstractionFolderCreate,
     User,
 )
+from app import blobstore
+from app.blobstore import StoragePath, any_path
 from app.storage import abstraction_root, resolve_stored_path, safe_path_segment
 
 log = get_logger(__name__)
@@ -174,15 +176,20 @@ def _source_path(cursor, file_id: str) -> Path:
     return resolve_stored_path(files_crud.get_file_or_404(cursor, file_id).de_identified_file_path)
 
 
-def _make_read_only(target: Path) -> None:
+def _make_read_only(target) -> None:
+    if isinstance(target, StoragePath):
+        return  # Ozone has no per-file permissions; the folder is read-only by convention
     for dirpath, dirnames, filenames in os.walk(target, topdown=False):
         for name in filenames:
             os.chmod(Path(dirpath) / name, stat.S_IRUSR | stat.S_IRGRP)
         os.chmod(dirpath, stat.S_IRUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IXGRP)
 
 
-def remove_dir(target: Path) -> None:
+def remove_dir(target) -> None:
     if not target.exists():
+        return
+    if isinstance(target, StoragePath):
+        blobstore.rmtree(target)
         return
     for dirpath, _dirnames, filenames in os.walk(target):
         os.chmod(dirpath, stat.S_IRWXU)
@@ -203,12 +210,12 @@ def _copy(cursor, target: Path, docs: List[AbstractionDocument]) -> int:
                 raise ValidationError(f"'{doc.name}' is missing from disk")
             patient_dir = target / safe_path_segment(doc.patient_id)
             patient_dir.mkdir(exist_ok=True)
-            shutil.copy2(source, patient_dir / doc.name)
+            blobstore.copy(source, patient_dir / doc.name)
             rows.append(
                 [f"{patient_dir.name}/{doc.name}", doc.patient_id, doc.modality or "",
                  doc.document_date or "", doc.file_type, doc.file_id]
             )
-        with open(target / MANIFEST, "w", newline="") as handle:
+        with blobstore.open_file(target / MANIFEST, "w", newline="") as handle:
             writer = csv.writer(handle)
             writer.writerow(MANIFEST_COLUMNS)
             writer.writerows(safe_row(r) for r in rows)
@@ -270,7 +277,7 @@ def extend(cursor, folder: AbstractionFolder) -> AbstractionFolder:
 def regenerate(cursor, folder: AbstractionFolder) -> Tuple[AbstractionFolder, int]:
     docs, missing = _documents_by_id(cursor, crud.file_ids(cursor, folder.id))
     _checked(docs)
-    target = Path(folder.folder_path) if folder.folder_path else None
+    target = any_path(folder.folder_path) if folder.folder_path else None
     if target is None:
         raise ValidationError("The folder has no path on record")
     count = _copy(cursor, target, docs)
@@ -300,7 +307,7 @@ def delete(
     if folder.status != ACTIVE:
         raise ValidationError(f"The folder is already {folder.status}")
     if folder.folder_path:
-        remove_dir(Path(folder.folder_path))
+        remove_dir(any_path(folder.folder_path))
     return crud.update_folder(
         cursor,
         folder.id,

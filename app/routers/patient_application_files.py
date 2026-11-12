@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
 from fastapi import Response
-from fastapi.responses import FileResponse
+from app.file_responses import file_response
 from pydantic import BaseModel
 
 from app import data_dictionary, deid_progress, document_info, file_corrections
@@ -537,7 +537,7 @@ def read_application_file(
         byte_count=record.file_size,
     )
 
-    return FileResponse(
+    return file_response(
         path,
         media_type=record.mime_type,
         filename=filename,

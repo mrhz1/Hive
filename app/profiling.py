@@ -114,5 +114,8 @@ def write(path: Path, tables: Dict[str, List[dict]]) -> Path:
             for row in outliers:
                 out["Outliers"].append(safe_row(row))
 
-    book.save(str(path))
+    from app.blobstore import open_file
+
+    with open_file(path, "wb") as handle:
+        book.save(handle)
     return path
