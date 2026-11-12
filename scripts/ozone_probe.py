@@ -113,7 +113,9 @@ def python_client(root, write):
     path = "/" + path
     try:
         started = time.perf_counter()
-        filesystem = fs.HadoopFileSystem(f"{scheme}://{service}", 0)
+        # pyarrow puts "hdfs://" in front of a host name, so connect to the
+        # "default" filesystem and make ofs://<service> the default.
+        filesystem = fs.HadoopFileSystem("default", 0, extra_conf={"fs.defaultFS": f"{scheme}://{service}"})
         infos = filesystem.get_file_info(fs.FileSelector(path, recursive=False))
         show("list root", f"OK in {time.perf_counter() - started:.2f}s, {len(infos)} entries")
     except Exception as exc:  # noqa: BLE001
