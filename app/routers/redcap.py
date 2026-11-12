@@ -116,11 +116,12 @@ def followup_export(
     actor: User = Depends(require_permission("redcap:export")),
 ):
     result = followup.eligibility(cursor, current_version, max(1, recent_days))
-    data = followup.workbook(result, current_version)
+    links = followup.add_survey_links(result.automated)
+    data = followup.workbook(result, current_version, links)
     record_access(
         EXPORT, actor=actor, resource_type="followup_list",
         record_count=len(result.automated) + len(result.manual), identified=True,
-        detail=f"automated={len(result.automated)} manual={len(result.manual)}",
+        detail=f"automated={len(result.automated)} manual={len(result.manual)} links: {links}"[:500],
     )
     return Response(
         content=data,

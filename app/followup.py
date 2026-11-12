@@ -17,6 +17,7 @@ class FollowupRow(BaseModel):
     email: Optional[str] = None
     consent_version: Optional[str] = None
     consent_update: Optional[str] = None
+    survey_link: Optional[str] = None
     reasons: List[str] = []
 
 
@@ -114,7 +115,32 @@ def eligibility(cursor, current_version: Optional[str] = None, recent_days: int 
     return FollowupResult(automated=automated, manual=manual, not_contacted=not_contacted)
 
 
-def workbook(result: FollowupResult, current_version: Optional[str]) -> bytes:
+def add_survey_links(rows: List[FollowupRow]) -> str:
+    """Fill survey_link from the REDCap follow-up project (9.1.15). Returns a status line.
+
+    The follow-up project's record ID must be the patient code. The link is personal:
+    the list that holds it is identified data.
+    """
+    from app import redcap_api
+
+    token = redcap_api.token(redcap_api.FOLLOWUP)
+    instrument = redcap_api.followup_instrument()
+    if not (redcap_api.configured() and token and instrument):
+        return "not filled: REDCap follow-up project not set up (REDCAP_TOKEN_FOLLOWUP, REDCAP_FOLLOWUP_INSTRUMENT)"
+    made, failed = 0, []
+    for row in rows:
+        try:
+            row.survey_link = redcap_api.survey_link(token, row.patient_id, instrument)
+            made += 1
+        except redcap_api.RedcapError as exc:
+            failed.append(f"{row.patient_id}: {exc}")
+    status = f"{made} links from REDCap instrument '{instrument}'"
+    if failed:
+        status += f"; {len(failed)} failed (first: {failed[0]})"
+    return status
+
+
+def workbook(result: FollowupResult, current_version: Optional[str], links_status: str = "") -> bytes:
     from io import BytesIO
 
     from openpyxl import Workbook
@@ -125,7 +151,8 @@ def workbook(result: FollowupResult, current_version: Optional[str]) -> bytes:
     book = Workbook()
     sheets = [
         ("Automated", ["patient_id", "first_name", "email", "consent_version", "consent_update", "survey_link"],
-         [[r.patient_id, r.first_name, r.email, r.consent_version, r.consent_update or "", ""] for r in result.automated]),
+         [[r.patient_id, r.first_name, r.email, r.consent_version, r.consent_update or "", r.survey_link or ""]
+          for r in result.automated]),
         ("Manual", ["patient_id", "first_name", "email", "why not automated"],
          [[r.patient_id, r.first_name, r.email, "; ".join(r.reasons)] for r in result.manual]),
         ("Not contacted", ["patient_id", "why"],
@@ -133,7 +160,7 @@ def workbook(result: FollowupResult, current_version: Optional[str]) -> bytes:
         ("About", ["item", "value"],
          [["rules", "protocol 9.1.14-9.1.15"],
           ["current consent version", current_version or "(any granted)"],
-          ["survey_link", "filled by REDCap once the API is connected"]]),
+          ["survey_link", links_status or "filled by REDCap once the API is connected"]]),
     ]
     for index, (title, header, rows) in enumerate(sheets):
         sheet = book.active if index == 0 else book.create_sheet()

@@ -22,8 +22,12 @@ KINDS = (DICTIONARY, RECORDS, LOG)
 
 DATASET_NAME = re.compile(r"^[a-z0-9][a-z0-9_]{0,39}$")
 
-EVENT_COLUMNS = {"redcapeventname": "event", "redcaprepeatinstance": "instance"}
-SKIPPED_COLUMNS = {"redcaprepeatinstrument", "redcapdataaccessgroup"}
+EVENT_COLUMNS = {
+    "redcapeventname": "event",
+    "redcaprepeatinstrument": "repeat",
+    "redcaprepeatinstance": "instance",
+}
+SKIPPED_COLUMNS = {"redcapdataaccessgroup", "redcapsurveyidentifier"}
 
 DICTIONARY_COLUMNS = {
     "variablefieldname": "field_name",
@@ -229,16 +233,36 @@ def import_dictionary(cursor, dataset: str, name: str, data: bytes, apply: bool,
                         counts=counts, problems=problems, notes=notes)
 
 
-def import_records(cursor, dataset: str, name: str, data: bytes, apply: bool, actor_id: Optional[str]) -> ImportResult:
+def _event(raw, special) -> Optional[str]:
+    def cell(key):
+        index = special.get(key)
+        return _text(raw[index]) if index is not None and index < len(raw) else None
+
+    # Repeating instruments: instance 1 of "echo" and instance 1 of "ecg" are
+    # different rows, so the instrument is part of the row key.
+    parts = [p for p in (cell("event"), cell("repeat")) if p]
+    return " / ".join(parts) or None
+
+
+def import_records(cursor, dataset: str, name: str, data: bytes, apply: bool, actor_id: Optional[str],
+                   patient_field: Optional[str] = None) -> ImportResult:
+    """patient_field: column holding the patient (UBRS) code; default = first column (record ID)."""
     dataset = check_dataset(dataset)
     header, body = _table(name, data)
     if not header or not header[0]:
         raise ValidationError("The first column must be the REDCap record ID (the patient code)")
-    record_column = header[0]
+    code_index = 0
+    if patient_field:
+        wanted = patient_field.strip().lower()
+        matches = [i for i, h in enumerate(header) if h.strip().lower() == wanted]
+        if not matches:
+            raise ValidationError(f"The patient code field '{patient_field}' is not in the file")
+        code_index = matches[0]
+    record_column = header[code_index]
     special = {}
     data_columns = []
     for index, column in enumerate(header):
-        if index == 0:
+        if index == code_index:
             continue
         key = _key(column)
         if key in EVENT_COLUMNS:
@@ -248,7 +272,22 @@ def import_records(cursor, dataset: str, name: str, data: bytes, apply: bool, ac
         else:
             data_columns.append((index, column.strip().lower()))
 
-    codes = sorted({(_text(r[0]) or "").upper() for r in body if _text(r[0])})
+    def cell(raw, index) -> str:
+        value = _text(raw[index]) if index < len(raw) else None
+        return (value or "").upper()
+
+    # In a flat export the patient code field is only filled on the record's
+    # main row; repeating-instrument rows leave it blank. Map record ID -> code.
+    by_record: Dict[str, str] = {}
+    if code_index:
+        for raw in body:
+            if cell(raw, code_index) and cell(raw, 0):
+                by_record.setdefault(cell(raw, 0), cell(raw, code_index))
+
+    def code_of(raw) -> str:
+        return cell(raw, code_index) or by_record.get(cell(raw, 0), "") if code_index else cell(raw, 0)
+
+    codes = sorted({code_of(r) for r in body if code_of(r)})
     known = patients_crud.existing_ids(cursor, codes) if codes else set()
     unknown = [c for c in codes if c not in known]
     dictionary = {f.field_name for f in fields(cursor, dataset)}
@@ -258,13 +297,13 @@ def import_records(cursor, dataset: str, name: str, data: bytes, apply: bool, ac
 
     rows, problems = [], []
     for line, raw in enumerate(body, start=2):
-        code = (_text(raw[0]) or "").upper()
+        code = code_of(raw)
         if not code:
-            problems.append(f"Line {line}: no record ID")
+            problems.append(f"Line {line}: no {'patient code' if code_index else 'record ID'}")
             continue
         if code not in known:
             continue
-        event = _text(raw[special["event"]]) if "event" in special and special["event"] < len(raw) else None
+        event = _event(raw, special)
         instance = _text(raw[special["instance"]]) if "instance" in special and special["instance"] < len(raw) else None
         for index, column in data_columns:
             value = _text(raw[index]) if index < len(raw) else None
@@ -279,7 +318,7 @@ def import_records(cursor, dataset: str, name: str, data: bytes, apply: bool, ac
             f"{len(unknown)} record IDs are not patients in the app and were skipped: "
             + ", ".join(unknown[:20]) + (" ..." if len(unknown) > 20 else "")
         )
-    notes = [f"Record ID column: '{record_column}'"]
+    notes = [f"Patient code column: '{record_column}'"]
     if not dictionary:
         notes.append("No data dictionary for this dataset yet: import it so fields can go to Zone 2")
     elif unlisted:
@@ -356,10 +395,18 @@ def import_log(cursor, dataset: str, name: str, data: bytes, apply: bool, actor_
 IMPORTERS = {DICTIONARY: import_dictionary, RECORDS: import_records, LOG: import_log}
 
 
-def run_import(cursor, kind: str, dataset: str, name: str, data: bytes, apply: bool, actor_id: Optional[str]) -> ImportResult:
+def run_import(cursor, kind: str, dataset: str, name: str, data: bytes, apply: bool, actor_id: Optional[str],
+               patient_field: Optional[str] = None) -> ImportResult:
     if kind not in IMPORTERS:
         raise ValidationError(f"Unknown import '{kind}' (known: {', '.join(KINDS)})")
+    if kind == RECORDS:
+        return import_records(cursor, dataset, name, data, apply, actor_id, patient_field)
     return IMPORTERS[kind](cursor, dataset, name, data, apply, actor_id)
+
+
+def last_log_time(cursor, dataset: str) -> Optional[str]:
+    stamps = [r["logged_at"] for r in _select(cursor, "redcap_log", ("logged_at",), check_dataset(dataset)) if r["logged_at"]]
+    return max(stamps)[:16] if stamps else None
 
 
 def summaries(cursor) -> List[DatasetSummary]:

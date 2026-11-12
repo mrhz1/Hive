@@ -23,18 +23,13 @@ def _repo_root():
 ROOT = _repo_root()
 sys.path.insert(0, str(ROOT))
 
-from app import consent, redcap
+from app import consent, redcap, redcap_api
 from app.audit import record_audit
 from app.db import hive_cursor
 from app.storage import REPO_ROOT
 
 ACTOR = "redcap-sync"
 FILES = {redcap.DICTIONARY: "dictionary.csv", redcap.RECORDS: "records.csv", redcap.LOG: "log.csv"}
-API_CONTENT = {
-    redcap.DICTIONARY: {"content": "metadata"},
-    redcap.RECORDS: {"content": "record", "type": "flat", "rawOrLabel": "raw"},
-    redcap.LOG: {"content": "log"},
-}
 
 
 def drop_dir() -> Path:
@@ -42,21 +37,13 @@ def drop_dir() -> Path:
     return value if value.is_absolute() else REPO_ROOT / value
 
 
-def datasets_from_api():
-    names = [n.strip().lower() for n in os.environ.get("REDCAP_DATASETS", "").split(",") if n.strip()]
-    return [(name, os.environ.get(f"REDCAP_TOKEN_{name.upper()}", "")) for name in names]
-
-
-def fetch(token: str, kind: str) -> bytes:
-    import httpx
-
-    response = httpx.post(
-        os.environ["REDCAP_URL"],
-        data={"token": token, "format": "csv", "returnFormat": "json", **API_CONTENT[kind]},
-        timeout=float(os.environ.get("REDCAP_TIMEOUT_SECONDS", "120")),
-    )
-    response.raise_for_status()
-    return response.content
+def fetch(cursor, dataset: str, token: str, kind: str) -> bytes:
+    if kind == redcap.DICTIONARY:
+        return redcap_api.export_dictionary(token)
+    if kind == redcap.RECORDS:
+        return redcap_api.export_records(token)
+    # only new log entries; the importer also skips repeats
+    return redcap_api.export_log(token, since=redcap.last_log_time(cursor, dataset))
 
 
 def report(result):
@@ -100,30 +87,51 @@ def sync_files(cursor):
 
 
 def sync_api(cursor):
-    print(f"mode: REDCap API at {os.environ['REDCAP_URL']}")
-    for dataset, token in datasets_from_api():
-        print(f"dataset {dataset}")
+    print(f"mode: REDCap API at {redcap_api.url()}")
+    failed = 0
+    consent_token = redcap_api.token(redcap_api.CONSENT)
+    if consent_token:
+        print("consent matrix (9.5.1)")
+        try:
+            data = redcap_api.export_records(consent_token, raw=False)
+            result = consent.import_file(cursor, "consent.csv", data, True, ACTOR)
+            print(f"  {result.counts}")
+        except Exception as exc:
+            failed += 1
+            print(f"  FAILED: {type(exc).__name__}: {exc}")
+    datasets = redcap_api.datasets()
+    if not datasets:
+        print("  nothing to do: REDCAP_DATASETS is empty")
+    for dataset, token in datasets:
+        field = redcap_api.patient_field(dataset)
+        print(f"dataset {dataset}" + (f" (patient code field: {field})" if field else ""))
         if not token:
+            failed += 1
             print(f"  skipped: REDCAP_TOKEN_{dataset.upper()} is not set")
             continue
         for kind in redcap.KINDS:
             try:
-                data = fetch(token, kind)
+                data = fetch(cursor, dataset, token, kind)
+                result = redcap.run_import(cursor, kind, dataset, f"{kind}.csv", data, True, ACTOR, field)
             except Exception as exc:
-                print(f"  {kind:<10} FAILED to fetch: {type(exc).__name__}: {exc}")
+                failed += 1
+                print(f"  {kind:<10} FAILED: {type(exc).__name__}: {exc}")
                 continue
-            result = redcap.run_import(cursor, kind, dataset, f"{kind}.csv", data, True, ACTOR)
             report(result)
             if result.applied:
                 audit(result, "api")
+    return failed
 
 
 def main():
+    failed = 0
     with hive_cursor() as cursor:
-        if redcap.mode() == "api":
-            sync_api(cursor)
+        if redcap_api.configured():
+            failed = sync_api(cursor)
         else:
             sync_files(cursor)
+    if failed:
+        sys.exit(1)  # the Cloudera Job shows as failed
 
 
 if __name__ == "__main__":
