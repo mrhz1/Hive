@@ -9,11 +9,15 @@ Settings (environment, set on Cloudera only):
   REDCAP_TOKEN_FOLLOWUP           periodic follow-up survey project (9.5.3), optional
   REDCAP_FOLLOWUP_INSTRUMENT      survey instrument whose link goes in the follow-up list
   REDCAP_TIMEOUT_SECONDS          default 120
+  REDCAP_ALLOW_WRITE              "true" lets the app create records in REDCap (needs the
+                                  API Import/Update right); off by default
 """
 
+import json
 import os
-from typing import Optional
+from typing import List, Optional
 
+from app.errors import AppError
 from app.logging_setup import get_logger
 
 log = get_logger(__name__)
@@ -22,8 +26,9 @@ CONSENT = "consent"
 FOLLOWUP = "followup"
 
 
-class RedcapError(Exception):
-    pass
+class RedcapError(AppError):
+    status_code = 502
+    code = "redcap_error"
 
 
 def url() -> str:
@@ -46,6 +51,10 @@ def token(name: str) -> str:
 def patient_field(dataset: str) -> Optional[str]:
     value = (os.environ.get(f"REDCAP_PATIENT_FIELD_{dataset.upper()}") or "").strip().lower()
     return value or None
+
+
+def write_enabled() -> bool:
+    return (os.environ.get("REDCAP_ALLOW_WRITE") or "").strip().lower() in ("1", "true", "yes")
 
 
 def followup_instrument() -> Optional[str]:
@@ -88,8 +97,9 @@ def export_dictionary(api_token: str) -> bytes:
     return call(api_token, "metadata")
 
 
-def export_records(api_token: str, raw: bool = True, fields=None) -> bytes:
+def export_records(api_token: str, raw: bool = True, fields=None, forms=None) -> bytes:
     extra = {f"fields[{i}]": f for i, f in enumerate(fields or [])}
+    extra.update({f"forms[{i}]": f for i, f in enumerate(forms or [])})
     return call(api_token, "record", type="flat", rawOrLabel="raw" if raw else "label",
                 rawOrLabelHeaders="raw", exportCheckboxLabel="false", **extra)
 
@@ -103,3 +113,24 @@ def survey_link(api_token: str, record: str, instrument: str, instance: int = 1)
     body = call(api_token, "surveyLink", format="json", record=record,
                 instrument=instrument, repeat_instance=str(instance))
     return body.decode("utf-8").strip()
+
+
+def project_info(api_token: str) -> dict:
+    return json.loads(call(api_token, "project", format="json"))
+
+
+def instruments(api_token: str) -> List[dict]:
+    return json.loads(call(api_token, "instrument", format="json"))
+
+
+def import_records(api_token: str, csv_text: str) -> int:
+    """Create or update records (flat CSV). Needs the API Import/Update right.
+    overwriteBehavior=normal: empty cells never erase what is already in REDCap."""
+    body = call(api_token, "record", format="csv", type="flat", overwriteBehavior="normal",
+                forceAutoNumber="false", returnContent="count", data=csv_text)
+    text = body.decode("utf-8").strip()
+    try:
+        return int(json.loads(text).get("count", 0))
+    except (ValueError, AttributeError):
+        digits = "".join(ch for ch in text if ch.isdigit())
+        return int(digits or 0)

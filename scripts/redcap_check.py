@@ -85,7 +85,7 @@ def check_dataset(name, token, patient_field=None):
         ok("records export", f"{len(found)} rows, {len(codes)} distinct patient codes, "
                              f"repeating instruments seen: {instruments or 'none'}")
     except Exception as exc:
-        fail("records export (needs Data Export rights = Full Data Set)", exc)
+        fail("records export (needs Data Export rights on every instrument)", exc)
     try:
         since = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M")
         entries = rows(redcap_api.export_log(token, since=since))

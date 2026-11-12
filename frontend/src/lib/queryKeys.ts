@@ -129,6 +129,9 @@ export const queryKeys = {
   redcap: {
     all: ['redcap'] as const,
     status: () => [...queryKeys.redcap.all, 'status'] as const,
+    remote: () => [...queryKeys.redcap.all, 'remote'] as const,
+    instruments: (dataset: string) =>
+      [...queryKeys.redcap.all, 'remote', dataset, 'instruments'] as const,
   },
 
   intake: {

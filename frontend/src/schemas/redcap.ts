@@ -23,6 +23,7 @@ export type RedcapDataset = z.infer<typeof redcapDatasetSchema>
 export const redcapStatusSchema = z.object({
   mode: z.string(),
   datasets: z.array(redcapDatasetSchema),
+  write_enabled: z.boolean().default(false),
 })
 
 export const redcapImportSchema = z.object({
@@ -35,6 +36,49 @@ export const redcapImportSchema = z.object({
 })
 
 export type RedcapImport = z.infer<typeof redcapImportSchema>
+
+export const remoteDatasetSchema = z.object({
+  dataset: z.string(),
+  connected: z.boolean(),
+  project_id: z.number().nullable().optional(),
+  title: z.string().nullable().optional(),
+  in_production: z.boolean().nullable().optional(),
+  error: z.string().nullable().optional(),
+})
+
+export type RemoteDataset = z.infer<typeof remoteDatasetSchema>
+
+export const remoteInstrumentSchema = z.object({
+  name: z.string(),
+  label: z.string(),
+  fields: z.number(),
+  identifiers: z.number(),
+  dates: z.number(),
+  free_text: z.number(),
+})
+
+export type RemoteInstrument = z.infer<typeof remoteInstrumentSchema>
+
+export const remotePreviewSchema = redcapImportSchema.extend({
+  fingerprint: z.string(),
+  instruments: z.array(z.string()).default([]),
+  rows_in_export: z.number().default(0),
+  sample_columns: z.array(z.string()).default([]),
+  sample_rows: z.array(z.array(z.string())).default([]),
+})
+
+export type RemotePreview = z.infer<typeof remotePreviewSchema>
+
+export const newRecordsPreviewSchema = z.object({
+  dataset: z.string(),
+  record_field: z.string(),
+  count: z.number(),
+  codes: z.array(z.string()),
+  connected: z.boolean(),
+  write_enabled: z.boolean(),
+})
+
+export type NewRecordsPreview = z.infer<typeof newRecordsPreviewSchema>
 
 export const followupRowSchema = z.object({
   patient_id: z.string(),

@@ -22,8 +22,12 @@ import {
 } from '@/schemas/qc'
 import {
   followupSummarySchema,
+  newRecordsPreviewSchema,
   redcapImportSchema,
   redcapStatusSchema,
+  remoteDatasetSchema,
+  remoteInstrumentSchema,
+  remotePreviewSchema,
   type RedcapKind,
 } from '@/schemas/redcap'
 import {
@@ -747,6 +751,36 @@ export const redcapApi = {
       throw await blobError(error)
     }
   },
+
+  remoteDatasets: () =>
+    request(z.array(remoteDatasetSchema), () => api.get('/redcap/remote')),
+
+  remoteInstruments: (dataset: string) =>
+    request(z.array(remoteInstrumentSchema), () =>
+      api.get(`/redcap/remote/${encodeURIComponent(dataset)}/instruments`)
+    ),
+
+  remoteImport: (
+    dataset: string,
+    body: { kind: RedcapKind; instruments: string[]; fingerprint?: string },
+    apply: boolean
+  ) =>
+    request(remotePreviewSchema, () =>
+      api.post(
+        `/redcap/remote/${encodeURIComponent(dataset)}/${apply ? 'import' : 'preview'}`,
+        body
+      )
+    ),
+
+  newRecordsPreview: (dataset: string) =>
+    request(newRecordsPreviewSchema, () =>
+      api.get('/redcap/new-records/preview', { params: { dataset } })
+    ),
+
+  newRecordsSend: (dataset: string, count: number) =>
+    request(z.object({ sent: z.number() }), () =>
+      api.post('/redcap/new-records/send', { count }, { params: { dataset } })
+    ),
 
   newRecordsExport: async (dataset: string): Promise<Blob> => {
     try {

@@ -1,14 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, FileSpreadsheet, Search, Upload } from 'lucide-react'
+import { Download, FileSpreadsheet, Search, Send, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { DataTable, type Column } from '@/components/DataTable'
 import { Can, RequirePermission } from '@/components/PermissionGate'
 import { Button } from '@/components/ui/Button'
-import { SelectField, TextField } from '@/components/ui/Field'
+import { CheckboxField, SelectField, TextField } from '@/components/ui/Field'
 import { Badge, Card, PageHeader } from '@/components/ui/Misc'
+import { usePermissions } from '@/hooks/useCurrentUser'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+import { ExploreRedcapCard } from '@/features/redcap/ExploreRedcapCard'
 import { ApiError } from '@/lib/api/client'
 import { redcapApi } from '@/lib/api/resources'
 import { queryKeys } from '@/lib/queryKeys'
@@ -16,6 +18,7 @@ import {
   REDCAP_KIND_LABELS,
   REDCAP_KINDS,
   type FollowupSummary,
+  type NewRecordsPreview,
   type RedcapDataset,
   type RedcapImport,
   type RedcapKind,
@@ -70,6 +73,7 @@ function RedcapPage() {
   })
   const datasets = status.data?.datasets ?? []
   const simulated = status.data?.mode !== 'api'
+  const { can } = usePermissions()
 
   return (
     <div className="space-y-6">
@@ -85,7 +89,7 @@ function RedcapPage() {
         <span className={mutedClass}>
           {simulated
             ? 'No REDCap API access yet. Import exported files here, or let scripts/redcap_sync.py read them nightly. Setting REDCAP_URL and a token per dataset switches the same sync to the API.'
-            : 'The nightly sync reads REDCap directly. Files can still be imported here.'}
+            : 'Explore and import from REDCap below. The nightly sync, if scheduled, reads the same projects. Files can still be imported by hand.'}
         </span>
       </Card>
 
@@ -103,13 +107,20 @@ function RedcapPage() {
         />
       </Card>
 
+      {!simulated && status.data ? (
+        <ExploreRedcapCard canImport={can('redcap:import')} />
+      ) : null}
+
       <Can permission="redcap:import">
         <ImportCard datasets={datasets} />
       </Can>
 
       <Can permission="redcap:export">
         <FollowupCard />
-        <NewRecordsCard datasets={datasets} />
+        <NewRecordsCard
+          datasets={datasets}
+          writeEnabled={Boolean(status.data?.write_enabled)}
+        />
       </Can>
     </div>
   )
@@ -149,7 +160,7 @@ function ImportCard({ datasets }: { datasets: RedcapDataset[] }) {
   return (
     <Card className="space-y-4 p-5">
       <div>
-        <h2 className={titleClass}>Import a REDCap export</h2>
+        <h2 className={titleClass}>Import a REDCap export file</h2>
         <p className={mutedClass}>
           Import the data dictionary first: it decides which fields may go to Zone 2
           (coded, number and date fields; never identifier or free-text fields). The first
@@ -339,22 +350,52 @@ function FollowupCard() {
   )
 }
 
-function NewRecordsCard({ datasets }: { datasets: RedcapDataset[] }) {
+function NewRecordsCard({
+  datasets,
+  writeEnabled,
+}: {
+  datasets: RedcapDataset[]
+  writeEnabled: boolean
+}) {
+  const queryClient = useQueryClient()
   const [dataset, setDataset] = useState(datasets[0]?.dataset ?? '')
+  const [preview, setPreview] = useState<NewRecordsPreview | null>(null)
+  const [confirmed, setConfirmed] = useState(false)
+  const check = useMutation({
+    mutationFn: () => redcapApi.newRecordsPreview(dataset),
+    onSuccess: (next) => {
+      setPreview(next)
+      setConfirmed(false)
+    },
+    onError: (error) => toast.error(errorText(error, 'Could not list the codes')),
+  })
   const download = useMutation({
     mutationFn: () => redcapApi.newRecordsExport(dataset),
     onSuccess: (blob) => save(blob, `new-records-${dataset}.csv`),
     onError: (error) => toast.error(errorText(error, 'Could not export the codes')),
   })
+  const send = useMutation({
+    mutationFn: () => redcapApi.newRecordsSend(dataset, preview?.count ?? 0),
+    onSuccess: ({ sent }) => {
+      toast.success(`REDCap accepted ${sent} records`)
+      setPreview(null)
+      setConfirmed(false)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.redcap.all })
+    },
+    onError: (error) =>
+      toast.error(errorText(error, 'REDCap did not accept the records')),
+  })
+  const canSend = writeEnabled && preview?.connected && preview.count > 0
 
   return (
     <Card className="space-y-4 p-5">
       <div>
         <h2 className={titleClass}>New patient codes (to REDCap)</h2>
         <p className={mutedClass}>
-          Patients in the app with no record yet in a REDCap dataset, as a REDCap import
-          file (record ID column only), so sites can enter data against a valid code
-          (9.1.2).
+          Patients in the app with no record yet in a REDCap dataset (record ID column
+          only), so sites can enter data against a valid code (9.1.2). Preview the list
+          first, then download it as a REDCap import file
+          {writeEnabled ? ' or send it to REDCap directly' : ''}.
         </p>
       </div>
       <div className="flex flex-wrap items-end gap-3">
@@ -364,7 +405,11 @@ function NewRecordsCard({ datasets }: { datasets: RedcapDataset[] }) {
             placeholder="e.g. avsd_clinical"
             list="redcap-datasets-export"
             value={dataset}
-            onChange={(event) => setDataset(event.target.value.trim().toLowerCase())}
+            onChange={(event) => {
+              setDataset(event.target.value.trim().toLowerCase())
+              setPreview(null)
+              setConfirmed(false)
+            }}
           />
           <datalist id="redcap-datasets-export">
             {datasets.map((d) => (
@@ -373,7 +418,18 @@ function NewRecordsCard({ datasets }: { datasets: RedcapDataset[] }) {
           </datalist>
         </div>
         <Button
+          variant="outline"
           disabled={!dataset}
+          isLoading={check.isPending}
+          leadingIcon={<Search className="size-4" aria-hidden="true" />}
+          onClick={() => check.mutate()}
+        >
+          Preview
+        </Button>
+        <Button
+          variant="outline"
+          disabled={!dataset || !preview}
+          title={!preview ? 'Preview first' : undefined}
           isLoading={download.isPending}
           leadingIcon={<Download className="size-4" aria-hidden="true" />}
           onClick={() => download.mutate()}
@@ -381,6 +437,51 @@ function NewRecordsCard({ datasets }: { datasets: RedcapDataset[] }) {
           Download CSV
         </Button>
       </div>
+      {preview ? (
+        <div className="space-y-3 text-sm">
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="info">preview: nothing sent yet</Badge>
+            <Badge tone="neutral">new codes: {preview.count.toLocaleString()}</Badge>
+            <Badge tone="neutral">REDCap record ID field: {preview.record_field}</Badge>
+          </div>
+          {preview.codes.length ? (
+            <p className="font-mono text-xs break-words">
+              {preview.codes.join(', ')}
+              {preview.count > preview.codes.length
+                ? ` … and ${preview.count - preview.codes.length} more`
+                : ''}
+            </p>
+          ) : (
+            <p className={mutedClass}>
+              Every patient already has a record in this dataset.
+            </p>
+          )}
+          {canSend ? (
+            <div className="space-y-3 rounded-md border border-[rgb(var(--border))] p-3">
+              <CheckboxField
+                label={`Create these ${preview.count} records in REDCap`}
+                description={`Each code becomes a new REDCap record (${preview.record_field}). Existing records are not changed.`}
+                checked={confirmed}
+                onChange={(event) => setConfirmed(event.target.checked)}
+              />
+              <Button
+                disabled={!confirmed}
+                isLoading={send.isPending}
+                leadingIcon={<Send className="size-4" aria-hidden="true" />}
+                onClick={() => send.mutate()}
+              >
+                Send to REDCap
+              </Button>
+            </div>
+          ) : preview.count > 0 ? (
+            <p className={mutedClass}>
+              {writeEnabled
+                ? 'This dataset is not connected to REDCap, so download the CSV and import it in REDCap.'
+                : 'Sending to REDCap directly is switched off on the server: download the CSV and import it in REDCap (Data Import Tool).'}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </Card>
   )
 }

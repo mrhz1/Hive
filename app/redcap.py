@@ -245,8 +245,10 @@ def _event(raw, special) -> Optional[str]:
 
 
 def import_records(cursor, dataset: str, name: str, data: bytes, apply: bool, actor_id: Optional[str],
-                   patient_field: Optional[str] = None) -> ImportResult:
-    """patient_field: column holding the patient (UBRS) code; default = first column (record ID)."""
+                   patient_field: Optional[str] = None, only_these_fields: bool = False) -> ImportResult:
+    """patient_field: column holding the patient (UBRS) code; default = first column (record ID).
+    only_these_fields: the file holds some instruments only, so replace just these fields'
+    values and keep the patient's other values in this dataset."""
     dataset = check_dataset(dataset)
     header, body = _table(name, data)
     if not header or not header[0]:
@@ -330,9 +332,13 @@ def import_records(cursor, dataset: str, name: str, data: bytes, apply: bool, ac
     counts = {"patients": len(patients), "values": len(rows), "fields": len(data_columns),
               "unknown_records": len(unknown)}
     if apply and rows:
-        existing = _select(cursor, "redcap_values", ("id", "patient_id"), dataset)
+        existing = _select(cursor, "redcap_values", ("id", "patient_id", "field_name"), dataset)
         replaced = set(patients)
-        _delete_ids(cursor, "redcap_values", [r["id"] for r in existing if r["patient_id"] in replaced])
+        columns = {c for _, c in data_columns}
+        _delete_ids(cursor, "redcap_values", [
+            r["id"] for r in existing
+            if r["patient_id"] in replaced and (not only_these_fields or r["field_name"] in columns)
+        ])
         now = _now()
         _insert(
             cursor,
@@ -340,7 +346,11 @@ def import_records(cursor, dataset: str, name: str, data: bytes, apply: bool, ac
             VALUE_COLUMNS,
             [{**r, "id": str(uuid.uuid4()), "imported_by_id": actor_id, "imported_at": now} for r in rows],
         )
-        notes.append("Each patient's earlier values in this dataset were replaced by this import")
+        notes.append(
+            "Each patient's earlier values of these fields were replaced by this import"
+            if only_these_fields else
+            "Each patient's earlier values in this dataset were replaced by this import"
+        )
         log.info("redcap_records_imported", dataset=dataset, patients=len(patients), values=len(rows))
     return ImportResult(dataset=dataset, kind=RECORDS, applied=apply and bool(rows),
                         counts=counts, problems=problems, notes=notes)
@@ -396,11 +406,11 @@ IMPORTERS = {DICTIONARY: import_dictionary, RECORDS: import_records, LOG: import
 
 
 def run_import(cursor, kind: str, dataset: str, name: str, data: bytes, apply: bool, actor_id: Optional[str],
-               patient_field: Optional[str] = None) -> ImportResult:
+               patient_field: Optional[str] = None, only_these_fields: bool = False) -> ImportResult:
     if kind not in IMPORTERS:
         raise ValidationError(f"Unknown import '{kind}' (known: {', '.join(KINDS)})")
     if kind == RECORDS:
-        return import_records(cursor, dataset, name, data, apply, actor_id, patient_field)
+        return import_records(cursor, dataset, name, data, apply, actor_id, patient_field, only_these_fields)
     return IMPORTERS[kind](cursor, dataset, name, data, apply, actor_id)
 
 

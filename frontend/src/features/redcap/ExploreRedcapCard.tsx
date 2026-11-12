@@ -1,0 +1,371 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Search, Upload } from 'lucide-react'
+import { useState } from 'react'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/Button'
+import { SelectField } from '@/components/ui/Field'
+import { Badge, Card } from '@/components/ui/Misc'
+import { ApiError } from '@/lib/api/client'
+import { redcapApi } from '@/lib/api/resources'
+import { queryKeys } from '@/lib/queryKeys'
+import {
+  REDCAP_KIND_LABELS,
+  REDCAP_KINDS,
+  type RedcapKind,
+  type RemoteInstrument,
+  type RemotePreview,
+} from '@/schemas/redcap'
+
+const titleClass = 'text-sm font-bold'
+const mutedClass = 'text-xs text-[rgb(var(--foreground-muted))]'
+const cellClass = 'border-b border-[rgb(var(--border))] px-3 py-2 align-top'
+
+function errorText(error: unknown, fallback: string) {
+  return error instanceof ApiError ? error.message : fallback
+}
+
+export function ExploreRedcapCard({ canImport }: { canImport: boolean }) {
+  const queryClient = useQueryClient()
+  const remote = useQuery({
+    queryKey: queryKeys.redcap.remote(),
+    queryFn: () => redcapApi.remoteDatasets(),
+  })
+  const connected = (remote.data ?? []).filter((d) => d.connected)
+  const [chosenDataset, setChosenDataset] = useState('')
+  const dataset = chosenDataset || connected[0]?.dataset || ''
+  const [kind, setKind] = useState<RedcapKind>('dictionary')
+  // null = every instrument
+  const [selected, setSelected] = useState<string[] | null>(null)
+  const [result, setResult] = useState<RemotePreview | null>(null)
+
+  const instruments = useQuery({
+    queryKey: queryKeys.redcap.instruments(dataset),
+    queryFn: () => redcapApi.remoteInstruments(dataset),
+    enabled: Boolean(dataset),
+  })
+  const allNames = (instruments.data ?? []).map((i) => i.name)
+  const chosen = selected ?? allNames
+
+  const importer = useMutation({
+    mutationFn: (apply: boolean) =>
+      redcapApi.remoteImport(
+        dataset,
+        {
+          kind,
+          instruments: kind === 'records' ? chosen : [],
+          ...(apply && result ? { fingerprint: result.fingerprint } : {}),
+        },
+        apply
+      ),
+    onError: (error) => toast.error(errorText(error, 'REDCap did not answer')),
+  })
+
+  function reset() {
+    setResult(null)
+  }
+
+  function run(apply: boolean) {
+    void importer
+      .mutateAsync(apply)
+      .then((next) => {
+        setResult(next)
+        if (apply) {
+          toast.success(next.applied ? 'Imported from REDCap' : 'Nothing new to import')
+          void queryClient.invalidateQueries({ queryKey: queryKeys.redcap.status() })
+          void queryClient.invalidateQueries({ queryKey: queryKeys.projects.all })
+        }
+      })
+      .catch(() => undefined)
+  }
+
+  function toggle(name: string) {
+    const next = chosen.includes(name)
+      ? chosen.filter((n) => n !== name)
+      : [...chosen, name]
+    setSelected(next)
+    reset()
+  }
+
+  const project = remote.data?.find((d) => d.dataset === dataset)
+  const needsInstruments = kind === 'records' && chosen.length === 0
+
+  return (
+    <Card className="space-y-4 p-5">
+      <div>
+        <h2 className={titleClass}>Explore REDCap and import</h2>
+        <p className={mutedClass}>
+          Reads the connected REDCap projects directly. Pick what to bring in, preview it,
+          then import. The import takes exactly what you previewed; if REDCap changed in
+          between, it asks you to preview again. Import the data dictionary first.
+        </p>
+      </div>
+
+      {remote.isLoading ? <p className={mutedClass}>Contacting REDCap…</p> : null}
+      {remote.error ? (
+        <p className="text-xs text-rose-600 dark:text-rose-400">
+          {errorText(remote.error, 'Could not reach REDCap')}
+        </p>
+      ) : null}
+      {(remote.data ?? [])
+        .filter((d) => !d.connected)
+        .map((d) => (
+          <p key={d.dataset} className="text-xs text-rose-600 dark:text-rose-400">
+            <span className="font-mono">{d.dataset}</span>: {d.error}
+          </p>
+        ))}
+
+      {connected.length > 0 ? (
+        <>
+          <div className="grid gap-3 md:grid-cols-2">
+            <SelectField
+              label="REDCap project"
+              value={dataset}
+              onChange={(event) => {
+                setChosenDataset(event.target.value)
+                setSelected(null)
+                reset()
+              }}
+              options={connected.map((d) => ({
+                value: d.dataset,
+                label: `${d.title ?? d.dataset} (PID ${d.project_id ?? '?'})`,
+              }))}
+            />
+            <SelectField
+              label="What to import"
+              value={kind}
+              onChange={(event) => {
+                setKind(event.target.value as RedcapKind)
+                reset()
+              }}
+              options={REDCAP_KINDS.map((value) => ({
+                value,
+                label: REDCAP_KIND_LABELS[value],
+              }))}
+            />
+          </div>
+
+          {project ? (
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="success">connected</Badge>
+              <Badge tone="neutral">dataset: {project.dataset}</Badge>
+              {project.in_production ? (
+                <Badge tone="warning">production project</Badge>
+              ) : null}
+            </div>
+          ) : null}
+
+          <InstrumentTable
+            instruments={instruments.data ?? []}
+            isLoading={instruments.isLoading}
+            error={instruments.error}
+            selectable={kind === 'records'}
+            chosen={chosen}
+            onToggle={toggle}
+            onAll={(all) => {
+              setSelected(all ? null : [])
+              reset()
+            }}
+          />
+
+          {canImport ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="outline"
+                disabled={!dataset || needsInstruments}
+                isLoading={importer.isPending && importer.variables === false}
+                leadingIcon={<Search className="size-4" aria-hidden="true" />}
+                onClick={() => run(false)}
+              >
+                Preview
+              </Button>
+              <Button
+                disabled={!result || result.applied || needsInstruments}
+                title={!result ? 'Preview first' : undefined}
+                isLoading={importer.isPending && importer.variables === true}
+                leadingIcon={<Upload className="size-4" aria-hidden="true" />}
+                onClick={() => run(true)}
+              >
+                Import what I previewed
+              </Button>
+              {needsInstruments ? (
+                <span className={mutedClass}>Choose at least one instrument</span>
+              ) : null}
+            </div>
+          ) : (
+            <p className={mutedClass}>
+              You can explore REDCap; importing needs the redcap:import permission.
+            </p>
+          )}
+
+          {result ? <PreviewResult result={result} /> : null}
+        </>
+      ) : null}
+    </Card>
+  )
+}
+
+function InstrumentTable({
+  instruments,
+  isLoading,
+  error,
+  selectable,
+  chosen,
+  onToggle,
+  onAll,
+}: {
+  instruments: RemoteInstrument[]
+  isLoading: boolean
+  error: unknown
+  selectable: boolean
+  chosen: string[]
+  onToggle: (name: string) => void
+  onAll: (all: boolean) => void
+}) {
+  if (isLoading) return <p className={mutedClass}>Loading instruments…</p>
+  if (error)
+    return (
+      <p className="text-xs text-rose-600 dark:text-rose-400">
+        {errorText(error, 'Could not load the instruments')}
+      </p>
+    )
+  if (!instruments.length) return null
+  const total = instruments.reduce((sum, i) => sum + i.fields, 0)
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className={mutedClass}>
+          {instruments.length} instruments, {total.toLocaleString()} fields.
+          {selectable
+            ? ` ${chosen.length} chosen for import.`
+            : ' Choose "Records" to pick instruments.'}
+        </p>
+        {selectable ? (
+          <div className="flex gap-2">
+            <Button size="sm" variant="ghost" onClick={() => onAll(true)}>
+              Select all
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => onAll(false)}>
+              Select none
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      <div className="max-h-96 overflow-auto rounded-md border border-[rgb(var(--border))]">
+        <table className="w-full text-left text-xs">
+          <thead className="sticky top-0 bg-[rgb(var(--background))]">
+            <tr>
+              {selectable ? <th className={cellClass} aria-label="Import" /> : null}
+              <th className={cellClass}>Instrument</th>
+              <th className={cellClass}>Fields</th>
+              <th
+                className={cellClass}
+                title="Identifier, date and free-text fields. REDCap leaves these out when your export rights are De-identified."
+              >
+                Left out if De-identified
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {instruments.map((i) => {
+              const removed = i.identifiers + i.dates + i.free_text
+              return (
+                <tr key={i.name}>
+                  {selectable ? (
+                    <td className={cellClass}>
+                      <input
+                        type="checkbox"
+                        className="size-4 cursor-pointer accent-teal-600"
+                        aria-label={`Import ${i.label}`}
+                        checked={chosen.includes(i.name)}
+                        onChange={() => onToggle(i.name)}
+                      />
+                    </td>
+                  ) : null}
+                  <td className={cellClass}>
+                    <div className="font-medium">{i.label}</div>
+                    <div className="font-mono text-[11px] opacity-70">{i.name}</div>
+                  </td>
+                  <td className={cellClass}>{i.fields}</td>
+                  <td
+                    className={cellClass}
+                    title={`${i.identifiers} identifiers, ${i.dates} dates, ${i.free_text} free text`}
+                  >
+                    {removed || '-'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function PreviewResult({ result }: { result: RemotePreview }) {
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="flex flex-wrap gap-2">
+        <Badge tone={result.applied ? 'success' : 'info'}>
+          {result.applied ? 'imported' : 'preview: nothing saved yet'}
+        </Badge>
+        <Badge tone="neutral">
+          rows from REDCap: {result.rows_in_export.toLocaleString()}
+        </Badge>
+        {Object.entries(result.counts).map(([key, value]) => (
+          <Badge key={key} tone="neutral">
+            {key.replace(/_/g, ' ')}: {value.toLocaleString()}
+          </Badge>
+        ))}
+      </div>
+      {result.instruments.length ? (
+        <p className={mutedClass}>Instruments: {result.instruments.join(', ')}</p>
+      ) : null}
+      {result.notes.map((note) => (
+        <p key={note} className={mutedClass}>
+          {note}
+        </p>
+      ))}
+      {result.problems.length > 0 ? (
+        <ul className="space-y-1 text-xs text-rose-600 dark:text-rose-400">
+          {result.problems.slice(0, 30).map((problem) => (
+            <li key={problem}>{problem}</li>
+          ))}
+        </ul>
+      ) : null}
+      {result.sample_columns.length ? (
+        <div className="space-y-1">
+          <p className={mutedClass}>
+            First {result.sample_rows.length} rows and {result.sample_columns.length}{' '}
+            columns of what REDCap sent:
+          </p>
+          <div className="overflow-auto rounded-md border border-[rgb(var(--border))]">
+            <table className="w-full text-left font-mono text-[11px]">
+              <thead>
+                <tr>
+                  {result.sample_columns.map((column, index) => (
+                    <th key={`${column}-${index}`} className={cellClass}>
+                      {column}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {result.sample_rows.map((row, rowIndex) => (
+                  <tr key={rowIndex}>
+                    {row.map((value, index) => (
+                      <td key={index} className={cellClass}>
+                        {value}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}

@@ -5,7 +5,7 @@ from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, Response, UploadFile
 from pydantic import BaseModel
 
-from app import followup, redcap
+from app import followup, redcap, redcap_api, redcap_remote
 from app.access_log import EXPORT, record_access
 from app.audit import record_audit
 from app.db import get_cursor
@@ -22,6 +22,21 @@ MAX_IMPORT_BYTES = 50 * 1024 * 1024
 class RedcapStatus(BaseModel):
     mode: str
     datasets: List[redcap.DatasetSummary]
+    write_enabled: bool = False
+
+
+class RemoteImportRequest(BaseModel):
+    kind: str
+    instruments: List[str] = []
+    fingerprint: Optional[str] = None
+
+
+class SendNewRecords(BaseModel):
+    count: int
+
+
+class SendResult(BaseModel):
+    sent: int
 
 
 class FollowupSummary(BaseModel):
@@ -45,7 +60,53 @@ def status(
     cursor=Depends(get_cursor),
     _actor: User = Depends(require_permission("redcap:view")),
 ):
-    return RedcapStatus(mode=redcap.mode(), datasets=redcap.summaries(cursor))
+    return RedcapStatus(mode=redcap.mode(), datasets=redcap.summaries(cursor),
+                        write_enabled=redcap_api.write_enabled())
+
+
+@router.get("/remote", response_model=List[redcap_remote.RemoteDataset])
+def remote_datasets(_actor: User = Depends(require_permission("redcap:view"))):
+    return redcap_remote.overview()
+
+
+@router.get("/remote/{dataset}/instruments", response_model=List[redcap_remote.RemoteInstrument])
+def remote_instruments(dataset: str, _actor: User = Depends(require_permission("redcap:view"))):
+    return redcap_remote.instrument_list(dataset)
+
+
+@router.post("/remote/{dataset}/preview", response_model=redcap_remote.RemotePreview)
+def remote_preview(
+    dataset: str,
+    body: RemoteImportRequest,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("redcap:import")),
+):
+    return redcap_remote.preview_or_import(cursor, dataset, body.kind, body.instruments, False, actor.id)
+
+
+@router.post("/remote/{dataset}/import", response_model=redcap_remote.RemotePreview)
+def remote_import(
+    dataset: str,
+    body: RemoteImportRequest,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("redcap:import")),
+):
+    result = redcap_remote.preview_or_import(
+        cursor, dataset, body.kind, body.instruments, True, actor.id, body.fingerprint
+    )
+    background.add_task(
+        record_audit,
+        action="CREATE",
+        entity_type=f"redcap_{result.kind}",
+        entity_id=result.dataset,
+        user_id=actor.id,
+        old_values=None,
+        new_values={"source": "api", "instruments": result.instruments, "counts": result.counts},
+        request_id=request.headers.get("X-Request-ID"),
+    )
+    return result
 
 
 @router.get("/fields", response_model=List[redcap.Field])
@@ -151,3 +212,39 @@ def new_records_export(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="new-records-{redcap.check_dataset(dataset)}.csv"'},
     )
+
+
+@router.get("/new-records/preview", response_model=redcap_remote.NewRecordsPreview)
+def new_records_preview(
+    dataset: str,
+    cursor=Depends(get_cursor),
+    _actor: User = Depends(require_permission("redcap:export")),
+):
+    return redcap_remote.new_records_preview(cursor, dataset)
+
+
+@router.post("/new-records/send", response_model=SendResult)
+def new_records_send(
+    dataset: str,
+    body: SendNewRecords,
+    background: BackgroundTasks,
+    request: Request,
+    cursor=Depends(get_cursor),
+    actor: User = Depends(require_permission("redcap:export")),
+):
+    sent = redcap_remote.send_new_records(cursor, dataset, body.count)
+    record_access(
+        EXPORT, actor=actor, resource_type="redcap_new_records", record_count=sent,
+        identified=False, detail=f"dataset={redcap.check_dataset(dataset)} sent to REDCap API",
+    )
+    background.add_task(
+        record_audit,
+        action="CREATE",
+        entity_type="redcap_new_records",
+        entity_id=redcap.check_dataset(dataset),
+        user_id=actor.id,
+        old_values=None,
+        new_values={"destination": "api", "sent": sent},
+        request_id=request.headers.get("X-Request-ID"),
+    )
+    return SendResult(sent=sent)
