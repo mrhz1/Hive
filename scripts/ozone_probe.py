@@ -81,36 +81,70 @@ def cli(root, write):
     return results
 
 
+def _prepare_libhdfs():
+    """pyarrow needs the Hadoop jars on CLASSPATH and the native libhdfs library."""
+    if not os.environ.get("CLASSPATH"):
+        for tool in ("hdfs", "hadoop"):
+            if shutil.which(tool):
+                code, text, _ = run([tool, "classpath", "--glob"])
+                if code == 0:
+                    os.environ["CLASSPATH"] = text.splitlines()[-1]
+                    show("CLASSPATH", f"from '{tool} classpath --glob' ({len(os.environ['CLASSPATH'])} chars)")
+                    break
+    if not os.environ.get("ARROW_LIBHDFS_DIR"):
+        for folder in ("/usr/lib/hadoop/lib/native", "/usr/lib64", "/usr/lib/hadoop-hdfs/lib/native",
+                       "/opt/cloudera/parcels/CDH/lib64", "/opt/ozone-addon/lib"):
+            if os.path.isdir(folder) and any(n.startswith("libhdfs.so") for n in os.listdir(folder)):
+                os.environ["ARROW_LIBHDFS_DIR"] = folder
+                break
+    show("ARROW_LIBHDFS_DIR", os.environ.get("ARROW_LIBHDFS_DIR") or "libhdfs.so not found")
+
+
 def python_client(root, write):
     print("\n[python: pyarrow]")
     try:
         from pyarrow import fs
     except Exception as exc:  # noqa: BLE001
-        show("pyarrow", f"not usable: {exc}")
+        show("pyarrow", f"not installed ({exc}); try: pip install pyarrow")
         return False
+    _prepare_libhdfs()
+    scheme, rest = root.split("://", 1)
+    service, _, path = rest.partition("/")
+    path = "/" + path
     try:
         started = time.perf_counter()
-        filesystem, path = fs.FileSystem.from_uri(root)
+        filesystem = fs.HadoopFileSystem(f"{scheme}://{service}", 0)
         infos = filesystem.get_file_info(fs.FileSelector(path, recursive=False))
-        show("list root", f"OK in {time.perf_counter() - started:.1f}s, {len(infos)} entries")
+        show("list root", f"OK in {time.perf_counter() - started:.2f}s, {len(infos)} entries")
     except Exception as exc:  # noqa: BLE001
-        show("list root", f"FAILED: {type(exc).__name__}: {str(exc)[:300]}")
+        show("list root", f"FAILED: {type(exc).__name__}: {str(exc)[:400]}")
         return False
     if write:
-        name = f"{path.rstrip('/')}/_hive_probe/probe-pyarrow-{datetime.now():%Y%m%d%H%M%S}.bin"
+        folder = f"{path.rstrip('/')}/_hive_probe"
         try:
-            filesystem.create_dir(name.rsplit("/", 1)[0])
+            filesystem.create_dir(folder)
+            started = time.perf_counter()
+            for n in range(20):
+                with filesystem.open_output_stream(f"{folder}/small-{n}.txt") as out:
+                    out.write(b"hive ozone probe\n")
+            show("write 20 small files", f"OK in {time.perf_counter() - started:.2f}s")
+            name = f"{folder}/probe-5mb.bin"
             started = time.perf_counter()
             with filesystem.open_output_stream(name) as out:
                 out.write(os.urandom(5 * 1024 * 1024))
-            show("write 5 MB", f"OK in {time.perf_counter() - started:.1f}s")
+            show("write 5 MB", f"OK in {time.perf_counter() - started:.2f}s")
+            started = time.perf_counter()
             with filesystem.open_input_file(name) as stream:
                 stream.seek(1024)
-                show("random read", "OK" if len(stream.read(10)) == 10 else "FAILED")
-            filesystem.delete_file(name)
-            show("delete test file", "OK")
+                ok = len(stream.read(10)) == 10
+            show("random read", f"{'OK' if ok else 'FAILED'} in {time.perf_counter() - started:.2f}s")
+            started = time.perf_counter()
+            filesystem.move(name, f"{folder}/renamed.bin")
+            show("rename", f"OK in {time.perf_counter() - started:.2f}s")
+            filesystem.delete_dir(folder)
+            show("delete test folder", "OK")
         except Exception as exc:  # noqa: BLE001
-            show("write test", f"FAILED: {type(exc).__name__}: {str(exc)[:300]}")
+            show("write test", f"FAILED: {type(exc).__name__}: {str(exc)[:400]}")
     return True
 
 
