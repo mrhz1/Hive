@@ -193,38 +193,29 @@ export function ExploreRedcapCard({ canImport }: { canImport: boolean }) {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Step
-              number={2}
-              title={
-                kind === 'records'
-                  ? 'Tick the instruments to import'
-                  : 'Explore the instruments (optional)'
-              }
-            />
-            {kind !== 'records' ? (
-              <p className={mutedClass}>
-                {KIND_HELP[kind].title} covers the whole project. Open an instrument to
-                see its fields; to import patient data of chosen instruments, pick Records
-                in step 1.
-              </p>
-            ) : null}
-            <InstrumentTable
-              instruments={instruments.data ?? []}
-              isLoading={instruments.isLoading}
-              error={instruments.error}
-              selectable={kind === 'records'}
-              chosen={chosen}
-              onToggle={toggle}
-              onAll={(all) => {
-                setSelected(all ? null : [])
-                reset()
-              }}
-            />
-          </div>
+          {kind === 'records' ? (
+            <div className="space-y-2">
+              <Step number={2} title="Tick the instruments to import" />
+              <InstrumentTable
+                instruments={instruments.data ?? []}
+                isLoading={instruments.isLoading}
+                error={instruments.error}
+                selectable
+                chosen={chosen}
+                onToggle={toggle}
+                onAll={(all) => {
+                  setSelected(all ? null : [])
+                  reset()
+                }}
+              />
+            </div>
+          ) : null}
 
           <div className="space-y-2">
-            <Step number={3} title="Preview, check, then import" />
+            <Step
+              number={kind === 'records' ? 3 : 2}
+              title="Preview, check, then import"
+            />
             <p className={mutedClass}>
               Preview asks REDCap for the data and runs the import without saving: the
               counts show what would be saved, notes and problems show what would be
@@ -340,7 +331,7 @@ function InstrumentRows({
       </div>
       <div className="max-h-96 overflow-auto rounded-md border border-[rgb(var(--border))]">
         <table className="w-full text-left text-xs">
-          <thead className="sticky top-0 bg-[rgb(var(--background))]">
+          <thead className="sticky top-0 z-10 bg-[rgb(var(--surface))] shadow-sm">
             <tr>
               {selectable ? <th className={cellClass} aria-label="Import" /> : null}
               <th className={cellClass}>Instrument</th>
