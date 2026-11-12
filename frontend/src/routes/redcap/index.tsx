@@ -89,7 +89,7 @@ function RedcapPage() {
         <span className={mutedClass}>
           {simulated
             ? 'No REDCap API access yet. Import exported files here, or let scripts/redcap_sync.py read them nightly. Setting REDCAP_URL and a token per dataset switches the same sync to the API.'
-            : 'Explore and import from REDCap below. The nightly sync, if scheduled, reads the same projects. Files can still be imported by hand.'}
+            : 'Explore and import from REDCap below. The nightly sync, if scheduled, reads the same projects.'}
         </span>
       </Card>
 
@@ -111,9 +111,11 @@ function RedcapPage() {
         <ExploreRedcapCard canImport={can('redcap:import')} />
       ) : null}
 
-      <Can permission="redcap:import">
-        <ImportCard datasets={datasets} />
-      </Can>
+      {simulated ? (
+        <Can permission="redcap:import">
+          <ImportCard datasets={datasets} />
+        </Can>
+      ) : null}
 
       <Can permission="redcap:export">
         <FollowupCard />

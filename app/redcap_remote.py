@@ -32,6 +32,13 @@ class RemoteDataset(BaseModel):
     error: Optional[str] = None
 
 
+class RemoteField(BaseModel):
+    name: str
+    label: str
+    type: str
+    left_out: Optional[str] = None  # identifier / date / free_text when De-identified
+
+
 class RemoteInstrument(BaseModel):
     name: str
     label: str
@@ -39,6 +46,7 @@ class RemoteInstrument(BaseModel):
     identifiers: int
     dates: int
     free_text: int
+    field_list: List[RemoteField] = []
 
 
 class RemotePreview(redcap.ImportResult):
@@ -135,6 +143,11 @@ def instrument_list(dataset: str) -> List[RemoteInstrument]:
             name=form["instrument_name"], label=form.get("instrument_label") or form["instrument_name"],
             fields=len(mine), identifiers=removed.count("identifier"),
             dates=removed.count("date"), free_text=removed.count("free_text"),
+            field_list=[
+                RemoteField(name=f["field_name"], label=(f.get("field_label") or "")[:120],
+                            type=f.get("field_type") or "", left_out=why)
+                for f, why in zip(mine, removed)
+            ],
         ))
     return out
 

@@ -55,6 +55,16 @@ export const remoteInstrumentSchema = z.object({
   identifiers: z.number(),
   dates: z.number(),
   free_text: z.number(),
+  field_list: z
+    .array(
+      z.object({
+        name: z.string(),
+        label: z.string(),
+        type: z.string(),
+        left_out: z.string().nullable().optional(),
+      })
+    )
+    .default([]),
 })
 
 export type RemoteInstrument = z.infer<typeof remoteInstrumentSchema>
