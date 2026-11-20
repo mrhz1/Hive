@@ -32,6 +32,10 @@ def client_ip(request) -> str:
     return getattr(client, "host", None) or "unknown"
 
 
+# Cloudera's health check calls GET / every second; successful checks are not logged.
+HEALTH_PATHS = ("/", "/health")
+
+
 class RequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
@@ -56,11 +60,12 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             response = internal_error_response()
 
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
-        log.info(
-            "request_finished",
-            status_code=response.status_code,
-            duration_ms=duration_ms,
-        )
+        if not (request.url.path in HEALTH_PATHS and response.status_code < 400):
+            log.info(
+                "request_finished",
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+            )
         response.headers["X-Request-ID"] = request_id
         response.headers.setdefault("Cache-Control", "no-store")
         return response

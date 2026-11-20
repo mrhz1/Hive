@@ -29,6 +29,9 @@ def _legacy_key(stored: str) -> Optional[str]:
     return None
 
 
+_rehomed_warned: set = set()
+
+
 def _configured_dir(name: str, default: str) -> StoragePath:
     """A folder inside STORAGE_ROOT (local folder or Ozone). Settings keep their
     old form: "storage/patient_files" means the folder "patient_files" in the root.
@@ -43,7 +46,9 @@ def _configured_dir(name: str, default: str) -> StoragePath:
         # use the part after "storage" as the folder inside STORAGE_ROOT.
         legacy = _legacy_key(raw)
         if legacy:
-            log.warning("storage_setting_rehomed", setting=name, folder=legacy, root=store.root)
+            if name not in _rehomed_warned:  # once per setting, not on every call
+                _rehomed_warned.add(name)
+                log.warning("storage_setting_rehomed", setting=name, folder=legacy, root=store.root)
             return StoragePath(legacy)
         raise ValidationError(f"{name}={raw} must be a folder inside STORAGE_ROOT ({store.root})")
     raw = raw.removeprefix("./")

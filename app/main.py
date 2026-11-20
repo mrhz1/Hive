@@ -182,3 +182,9 @@ app.include_router(access_log_router.router)
 @app.get("/health", tags=["meta"])
 def health():
     return {"status": "ok"}
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    """Cloudera checks the Application with GET / every second."""
+    return {"status": "ok"}
